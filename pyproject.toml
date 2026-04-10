@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0,<76", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "network-guardian"
+version = "0.1.0"
+description = "Autonomous network auditing and system monitoring assistant"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = [
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0,<9",
+    "pytest-asyncio>=0.23,<1",
+    "ruff>=0.4,<1",
+]
+remote = [
+    "cmdop>=0.1",
+    "cmdop-bot>=0.1",
+    "openclaw>=2026.3",
+    "twilio>=9.0,<10",
+]
+
+# Dependency integrity: install with `pip install --require-hashes -r requirements.lock`
+# Lock file contains sha256 hashes for all pinned dependencies.
+
+[project.scripts]
+network-guardian = "network_guardian.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["network_guardian*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+

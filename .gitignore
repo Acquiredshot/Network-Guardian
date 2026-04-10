@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Testing / CI
+.pytest_cache/
+.coverage
+htmlcov/
+
+# SonarQube
+.scannerwork/
+
+# DeepEval
+.deepeval/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Environment files with secrets
+.env

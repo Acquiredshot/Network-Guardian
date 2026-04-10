@@ -1,0 +1,202 @@
+"""
+Core engine for Network Guardian.
+
+Orchestrates all subsystems: auditor, monitor, explorer, automator,
+AI engine, NLP engine, sensors, dashboard, and plugins.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import TYPE_CHECKING
+
+from network_guardian.config import Config
+from network_guardian.core.events import EventBus
+from network_guardian.core.plugins import PluginRegistry
+
+if TYPE_CHECKING:
+    from network_guardian.ai import AIEngine
+    from network_guardian.ai.nlp import NLPEngine
+    from network_guardian.ai.nodes import NodeGraph
+    from network_guardian.ai.training import TrainingPipeline
+    from network_guardian.auditor import Auditor
+    from network_guardian.automator import Automator
+    from network_guardian.cloaking import IPCloakingSystem
+    from network_guardian.explorer import Explorer
+    from network_guardian.ids import IntrusionDetectionSystem
+    from network_guardian.interface.dashboard import Dashboard
+    from network_guardian.ips import IntrusionPreventionSystem
+    from network_guardian.monitor import Monitor
+    from network_guardian.remote import RemoteAccessManager
+    from network_guardian.sensors import SensorRegistry
+
+logger = logging.getLogger("network_guardian.core")
+
+
+class Engine:
+    """Central orchestrator that initialises and coordinates subsystems."""
+
+    def __init__(self, config: Config | None = None) -> None:
+        self.config = config or Config()
+        self.event_bus = EventBus()
+        self.plugins = PluginRegistry()
+
+        self._auditor: Auditor | None = None
+        self._monitor: Monitor | None = None
+        self._explorer: Explorer | None = None
+        self._automator: Automator | None = None
+        self._ai: AIEngine | None = None
+        self._nlp: NLPEngine | None = None
+        self._sensors: SensorRegistry | None = None
+        self._dashboard: Dashboard | None = None
+        self._node_graph: NodeGraph | None = None
+        self._training: TrainingPipeline | None = None
+        self._ids: IntrusionDetectionSystem | None = None
+        self._ips: IntrusionPreventionSystem | None = None
+        self._cloaking: IPCloakingSystem | None = None
+        self._remote: RemoteAccessManager | None = None
+
+        self._running = False
+
+    # -- Lazy subsystem access ------------------------------------------
+
+    @property
+    def auditor(self) -> Auditor:
+        if self._auditor is None:
+            from network_guardian.auditor import Auditor
+            self._auditor = Auditor(self.config, self.event_bus)
+        return self._auditor
+
+    @property
+    def monitor(self) -> Monitor:
+        if self._monitor is None:
+            from network_guardian.monitor import Monitor
+            self._monitor = Monitor(self.config, self.event_bus)
+        return self._monitor
+
+    @property
+    def explorer(self) -> Explorer:
+        if self._explorer is None:
+            from network_guardian.explorer import Explorer
+            self._explorer = Explorer(self.config, self.event_bus)
+        return self._explorer
+
+    @property
+    def automator(self) -> Automator:
+        if self._automator is None:
+            from network_guardian.automator import Automator
+            self._automator = Automator(self.config, self.event_bus)
+        return self._automator
+
+    @property
+    def ai(self) -> AIEngine:
+        if self._ai is None:
+            from network_guardian.ai import AIEngine
+            self._ai = AIEngine(self.config, self.event_bus)
+        return self._ai
+
+    @property
+    def nlp(self) -> NLPEngine:
+        if self._nlp is None:
+            from network_guardian.ai.nlp import NLPEngine
+            self._nlp = NLPEngine(self.config, self.event_bus)
+        return self._nlp
+
+    @property
+    def sensors(self) -> SensorRegistry:
+        if self._sensors is None:
+            from network_guardian.sensors import (
+                PingSensor, PortScanner, SystemMetricsSensor, SensorRegistry,
+            )
+            self._sensors = SensorRegistry()
+            self._sensors.register(PingSensor(self.config, self.event_bus))
+            self._sensors.register(PortScanner(self.config, self.event_bus))
+            self._sensors.register(SystemMetricsSensor(self.config, self.event_bus))
+        return self._sensors
+
+    @property
+    def dashboard(self) -> Dashboard:
+        if self._dashboard is None:
+            from network_guardian.interface.dashboard import Dashboard
+            self._dashboard = Dashboard(self)
+        return self._dashboard
+
+    @property
+    def node_graph(self) -> NodeGraph:
+        """ROS-inspired AI node compute graph."""
+        if self._node_graph is None:
+            from network_guardian.ai.nodes import NodeGraph
+            self._node_graph = NodeGraph.create_default(self.event_bus)
+        return self._node_graph
+
+    @property
+    def training(self) -> TrainingPipeline:
+        """ML training pipeline with model registry."""
+        if self._training is None:
+            from network_guardian.ai.training import TrainingPipeline
+            self._training = TrainingPipeline()
+        return self._training
+
+    @property
+    def ids(self) -> IntrusionDetectionSystem:
+        """Intrusion Detection System."""
+        if self._ids is None:
+            from network_guardian.ids import IntrusionDetectionSystem
+            self._ids = IntrusionDetectionSystem(self.config, self.event_bus)
+        return self._ids
+
+    @property
+    def ips(self) -> IntrusionPreventionSystem:
+        """Intrusion Prevention System."""
+        if self._ips is None:
+            from network_guardian.ips import IntrusionPreventionSystem
+            self._ips = IntrusionPreventionSystem(self.config, self.event_bus)
+        return self._ips
+
+    @property
+    def cloaking(self) -> IPCloakingSystem:
+        """IP Cloaking and privacy system."""
+        if self._cloaking is None:
+            from network_guardian.cloaking import IPCloakingSystem
+            self._cloaking = IPCloakingSystem(self.config, self.event_bus)
+        return self._cloaking
+
+    @property
+    def remote(self) -> RemoteAccessManager:
+        """Remote access manager (OpenClaw + CMDOP + messaging)."""
+        if self._remote is None:
+            from network_guardian.remote import RemoteAccessManager
+            self._remote = RemoteAccessManager(self)
+        return self._remote
+
+    # -- Lifecycle -------------------------------------------------------
+
+    async def start(self) -> None:
+        """Start all subsystems."""
+        logger.info("Network Guardian engine starting...")
+        self.config.data_dir.mkdir(parents=True, exist_ok=True)
+        await self.plugins.start_all()
+        if self._node_graph is not None:
+            await self._node_graph.start_all()
+        self._running = True
+        logger.info("Engine started. Data directory: %s", self.config.data_dir)
+
+    async def stop(self) -> None:
+        """Gracefully stop all subsystems."""
+        logger.info("Engine shutting down...")
+        self._running = False
+        if self._node_graph is not None:
+            await self._node_graph.stop_all()
+        if self._dashboard is not None:
+            await self._dashboard.stop()
+        if self._monitor is not None:
+            await self._monitor.stop()
+        if self._remote is not None:
+            await self._remote.stop()
+        await self.plugins.stop_all()
+        logger.info("Engine stopped.")
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
