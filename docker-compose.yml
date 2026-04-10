@@ -1,0 +1,22 @@
+services:
+  guardian:
+    build: .
+    image: network-guardian:latest
+    container_name: network-guardian
+    ports:
+      - "8765:8765"   # WhatsApp webhook server
+      - "8080:8080"   # Web dashboard
+    environment:
+      - ALLOWED_NUMBERS=${ALLOWED_NUMBERS:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-whatsapp:+14155238886}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      - HOST=0.0.0.0
+      - PORT=8765
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
