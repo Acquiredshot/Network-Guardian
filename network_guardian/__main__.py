@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start the web dashboard alongside the interactive CLI",
     )
     parser.add_argument(
+        "--dashboard-host",
+        type=str,
+        default="0.0.0.0",
+        help="Host/IP for the dashboard to bind to (default: 0.0.0.0 = all interfaces)",
+    )
+    parser.add_argument(
         "--dashboard-port",
         type=int,
         default=8080,
@@ -74,6 +80,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
     try:
         if args.dashboard:
+            engine.dashboard.host = args.dashboard_host
             engine.dashboard.port = args.dashboard_port
             await engine.dashboard.start()
 

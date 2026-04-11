@@ -37,6 +37,7 @@ class InteractiveCLI:
         "ids":       "Intrusion Detection System (usage: ids start|stop|status|scan <text>)",
         "ips":       "Intrusion Prevention System (usage: ips start|stop|status|block|unblock <ip>)",
         "cloak":     "IP Cloaking (usage: cloak mode|mask|identity|decoys|status)",
+        "wifi":      "WiFi Stealth (usage: wifi scan|status|hide|show|verify|router)",
         "remote":    "Remote access (usage: remote status|channels|users|pipeline|start|stop)",
         "status":    "Show engine status",
         "quit":      "Exit Network Guardian",
@@ -61,6 +62,7 @@ class InteractiveCLI:
             "ids": self._handle_ids,
             "ips": self._handle_ips,
             "cloak": self._handle_cloak,
+            "wifi": self._handle_wifi,
             "remote": self._handle_remote,
         }
 
@@ -424,6 +426,79 @@ class InteractiveCLI:
                 print(f"    {d.ip}  ports=[{ports}]")
         else:
             print("Usage: cloak mode <mode>|mask <ip>|identity create|activate|list|decoys <subnet>|status")
+
+    # -- WiFi stealth handler ------------------------------------------------
+
+    async def _handle_wifi(self, args: list[str]) -> None:
+        if not args:
+            print("Usage: wifi scan|status|hide|show|verify|router <ip> <user> <pass>")
+            return
+        stealth = self.engine.wifi_stealth
+        sub = args[0]
+
+        if sub == "scan":
+            print("  Scanning nearby WiFi networks...")
+            networks = await stealth.scan_networks()
+            if not networks:
+                print("  No networks found.")
+            else:
+                print(f"  Found {len(networks)} network(s):")
+                for n in networks:
+                    sec = f" [{n.security}]" if n.security else ""
+                    ch = f" ch{n.channel}" if n.channel else ""
+                    print(f"    {n.ssid or '(hidden)'}{sec} {n.signal}%{ch}")
+
+        elif sub == "status":
+            status = await stealth.stealth_status()
+            print(f"  Stealth active  : {'YES' if status['stealth_active'] else 'OFF'}")
+            print(f"  Home SSID       : {status['home_ssid']}")
+            print(f"  Gateway         : {status['gateway_ip'] or 'unknown'}")
+            print(f"  Router config   : {'yes' if status['router_configured'] else 'no'}")
+            conn = status.get('connected_network')
+            if conn:
+                print(f"  Connected to    : {conn['ssid']} ({conn['signal']}%)")
+            stats = status.get('stats', {})
+            print(f"  Scans: {stats.get('scans', 0)}  Hides: {stats.get('hide_ops', 0)}  Shows: {stats.get('show_ops', 0)}")
+
+        elif sub == "hide":
+            band = args[1] if len(args) > 1 else "all"
+            print(f"  Hiding SSID (band: {band})...")
+            result = await stealth.hide_network(band)
+            if result.get('success'):
+                print(f"  ✓ {result['message']}")
+            else:
+                print(f"  ✗ {result.get('error', 'Failed')}")
+
+        elif sub == "show":
+            band = args[1] if len(args) > 1 else "all"
+            print(f"  Showing SSID (band: {band})...")
+            result = await stealth.show_network(band)
+            if result.get('success'):
+                print(f"  ✓ {result['message']}")
+            else:
+                print(f"  ✗ {result.get('error', 'Failed')}")
+
+        elif sub == "verify":
+            print("  Verifying stealth...")
+            result = await stealth.verify_stealth()
+            print(f"  {result.get('message', 'Verification failed')}")
+
+        elif sub == "router":
+            if len(args) < 4:
+                print("Usage: wifi router <ip> <username> <password>")
+                return
+            ip = args[1].strip("<>")
+            user = args[2].strip("<>")
+            pw = args[3].strip("<>")
+            print(f"  Configuring router at {ip}...")
+            result = await stealth.configure_router(ip, user, pw)
+            if result.get('success'):
+                print(f"  ✓ {result['message']}")
+            else:
+                print(f"  ✗ {result.get('error', 'Configuration failed')}")
+
+        else:
+            print("Usage: wifi scan|status|hide|show|verify|router <ip> <user> <pass>")
 
     # -- Remote access handler ---------------------------------------------
 

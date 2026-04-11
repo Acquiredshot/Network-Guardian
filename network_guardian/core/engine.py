@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from network_guardian.ai.training import TrainingPipeline
     from network_guardian.auditor import Auditor
     from network_guardian.automator import Automator
-    from network_guardian.cloaking import IPCloakingSystem
+    from network_guardian.cloaking import IPCloakingSystem, WiFiStealthSystem
     from network_guardian.explorer import Explorer
     from network_guardian.ids import IntrusionDetectionSystem
     from network_guardian.interface.dashboard import Dashboard
@@ -55,6 +55,7 @@ class Engine:
         self._ids: IntrusionDetectionSystem | None = None
         self._ips: IntrusionPreventionSystem | None = None
         self._cloaking: IPCloakingSystem | None = None
+        self._wifi_stealth: WiFiStealthSystem | None = None
         self._remote: RemoteAccessManager | None = None
 
         self._running = False
@@ -161,6 +162,14 @@ class Engine:
             from network_guardian.cloaking import IPCloakingSystem
             self._cloaking = IPCloakingSystem(self.config, self.event_bus)
         return self._cloaking
+
+    @property
+    def wifi_stealth(self) -> WiFiStealthSystem:
+        """WiFi network stealth system."""
+        if self._wifi_stealth is None:
+            from network_guardian.cloaking import WiFiStealthSystem
+            self._wifi_stealth = WiFiStealthSystem(self.config, self.event_bus)
+        return self._wifi_stealth
 
     @property
     def remote(self) -> RemoteAccessManager:

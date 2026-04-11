@@ -30,6 +30,8 @@ remote = [
 
 [project.scripts]
 network-guardian = "network_guardian.__main__:main"
+ng-probe = "network_guardian.agent.probe:main"
+ng-build-agent = "network_guardian.agent.build:main"
 
 [tool.setuptools.packages.find]
 include = ["network_guardian*"]

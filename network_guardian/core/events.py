@@ -49,6 +49,8 @@ class EventBus:
         callbacks = self._subscribers.get(event.topic, [])
         for cb in callbacks:
             try:
-                await cb(event)
+                result = cb(event)
+                if asyncio.iscoroutine(result):
+                    await result
             except Exception:
                 logger.exception("Error in event handler for %s", event.topic)

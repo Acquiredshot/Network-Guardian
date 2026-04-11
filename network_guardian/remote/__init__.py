@@ -321,6 +321,7 @@ class GuardianCommandRouter:
             "ids": self._cmd_ids,
             "ips": self._cmd_ips,
             "cloak": self._cmd_cloak,
+            "wifi": self._cmd_wifi,
             "ai": self._cmd_ai,
             "train": self._cmd_train,
             "ping": self._cmd_ping,
@@ -350,6 +351,7 @@ class GuardianCommandRouter:
             "ids start|stop|status|scan <text>|rules|alerts",
             "ips start|stop|status|block|unblock <ip>",
             "cloak mode|mask|identity|decoys|status",
+            "wifi scan|status|hide|show|router|verify",
             "ai recommend|classify",
             "train anomaly|forecast [method]",
             "ping          — Connectivity check",
@@ -542,6 +544,112 @@ class GuardianCommandRouter:
                 return f"Activated: {args[2]}" if ok else f"Not found: {args[2]}"
             return "Usage: cloak identity list|create <name> <mode>|activate <name>"
         return "Usage: cloak mode|mask|identity|decoys|status"
+
+    async def _cmd_wifi(self, args: list[str]) -> str:
+        if not args:
+            return (
+                "WiFi Stealth Commands:\n"
+                "  wifi scan    — Scan nearby networks\n"
+                "  wifi status  — Current connection & stealth info\n"
+                "  wifi hide    — Hide your SSID (stealth ON)\n"
+                "  wifi show    — Unhide your SSID (stealth OFF)\n"
+                "  wifi verify  — Verify SSID is hidden\n"
+                "  wifi router <ip> <user> <pass> — Configure router"
+            )
+        stealth = self.engine.wifi_stealth
+        sub = args[0]
+
+        if sub == "scan":
+            try:
+                networks = await asyncio.wait_for(
+                    stealth.scan_networks(), timeout=20.0,
+                )
+            except asyncio.TimeoutError:
+                return "WiFi scan timed out."
+            if not networks:
+                return "No WiFi networks found (adapter may be unavailable)."
+            lines = [f"Found {len(networks)} network(s):"]
+            for n in sorted(networks, key=lambda x: x.signal, reverse=True):
+                name = n.ssid if n.ssid else "(hidden)"
+                sec = f" [{n.security}]" if n.security != "Unknown" else ""
+                sig = f" {n.signal}%" if n.signal > 0 else ""
+                ch = f" ch{n.channel}" if n.channel else ""
+                lines.append(f"  {name}{sec}{sig}{ch}")
+            return "\n".join(lines)
+
+        if sub == "status":
+            try:
+                status = await asyncio.wait_for(
+                    stealth.stealth_status(), timeout=15.0,
+                )
+            except asyncio.TimeoutError:
+                return "Status check timed out."
+            lines = [
+                f"Stealth: {'ON' if status['stealth_active'] else 'OFF'}",
+                f"Home SSID: {status['home_ssid']}",
+                f"Gateway: {status['gateway_ip'] or 'unknown'}",
+                f"Router configured: {'yes' if status['router_configured'] else 'no'}",
+            ]
+            conn = status.get("connected_network")
+            if conn:
+                lines.append(f"Connected: {conn['ssid']} ({conn['signal']}%)")
+            return "\n".join(lines)
+
+        if sub == "hide":
+            band = args[1] if len(args) > 1 else "all"
+            try:
+                result = await asyncio.wait_for(
+                    stealth.hide_network(band), timeout=15.0,
+                )
+            except asyncio.TimeoutError:
+                return "Hide operation timed out."
+            if result.get("success"):
+                return f"✓ SSID HIDDEN — {result['message']}\nYour WiFi won't appear on nearby devices."
+            return f"✗ {result.get('error', 'Failed to hide SSID')}"
+
+        if sub == "show":
+            band = args[1] if len(args) > 1 else "all"
+            try:
+                result = await asyncio.wait_for(
+                    stealth.show_network(band), timeout=15.0,
+                )
+            except asyncio.TimeoutError:
+                return "Show operation timed out."
+            if result.get("success"):
+                return f"✓ SSID VISIBLE — {result['message']}\nYour WiFi is now discoverable."
+            return f"✗ {result.get('error', 'Failed to show SSID')}"
+
+        if sub == "verify":
+            try:
+                result = await asyncio.wait_for(
+                    stealth.verify_stealth(), timeout=20.0,
+                )
+            except asyncio.TimeoutError:
+                return "Verification scan timed out."
+            return result.get("message", "Verification failed.")
+
+        if sub == "router":
+            if len(args) < 4:
+                return "Usage: wifi router <ip> <username> <password>"
+            # Strip angle brackets users may copy from help text
+            ip = args[1].strip("<>")
+            user = args[2].strip("<>")
+            pw = args[3].strip("<>")
+            try:
+                result = await asyncio.wait_for(
+                    stealth.configure_router(ip, user, pw), timeout=15.0,
+                )
+            except asyncio.TimeoutError:
+                return "Router configuration timed out."
+            if result.get("success"):
+                return f"✓ {result['message']}"
+            return f"✗ {result.get('error', 'Router configuration failed')}"
+
+        return (
+            "WiFi Stealth Commands:\n"
+            "  wifi scan|status|hide|show|verify\n"
+            "  wifi router <ip> <user> <pass>"
+        )
 
     def _cmd_ai(self, args: list[str]) -> str:
         if not args:
