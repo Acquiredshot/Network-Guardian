@@ -8,6 +8,8 @@ Autonomous network auditing, intrusion detection/prevention, and system monitori
 - **Intrusion Detection System (IDS)** — 15 built-in signature rules, regex + keyword payload analysis, alert severity scoring, brute-force anomaly detection, multi-stage attack correlation, and alert suppression
 - **Intrusion Prevention System (IPS)** — IP blocklist/allowlist, rate limiting, quarantine zones, auto-respond to IDS alerts, time-based block expiry
 - **IP Cloaking** — MAC address masking, deterministic IP obfuscation with unmask, source address rotation (round-robin/random), decoy IP generation, named identity profiles, proxy chain support
+- **Fleet Agent System** — Deploy field agents (`ng-probe`) and stay-behind sentinels (`ng-sentinel`) that monitor remote networks and phone home to the base station
+- **Covert Communications** — All agent-to-base traffic routed through Tor/SOCKS5/HTTP proxy with timing jitter, rotating browser User-Agents, decoy requests, and body padding — base station IP never exposed to network observers
 - **ML-Powered Anomaly Detection** — Isolation Forest, One-Class SVM, and ensemble detectors score network telemetry in real time
 - **Predictive Forecasting** — ARIMA, seasonal decomposition (Prophet-style), and Holt-Winters models forecast metric trends
 - **Smart Task Automation** — Bayesian success estimation, failure-streak backoff, and finding-to-task recommendation engine
@@ -29,6 +31,11 @@ network_guardian/
 │   ├── engine.py          # Central engine — wires all subsystems
 │   ├── events.py          # Async pub-sub EventBus
 │   └── plugins.py         # Plugin base class and registry
+├── agent/                 # Fleet field agents
+│   ├── probe.py           # ng-probe — periodic network scanner + reporter
+│   ├── sentinel.py        # ng-sentinel — persistent stay-behind monitoring bot
+│   ├── covert_comms.py    # Covert channel — Tor/SOCKS5/HTTP proxy + obfuscation
+│   └── react_agent.py     # ReAct threat reasoning agent (observe-reason-act-learn)
 ├── ai/                    # AI & machine learning subsystem
 │   ├── __init__.py        # AIEngine — model registry, forecasting, fleet analysis
 │   ├── anomaly.py         # IsolationForest, OneClassSVM, EnsembleDetector
@@ -54,7 +61,8 @@ network_guardian/
 ├── automator/             # Task automation and scheduling
 ├── interface/             # CLI and web dashboard
 │   ├── __init__.py        # InteractiveCLI with full command set
-│   └── dashboard.py       # Zero-dependency async HTTP dashboard
+│   ├── dashboard.py       # Zero-dependency async HTTP dashboard + Fleet API
+│   └── _fleet.py          # Fleet store, agent registry, Fleet Command UI
 ├── config/                # YAML + env var configuration management
 ├── models/                # Shared data models (Host, Finding, Metric)
 └── utils/                 # Logging and shared utilities
@@ -96,6 +104,105 @@ Protect scanner identity during network operations:
 - **Named Identities** — Create, activate, and manage multiple scanning identities
 - **Proxy Chains** — Route through proxy chains for additional anonymity
 - **Scan Preparation** — Automatically apply active identity + decoys to scan configurations
+
+## Fleet Agent System
+
+Deploy autonomous field agents that monitor remote networks and report back to your base station.
+
+### Field Probe (`ng-probe`)
+
+A periodic collector that scans its local environment and phones home on a configurable interval:
+
+```bash
+# Deploy on a remote machine
+python -m network_guardian.agent.probe \
+  --base http://BASE_IP:8080 \
+  --key FLEET_KEY \
+  --interval 60 \
+  --tor                      # Route via Tor (or --proxy socks5://127.0.0.1:9050)
+  --stealth                  # Max jitter + decoys
+```
+
+Collects and reports: WiFi networks, discovered hosts, open ports, system metrics, gateway info, and full ReAct threat analysis.
+
+### Sentinel Bot (`ng-sentinel`)
+
+A persistent stay-behind agent with continuous monitoring loops:
+
+```bash
+# Plant on a target network
+python -m network_guardian.agent.sentinel \
+  --base http://BASE_IP:8080 \
+  --key FLEET_KEY \
+  --proxy socks5://127.0.0.1:9050   # or --tor
+  --stealth
+```
+
+| Loop | What it does |
+|---|---|
+| **WiFi Watcher** | Tracks SSIDs appearing/disappearing, signal drift, rogue AP detection, channel congestion |
+| **Flow Monitor** | Watches TCP/UDP flows, detects new external endpoints, bandwidth anomalies |
+| **Adaptive Engine** | Adjusts sensitivity and scan intervals based on learned environment baseline |
+| **Base Reporter** | Streams intelligence back with priority levels: routine (60s), alert (immediate) |
+
+### Fleet Command Dashboard
+
+The `/fleet` page shows all deployed agents in real time:
+
+- **Agent cards** with status (online/stale/offline), IP, WiFi/host counts, ReAct threat score
+- **Sentinel badge** — continuous monitoring bots shown with cyan `🛡 Sentinel` tag and WiFi change / rogue AP counters
+- **Covert badge** — `🔒 Tor` (green) / `🔒 Proxy` (blue) / `🔓 Direct` (gray) per agent showing anonymization state
+- **Fleet KPIs** — total agents, online/stale/offline counts, threat count, ReAct agents, WiFi nets, hosts, covert count
+- **Fleet Map** — canvas network diagram with threat rings, sentinel rings, and lock dots for covert agents
+- **Fleet Threat Intelligence** — aggregated ReAct diagnostics across all agents
+- **Detail overlay** — click any agent for full drill-down: covert channel info, threats, ReAct log, sentinel intelligence, WiFi/host inventory
+
+## Covert Communications
+
+All agent-to-base HTTP traffic is routed through an anonymization layer so the base station IP is never visible to anyone watching the bot's network traffic.
+
+### How it works
+
+| Layer | Protection |
+|---|---|
+| **Tor SOCKS5** | Pure-Python tunnel (no PySocks dep) — TCP connects to proxy, DNS resolves at exit node — base IP fully hidden |
+| **HTTP/HTTPS proxy** | Standard proxy via Python's built-in `urllib.ProxyHandler` (works with Privoxy on port 8118) |
+| **Auto-detection** | Automatically probes 9050/9150 for Tor SOCKS5 and 8118 for Privoxy — zero config if Tor is running |
+| **Timing jitter** | Random delay (default 3–25s, stealth mode 30–300s) before each transmission breaks timing correlation |
+| **UA rotation** | Cycles through 8 real browser User-Agents — traffic looks like normal browsing |
+| **Decoy requests** | Fires 2–4 fake GETs to innocuous public URLs around every real report to mask traffic pattern |
+| **Body padding** | Adds random `_t` field to JSON payloads to break size fingerprinting |
+| **Safe logging** | Base URL SHA-256 hashed in all log output — never appears in plaintext |
+
+### Agent CLI flags
+
+All flags available on both `ng-probe` and `ng-sentinel`:
+
+```bash
+--proxy socks5://127.0.0.1:9050   # Explicit SOCKS5 proxy (also: http://host:port)
+--proxy http://proxy.corp:8080    # HTTP proxy
+--tor                             # Force Tor — fails if Tor not running
+--stealth                         # Ghost mode: 30–300s jitter, 4 decoys, max suppression
+--no-jitter                       # Disable random delays (for testing)
+```
+
+### Environment variables
+
+```bash
+export NG_PROXY=socks5://127.0.0.1:9050  # Proxy URL
+export NG_TOR=1                           # Force Tor
+export NG_STEALTH=1                       # Stealth mode
+export NG_JITTER=0                        # Disable jitter
+export NG_DECOYS=0                        # Disable decoys
+```
+
+### Covert status in Fleet UI
+
+Every agent report embeds its current covert channel state. The Fleet Command dashboard shows:
+- **🔒 Covert** KPI tile — how many agents are using proxy/Tor
+- Per-agent chip — `🔒 Tor`, `🔒 Proxy`, or `🔓 Direct` with jitter range and decoy count
+- Detail overlay — full channel breakdown or red warning if running unprotected
+- Map — green (Tor) or blue (proxy) lock dot on each agent node
 
 ## Remote Access
 
