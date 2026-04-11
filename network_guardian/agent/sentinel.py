@@ -953,6 +953,8 @@ class SentinelBot:
                     "diagnostics": react_diag,
                     # Sentinel-specific fields
                     "sentinel": digest.to_dict(),
+                    # Covert channel status — base station tracks opsec state
+                    "covert_status": self._comms.status(),
                 }
 
                 # Phone home

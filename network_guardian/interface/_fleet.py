@@ -105,6 +105,10 @@ class FleetStore:
             rogue_log = agents[agent_id].setdefault("rogue_ap_log", [])
             rogue_log.extend(sentinel.get("rogue_ap_alerts", []))
             agents[agent_id]["rogue_ap_log"] = rogue_log[-100:]
+        # Track covert comms status (which proxy/Tor channel the agent is using)
+        covert = report.get("covert_status") or {}
+        if covert:
+            agents[agent_id]["covert_status"] = covert
         self._save()
         return True
 
@@ -166,6 +170,12 @@ class FleetStore:
                 "sentinel_rogue_alerts": len(a.get("rogue_ap_log", [])),
                 "sentinel_uptime": sentinel.get("uptime_seconds", 0) if (sentinel := a.get("sentinel")) else 0,
                 "sentinel_bandwidth": sentinel.get("bandwidth_pattern", "") if (sentinel := a.get("sentinel")) else "",
+                # Covert comms status per agent
+                "covert_proxy": (cs := a.get("covert_status", {})).get("proxy", ""),
+                "covert_jitter": cs.get("jitter", "off"),
+                "covert_decoys": cs.get("decoys", 0),
+                "covert_ua": cs.get("user_agent_rotation", False),
+                "covert_padding": cs.get("body_padding", False),
             })
         return result
 
@@ -317,6 +327,10 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
 .react-chip.reason{background:rgba(210,153,34,.15);color:var(--yellow)}
 .react-chip.act{background:rgba(63,185,80,.15);color:var(--green)}
 .react-chip.learn{background:rgba(188,140,255,.15);color:var(--purple)}
+.covert-chip{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.7rem;font-weight:700;letter-spacing:.3px}
+.covert-chip.tor{background:rgba(63,185,80,.12);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.covert-chip.proxy{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.covert-chip.direct{background:rgba(139,148,158,.1);color:var(--dim);border:1px solid rgba(139,148,158,.2)}
 .threat-entry{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:.78rem;border-left:3px solid}
 .threat-entry.info{border-color:var(--blue);background:rgba(88,166,255,.05)}
 .threat-entry.low{border-color:var(--green);background:rgba(63,185,80,.05)}
@@ -340,6 +354,7 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
     <div class="kpi"><div class="v" id="kRe" style="color:var(--cyan)">0</div><div class="l">ReAct Agents</div></div>
     <div class="kpi"><div class="v" id="kWi" style="color:var(--purple)">0</div><div class="l">WiFi Nets</div></div>
     <div class="kpi"><div class="v" id="kHo" style="color:var(--pink)">0</div><div class="l">Hosts</div></div>
+    <div class="kpi"><div class="v" id="kCo" style="color:var(--green)">0</div><div class="l">&#128274; Covert</div></div>
   </div>
   <div class="nav">
     <a href="/">Dashboard</a><a href="/ids">IDS</a><a href="/ips">IPS</a><a href="/wifi">WiFi</a>
@@ -377,8 +392,14 @@ function closeDetail(){document.getElementById('overlay').classList.remove('show
 document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeDetail();});
 
 var riskColor={low:'--green',medium:'--yellow',high:'--orange',critical:'--red',unknown:'--dim'};
+var _agents=[];
+
+function _isTorProxy(proxy){
+  return proxy&&(proxy.indexOf('socks5')!==-1||proxy.indexOf('9050')!==-1||proxy.indexOf('9150')!==-1);
+}
 
 function showAgent(aid){
+  var aInfo=_agents.find(function(a){return a.agent_id===aid;})||{};
   Promise.all([
     fetch('/api/fleet/agent/'+aid).then(r=>r.json()).catch(()=>({})),
     fetch('/api/fleet/agent/'+aid+'/diagnostics').then(r=>r.ok?r.json():null).catch(()=>null),
@@ -387,6 +408,27 @@ function showAgent(aid){
     var d=arr[0]||{};var diag=arr[1];var sent=arr[2];
     var id=d.identity||{};var m=d.system_metrics||{};
     var html='<h3>'+((id.hostname)||'Agent')+' ('+(d.agent_id||aid)+')</h3>';
+
+    // Covert comms banner (top of detail — most important opsec info)
+    var cov=aInfo.covert_proxy!==undefined?aInfo:{};
+    if(cov.covert_proxy!==undefined){
+      var ctIsTor=_isTorProxy(cov.covert_proxy);
+      var ctIsProxy=cov.covert_proxy&&cov.covert_proxy!=='none';
+      var ctColor=ctIsProxy?'var(--green)':'var(--red)';
+      var ctLabel=ctIsTor?'TOR SOCKS5':ctIsProxy?'HTTP/SOCKS PROXY':'DIRECT (UNPROTECTED)';
+      html+='<div style="padding:10px 14px;border-radius:10px;margin-bottom:14px;border:1px solid '+(ctIsProxy?'rgba(63,185,80,.3)':'rgba(248,81,73,.3)')+';background:'+(ctIsProxy?'rgba(63,185,80,.05)':'rgba(248,81,73,.05)')+'">';
+      html+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+      html+='<span class="covert-chip '+(ctIsTor?'tor':ctIsProxy?'proxy':'direct')+'">&#128274; '+ctLabel+'</span>';
+      if(ctIsProxy){
+        html+='<span style="font-size:.78rem;color:var(--dim)">Jitter: <b style="color:var(--text)">'+(cov.covert_jitter||'off')+'</b></span>';
+        html+='<span style="font-size:.78rem;color:var(--dim)">Decoys: <b style="color:var(--text)">'+(cov.covert_decoys||0)+'</b></span>';
+        html+='<span style="font-size:.78rem;color:var(--dim)">UA Rotation: <b style="color:var(--text)">'+(cov.covert_ua?'on':'off')+'</b></span>';
+        html+='<span style="font-size:.78rem;color:var(--dim)">Body Pad: <b style="color:var(--text)">'+(cov.covert_padding?'on':'off')+'</b></span>';
+      }else{
+        html+='<span style="font-size:.78rem;color:var(--red)">Base IP visible to network observers — use --tor or --proxy</span>';
+      }
+      html+='</div></div>';
+    }
 
     // Diagnostics banner
     if(diag){
@@ -564,6 +606,11 @@ function drawMap(agents){
     if(a.is_sentinel){
       ctx.beginPath();ctx.arc(x,y,22,0,Math.PI*2);ctx.strokeStyle='#39d2e0';ctx.lineWidth=1.5;ctx.stroke();
     }
+    // Covert comms ring (padlock dot at bottom-right)
+    if(a.covert_proxy&&a.covert_proxy!=='none'){
+      var lockCol=_isTorProxy(a.covert_proxy)?'#3fb950':'#58a6ff';
+      ctx.beginPath();ctx.arc(x+12,y+12,4,0,Math.PI*2);ctx.fillStyle=lockCol;ctx.fill();
+    }
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(x,y);
     ctx.strokeStyle=col+'66';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
     ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);ctx.fillStyle=a.status==='online'?'rgba(63,185,80,.15)':'rgba(248,81,73,.1)';ctx.fill();
@@ -644,17 +691,20 @@ async function load(){
     var kr=await fetch('/api/fleet/key');var kd=await kr.json();
     document.getElementById('fleetKey').textContent=kd.key||'N/A';
     document.getElementById('kT').textContent=agents.length;
-    var on=0,st=0,of=0,tw=0,th=0;
+    var on=0,st=0,of=0,tw=0,th=0,co=0;
     agents.forEach(function(a){
       if(a.status==='online')on++;else if(a.status==='stale')st++;else of++;
       tw+=a.wifi_count||0;th+=a.host_count||0;
+      if(a.covert_proxy&&a.covert_proxy!=='none')co++;
     });
     document.getElementById('kOn').textContent=on;
     document.getElementById('kSt').textContent=st;
     document.getElementById('kOf').textContent=of;
     document.getElementById('kWi').textContent=tw;
     document.getElementById('kHo').textContent=th;
+    document.getElementById('kCo').textContent=co;
     document.getElementById('count').textContent=agents.length+' Agent'+(agents.length!==1?'s':'');
+    _agents=agents;
     var el=document.getElementById('agents');
     if(!agents.length){el.innerHTML='<div class="empty" style="grid-column:1/-1">No agents deployed. Deploy a probe to get started.</div>';}
     else{
@@ -681,6 +731,20 @@ async function load(){
         }
         var typeLabel=a.is_sentinel?' <span style="color:var(--cyan);font-size:.65rem">&#128737; Sentinel</span>':'';
         typeLabel+=a.react_active?' <span style="color:var(--purple);font-size:.65rem">&#129504; ReAct</span>':'';
+        // Covert chip
+        var covertHtml='';
+        if(a.covert_proxy!==undefined&&a.covert_proxy!==null){
+          var ctIsTor=_isTorProxy(a.covert_proxy);
+          if(a.covert_proxy==='none'||!a.covert_proxy){
+            covertHtml='<div style="margin-top:5px"><span class="covert-chip direct">&#128275; Direct</span></div>';
+          }else{
+            covertHtml='<div style="margin-top:5px"><span class="covert-chip '+(ctIsTor?'tor':'proxy')+'">&#128274; '+(ctIsTor?'Tor':'Proxy')+'</span>';
+            if(a.covert_jitter&&a.covert_jitter!=='off'){covertHtml+=' <span style="font-size:.68rem;color:var(--dim)">jitter:'+a.covert_jitter+'</span>';}
+            if(a.covert_decoys>0){covertHtml+=' <span style="font-size:.68rem;color:var(--dim)">'+a.covert_decoys+' decoys</span>';}
+            covertHtml+='</div>';
+            typeLabel+=' <span style="color:var(--green);font-size:.65rem">&#128274;</span>';
+          }
+        }
         return '<div class="agent-card '+a.status+'" onclick="showAgent(&apos;'+a.agent_id+'&apos;)">'+
           '<div class="hdr"><div class="name"><span class="status-dot '+a.status+'"></span>'+a.label+'</div>'+
           '<span style="font-size:.72rem;padding:2px 8px;border-radius:8px;background:rgba('+(a.status==='online'?'63,185,80':a.status==='stale'?'210,153,34':'248,81,73')+',.15);color:var(--'+(a.status==='online'?'green':a.status==='stale'?'yellow':'red')+')">'+a.status.toUpperCase()+'</span></div>'+
@@ -692,7 +756,7 @@ async function load(){
             '<div>Hosts: <span>'+a.host_count+'</span></div>'+
             '<div>Reports: <span>'+a.report_count+'</span></div>'+
             '<div>Seen: <span>'+ago+'</span></div>'+
-          '</div>'+riskHtml+sentinelHtml+'</div>';
+          '</div>'+riskHtml+sentinelHtml+covertHtml+'</div>';
       }).join('');
     }
     drawMap(agents);

