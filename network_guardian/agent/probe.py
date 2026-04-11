@@ -571,12 +571,26 @@ class AgentReport:
     subnet: str = ""
     gateway: str = ""
     open_ports_by_host: dict = field(default_factory=dict)
+    diagnostics: dict = field(default_factory=dict)  # ReAct diagnostic intelligence
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict())
+
+
+# Global ReAct agent instance (persists across report cycles)
+_react_agent: Any = None
+
+
+def _get_react_agent() -> Any:
+    """Lazy-init the probe's ReAct agent."""
+    global _react_agent
+    if _react_agent is None:
+        from network_guardian.agent.react_agent import ProbeReActAgent
+        _react_agent = ProbeReActAgent()
+    return _react_agent
 
 
 async def build_report(identity: AgentIdentity, do_discovery: bool = True,
@@ -624,6 +638,17 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
 
+    # Run ReAct diagnostic cycle
+    diagnostics = {}
+    try:
+        react = _get_react_agent()
+        diag = react.run_cycle(agent_id=identity.agent_id)
+        diagnostics = diag.to_dict()
+        logger.info("ReAct cycle complete — threat score: %.0f/100 (%s)",
+                     diag.threat_score, diag.risk_level)
+    except Exception as e:
+        logger.warning("ReAct cycle failed: %s", e)
+
     return AgentReport(
         agent_id=identity.agent_id,
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -635,6 +660,7 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
         subnet=subnet,
         gateway=gateway,
         open_ports_by_host=port_map,
+        diagnostics=diagnostics,
     )
 
 

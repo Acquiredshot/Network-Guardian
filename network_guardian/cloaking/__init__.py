@@ -591,12 +591,15 @@ class WiFiScanner:
     def __init__(self) -> None:
         self._os = platform.system().lower()
         self._last_scan: list[WiFiNetwork] = []
+        self._last_connected: WiFiNetwork | None = None
 
     async def scan_networks(self) -> list[WiFiNetwork]:
         """Scan for nearby WiFi networks."""
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(None, self._scan_sync)
         self._last_scan = results
+        # Also refresh connected network info alongside scan
+        self._last_connected = await loop.run_in_executor(None, self._connected_sync)
         return results
 
     def _scan_sync(self) -> list[WiFiNetwork]:
@@ -813,7 +816,8 @@ class WiFiScanner:
     async def get_connected_network(self) -> WiFiNetwork | None:
         """Get the currently connected WiFi network."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._connected_sync)
+        self._last_connected = await loop.run_in_executor(None, self._connected_sync)
+        return self._last_connected
 
     def _connected_sync(self) -> WiFiNetwork | None:
         if self._os == "windows":
@@ -895,16 +899,29 @@ class WiFiScanner:
             )
             for iface in interfaces:
                 current = iface.get("spairport_current_network_information", {})
-                if current:
-                    ssid = current.get("_name", "")
-                    bssid = current.get("spairport_network_bssid", "")
-                    channel_str = current.get("spairport_network_channel", "")
-                    channel = int(re.search(r"(\d+)", str(channel_str)).group(1)) if channel_str else 0
-                    rssi = current.get("spairport_network_signal_noise", "").split("/")[0].strip()
-                    signal = int(rssi) if rssi.lstrip("-").isdigit() else 0
-                    security = current.get("spairport_security_mode", "Unknown")
-                    return WiFiNetwork(ssid=ssid, bssid=bssid, signal=signal,
-                                      channel=channel, security=security)
+                if not current or not current.get("_name"):
+                    continue
+                ssid = current.get("_name", "")
+                bssid = current.get("spairport_network_bssid", "")
+                channel_str = current.get("spairport_network_channel", "")
+                channel = int(re.search(r"(\d+)", str(channel_str)).group(1)) if channel_str else 0
+                # Signal: try both key variants
+                sig_str = (current.get("spairport_signal_noise", "")
+                           or current.get("spairport_network_signal_noise", ""))
+                rssi_match = re.search(r"(-?\d+)\s*dBm", sig_str)
+                signal = int(rssi_match.group(1)) if rssi_match else 0
+                # Clean up security mode string
+                raw_sec = current.get("spairport_security_mode", "Unknown")
+                sec_map = {"wpa3": "WPA3", "wpa2_personal": "WPA2 Personal",
+                           "wpa2_enterprise": "WPA2 Enterprise", "wpa_personal": "WPA Personal",
+                           "wpa_enterprise": "WPA Enterprise", "wep": "WEP", "none": "Open"}
+                security = raw_sec
+                for key, label in sec_map.items():
+                    if key in raw_sec.lower():
+                        security = label
+                        break
+                return WiFiNetwork(ssid=ssid, bssid=bssid, signal=signal,
+                                   channel=channel, security=security)
             return None
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError,
                 KeyError, IndexError):

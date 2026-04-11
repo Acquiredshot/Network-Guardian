@@ -78,6 +78,33 @@ class FleetStore:
         agents[agent_id]["status"] = "online"
         agents[agent_id]["report_count"] = agents[agent_id].get("report_count", 0) + 1
         agents[agent_id]["last_report"] = report
+        # Track ReAct diagnostics separately for quick access
+        diag = report.get("diagnostics", {})
+        if diag:
+            agents[agent_id]["last_diagnostics"] = diag
+            # Accumulate threat history
+            hist = agents[agent_id].setdefault("threat_history", [])
+            for t in diag.get("threats_detected", []):
+                hist.append(t)
+            # Keep last 200
+            agents[agent_id]["threat_history"] = hist[-200:]
+        # Track sentinel data (stay-behind bot intelligence)
+        sentinel = report.get("sentinel", {})
+        if sentinel:
+            agents[agent_id]["sentinel"] = sentinel
+            agents[agent_id]["is_sentinel"] = True
+            # Accumulate WiFi changes
+            wifi_log = agents[agent_id].setdefault("wifi_change_log", [])
+            wifi_log.extend(sentinel.get("wifi_changes", []))
+            agents[agent_id]["wifi_change_log"] = wifi_log[-200:]
+            # Accumulate flow anomalies
+            anomaly_log = agents[agent_id].setdefault("flow_anomaly_log", [])
+            anomaly_log.extend(sentinel.get("flow_anomalies", []))
+            agents[agent_id]["flow_anomaly_log"] = anomaly_log[-200:]
+            # Track rogue AP history
+            rogue_log = agents[agent_id].setdefault("rogue_ap_log", [])
+            rogue_log.extend(sentinel.get("rogue_ap_alerts", []))
+            agents[agent_id]["rogue_ap_log"] = rogue_log[-100:]
         self._save()
         return True
 
@@ -109,6 +136,7 @@ class FleetStore:
             else:
                 status = "online"
             report = a.get("last_report") or {}
+            diag = a.get("last_diagnostics", {})
             result.append({
                 "agent_id": aid,
                 "label": a.get("label", aid),
@@ -122,6 +150,22 @@ class FleetStore:
                 "report_count": a.get("report_count", 0),
                 "wifi_count": len(report.get("wifi_networks", [])),
                 "host_count": len(report.get("discovered_hosts", [])),
+                # ReAct diagnostics summary
+                "threat_score": diag.get("threat_score", 0),
+                "risk_level": diag.get("risk_level", "unknown"),
+                "threats_count": len(diag.get("threats_detected", [])),
+                "issues_count": len(diag.get("issues_found", [])),
+                "actions_count": len(diag.get("actions_taken", [])),
+                "react_active": bool(diag),
+                # Sentinel bot fields
+                "is_sentinel": a.get("is_sentinel", False),
+                "sentinel_sensitivity": sentinel.get("sensitivity_level", "") if (sentinel := a.get("sentinel")) else "",
+                "sentinel_active_flows": sentinel.get("active_flows", 0) if (sentinel := a.get("sentinel")) else 0,
+                "sentinel_wifi_changes": len(a.get("wifi_change_log", [])),
+                "sentinel_flow_anomalies": len(a.get("flow_anomaly_log", [])),
+                "sentinel_rogue_alerts": len(a.get("rogue_ap_log", [])),
+                "sentinel_uptime": sentinel.get("uptime_seconds", 0) if (sentinel := a.get("sentinel")) else 0,
+                "sentinel_bandwidth": sentinel.get("bandwidth_pattern", "") if (sentinel := a.get("sentinel")) else "",
             })
         return result
 
@@ -130,6 +174,72 @@ class FleetStore:
         if agent:
             return agent.get("last_report")
         return None
+
+    def get_agent_diagnostics(self, agent_id: str) -> dict | None:
+        """Return the latest ReAct diagnostics for an agent."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if agent:
+            return agent.get("last_diagnostics")
+        return None
+
+    def get_agent_threat_history(self, agent_id: str) -> list[dict]:
+        """Return accumulated threat history for an agent."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if agent:
+            return agent.get("threat_history", [])
+        return []
+
+    def get_agent_sentinel(self, agent_id: str) -> dict | None:
+        """Return sentinel bot intelligence for an agent."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if not agent or not agent.get("is_sentinel"):
+            return None
+        return {
+            "sentinel": agent.get("sentinel", {}),
+            "wifi_change_log": agent.get("wifi_change_log", [])[-50:],
+            "flow_anomaly_log": agent.get("flow_anomaly_log", [])[-50:],
+            "rogue_ap_log": agent.get("rogue_ap_log", [])[-30:],
+        }
+
+    def get_fleet_threat_summary(self) -> dict:
+        """Aggregate threat intelligence across all agents."""
+        total_threats = 0
+        critical_agents = []
+        all_categories: dict[str, int] = {}
+        now = int(time.time())
+
+        for aid, a in self._data.get("agents", {}).items():
+            diag = a.get("last_diagnostics", {})
+            if not diag:
+                continue
+            score = diag.get("threat_score", 0)
+            risk = diag.get("risk_level", "low")
+            threats = diag.get("threats_detected", [])
+            total_threats += len(threats)
+
+            if risk in ("high", "critical"):
+                age = now - a.get("last_seen", 0)
+                if age < 600:  # Only recent agents
+                    critical_agents.append({
+                        "agent_id": aid,
+                        "label": a.get("label", aid),
+                        "threat_score": score,
+                        "risk_level": risk,
+                        "threats": len(threats),
+                    })
+
+            for t in threats:
+                cat = t.get("category", "unknown")
+                all_categories[cat] = all_categories.get(cat, 0) + 1
+
+        return {
+            "total_threats_detected": total_threats,
+            "critical_agents": critical_agents,
+            "threat_categories": all_categories,
+            "fleet_agents_with_react": sum(
+                1 for a in self._data.get("agents", {}).values()
+                if a.get("last_diagnostics")),
+        }
 
     def verify_signature(self, payload: bytes, signature: str) -> bool:
         """Verify an agent's HMAC-SHA256 signature."""
@@ -173,7 +283,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 table{width:100%;border-collapse:collapse;font-size:.82rem}
 th{text-align:left;color:var(--dim);text-transform:uppercase;font-size:.7rem;letter-spacing:.8px;padding:8px 6px;border-bottom:1px solid var(--border)}
 td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
-
 .agent-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;transition:.2s;cursor:pointer}
 .agent-card:hover{border-color:var(--blue);transform:translateY(-2px)}
 .agent-card.online{border-left:4px solid var(--green)}
@@ -191,17 +300,35 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
 .key-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:.82rem;word-break:break-all;user-select:all;margin-top:8px}
 .detail-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
 .detail-overlay.show{display:flex}
-.detail-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:800px;width:90%;max-height:85vh;overflow-y:auto}
+.detail-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:900px;width:95%;max-height:90vh;overflow-y:auto}
 .detail-box h3{font-size:1.1rem;margin-bottom:16px;color:var(--blue)}
 .close-btn{float:right;background:none;border:1px solid var(--border);color:var(--text);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:.85rem}
 .close-btn:hover{background:var(--border)}
 .wifi-mini{display:inline-block;padding:3px 8px;margin:2px;border-radius:6px;font-size:.72rem;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.2);color:var(--blue)}
 .host-mini{display:inline-block;padding:3px 8px;margin:2px;border-radius:6px;font-size:.72rem;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.2);color:var(--green);font-family:monospace}
+.threat-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
+.threat-badge.low{background:rgba(63,185,80,.15);color:var(--green)}
+.threat-badge.medium{background:rgba(210,153,34,.15);color:var(--yellow)}
+.threat-badge.high{background:rgba(219,109,40,.15);color:var(--orange)}
+.threat-badge.critical{background:rgba(248,81,73,.15);color:var(--red)}
+.threat-badge.unknown{background:rgba(139,148,158,.15);color:var(--dim)}
+.react-chip{display:inline-block;padding:2px 6px;border-radius:6px;font-size:.68rem;font-weight:700;margin-right:4px}
+.react-chip.observe{background:rgba(88,166,255,.15);color:var(--blue)}
+.react-chip.reason{background:rgba(210,153,34,.15);color:var(--yellow)}
+.react-chip.act{background:rgba(63,185,80,.15);color:var(--green)}
+.react-chip.learn{background:rgba(188,140,255,.15);color:var(--purple)}
+.threat-entry{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:.78rem;border-left:3px solid}
+.threat-entry.info{border-color:var(--blue);background:rgba(88,166,255,.05)}
+.threat-entry.low{border-color:var(--green);background:rgba(63,185,80,.05)}
+.threat-entry.medium{border-color:var(--yellow);background:rgba(210,153,34,.05)}
+.threat-entry.high{border-color:var(--orange);background:rgba(219,109,40,.05)}
+.threat-entry.critical{border-color:var(--red);background:rgba(248,81,73,.05)}
 </style></head><body>
 <div class="wrap">
   <div class="banner">
     <h1>&#128752; Fleet Command</h1>
     <span id="count" class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">0 Agents</span>
+    <span id="threatBadge" class="badge" style="background:rgba(63,185,80,.15);color:var(--green)">Fleet Secure</span>
     <span id="ts" style="margin-left:auto;color:var(--dim);font-size:.85rem"></span>
   </div>
   <div class="kpi-row">
@@ -209,14 +336,23 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
     <div class="kpi"><div class="v" id="kOn" style="color:var(--green)">0</div><div class="l">Online</div></div>
     <div class="kpi"><div class="v" id="kSt" style="color:var(--yellow)">0</div><div class="l">Stale</div></div>
     <div class="kpi"><div class="v" id="kOf" style="color:var(--red)">0</div><div class="l">Offline</div></div>
-    <div class="kpi"><div class="v" id="kWi" style="color:var(--cyan)">0</div><div class="l">Total WiFi Nets</div></div>
-    <div class="kpi"><div class="v" id="kHo" style="color:var(--purple)">0</div><div class="l">Total Hosts</div></div>
+    <div class="kpi"><div class="v" id="kTh" style="color:var(--orange)">0</div><div class="l">Threats</div></div>
+    <div class="kpi"><div class="v" id="kRe" style="color:var(--cyan)">0</div><div class="l">ReAct Agents</div></div>
+    <div class="kpi"><div class="v" id="kWi" style="color:var(--purple)">0</div><div class="l">WiFi Nets</div></div>
+    <div class="kpi"><div class="v" id="kHo" style="color:var(--pink)">0</div><div class="l">Hosts</div></div>
   </div>
   <div class="nav">
     <a href="/">Dashboard</a><a href="/ids">IDS</a><a href="/ips">IPS</a><a href="/wifi">WiFi</a>
     <a href="/cloaking">Cloaking</a><a href="/explorer">Explorer</a><a href="/auditor">Auditor</a>
     <a href="/ai">AI Engine</a><a href="/fleet" class="active">Fleet</a>
   </div>
+
+  <!-- Fleet Threat Intelligence -->
+  <div class="card" style="margin-bottom:16px" id="threatIntelCard">
+    <h2>&#128680; Fleet Threat Intelligence</h2>
+    <div id="threatIntel"><div class="empty">Waiting for agent diagnostics...</div></div>
+  </div>
+
   <div class="card" style="margin-bottom:16px">
     <h2>&#128273; Agent Deployment Key</h2>
     <div style="font-size:.82rem;color:var(--dim);margin-bottom:6px">
@@ -240,29 +376,167 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
 function closeDetail(){document.getElementById('overlay').classList.remove('show');}
 document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeDetail();});
 
+var riskColor={low:'--green',medium:'--yellow',high:'--orange',critical:'--red',unknown:'--dim'};
+
 function showAgent(aid){
-  fetch('/api/fleet/agent/'+aid).then(r=>r.json()).then(function(d){
-    if(!d||!d.identity){return;}
-    var r=d;var id=r.identity||{};var m=r.system_metrics||{};
-    var html='<h3>'+id.hostname+' ('+r.agent_id+')</h3>';
+  Promise.all([
+    fetch('/api/fleet/agent/'+aid).then(r=>r.json()).catch(()=>({})),
+    fetch('/api/fleet/agent/'+aid+'/diagnostics').then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('/api/fleet/agent/'+aid+'/sentinel').then(r=>r.ok?r.json():null).catch(()=>null),
+  ]).then(function(arr){
+    var d=arr[0]||{};var diag=arr[1];var sent=arr[2];
+    var id=d.identity||{};var m=d.system_metrics||{};
+    var html='<h3>'+((id.hostname)||'Agent')+' ('+(d.agent_id||aid)+')</h3>';
+
+    // Diagnostics banner
+    if(diag){
+      var rc=riskColor[diag.risk_level]||'--dim';
+      html+='<div style="padding:12px 16px;border-radius:10px;margin-bottom:16px;border:1px solid var('+rc+');background:rgba(0,0,0,.3)">';
+      html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+      html+='<span class="threat-badge '+diag.risk_level+'">'+diag.risk_level.toUpperCase()+' RISK</span>';
+      html+='<span style="font-size:1.3rem;font-weight:700;color:var('+rc+')">'+Math.round(diag.threat_score)+'/100</span>';
+      html+='<span style="color:var(--dim);font-size:.8rem">Threat Score</span>';
+      html+='</div>';
+      if(diag.recommendations&&diag.recommendations.length){
+        html+='<div style="font-size:.78rem;color:var(--text);margin-top:6px">';
+        diag.recommendations.forEach(function(r){html+='<div style="margin:3px 0">&#9888;&#65039; '+r+'</div>';});
+        html+='</div>';
+      }
+      html+='</div>';
+    }
+
+    // Identity grid
     html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
-    html+='<div><b style="color:var(--dim);font-size:.75rem">PLATFORM</b><br>'+id.platform_os+'</div>';
-    html+='<div><b style="color:var(--dim);font-size:.75rem">LOCAL IP</b><br><span style="font-family:monospace">'+(r.local_ip||'-')+'</span></div>';
-    html+='<div><b style="color:var(--dim);font-size:.75rem">SUBNET</b><br><span style="font-family:monospace">'+(r.subnet||'-')+'</span></div>';
-    html+='<div><b style="color:var(--dim);font-size:.75rem">GATEWAY</b><br><span style="font-family:monospace">'+(r.gateway||'-')+'</span></div>';
+    html+='<div><b style="color:var(--dim);font-size:.75rem">PLATFORM</b><br>'+(id.platform_os||'-')+'</div>';
+    html+='<div><b style="color:var(--dim);font-size:.75rem">LOCAL IP</b><br><span style="font-family:monospace">'+(d.local_ip||'-')+'</span></div>';
+    html+='<div><b style="color:var(--dim);font-size:.75rem">SUBNET</b><br><span style="font-family:monospace">'+(d.subnet||'-')+'</span></div>';
+    html+='<div><b style="color:var(--dim);font-size:.75rem">GATEWAY</b><br><span style="font-family:monospace">'+(d.gateway||'-')+'</span></div>';
     html+='<div><b style="color:var(--dim);font-size:.75rem">CPU LOAD</b><br>'+(m.cpu_load_1m||'-')+'</div>';
     html+='<div><b style="color:var(--dim);font-size:.75rem">MEMORY</b><br>'+(m.mem_pct?m.mem_pct+'%':'-')+'</div>';
     html+='<div><b style="color:var(--dim);font-size:.75rem">DISK</b><br>'+(m.disk_pct?m.disk_pct+'%':'-')+'</div>';
     html+='<div><b style="color:var(--dim);font-size:.75rem">UPTIME</b><br>'+(m.uptime_hours?m.uptime_hours+'h':'-')+'</div>';
     html+='</div>';
-    var nets=r.wifi_networks||[];
-    html+='<h3 style="font-size:.9rem;margin:12px 0 8px">&#128225; WiFi Networks ('+nets.length+')</h3>';
+
+    // ReAct diagnostics section
+    if(diag){
+      // Threats
+      var threats=diag.threats_detected||[];
+      html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#128680; Threats Detected ('+threats.length+')</h3>';
+      if(threats.length){
+        threats.forEach(function(t){
+          html+='<div class="threat-entry '+t.severity+'">';
+          html+='<span class="threat-badge '+t.severity+'">'+t.severity.toUpperCase()+'</span> ';
+          html+='<b>'+t.title+'</b><br>';
+          html+='<span style="color:var(--dim);font-size:.72rem">'+t.detail+'</span>';
+          if(t.action_taken){html+='<br><span style="color:var(--green);font-size:.72rem">Action: '+t.action_taken+'</span>';}
+          html+='</div>';
+        });
+      }else{html+='<div style="color:var(--green);font-size:.82rem">&#9989; No threats detected</div>';}
+
+      // Issues
+      var issues=diag.issues_found||[];
+      if(issues.length){
+        html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#128295; Issues Found ('+issues.length+')</h3>';
+        issues.forEach(function(iss){
+          html+='<div style="padding:6px 10px;margin:4px 0;border-radius:6px;background:rgba(210,153,34,.08);font-size:.78rem">';
+          html+='<b>'+iss.type+'</b>: '+(iss.recommendation||JSON.stringify(iss));
+          html+='</div>';
+        });
+      }
+
+      // Actions taken
+      var actions=diag.actions_taken||[];
+      if(actions.length){
+        html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#9889; Actions Taken ('+actions.length+')</h3>';
+        actions.forEach(function(a){
+          var ok=a.success?'var(--green)':'var(--red)';
+          html+='<div style="padding:4px 10px;margin:3px 0;border-radius:6px;background:rgba(63,185,80,.05);font-size:.78rem">';
+          html+='<span style="color:'+ok+'">&#x2022;</span> '+a.action+': '+a.detail;
+          html+='</div>';
+        });
+      }
+
+      // ReAct log
+      var log=diag.react_log||[];
+      if(log.length){
+        html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#129504; ReAct Agent Log</h3>';
+        html+='<div style="max-height:200px;overflow-y:auto;background:var(--bg);border-radius:8px;padding:8px">';
+        log.forEach(function(s){
+          html+='<div style="margin:3px 0;font-size:.75rem">';
+          html+='<span class="react-chip '+s.phase+'">'+s.phase.toUpperCase()+'</span>';
+          html+=s.thought;
+          html+='</div>';
+        });
+        html+='</div>';
+      }
+
+      // Baseline drift
+      html+='<div style="display:flex;gap:16px;margin-top:14px">';
+      html+='<div style="font-size:.78rem;color:var(--dim)">Network Drift: <b style="color:var(--text)">'+Math.round(diag.network_baseline_drift||0)+'%</b></div>';
+      html+='<div style="font-size:.78rem;color:var(--dim)">Process Drift: <b style="color:var(--text)">'+Math.round(diag.process_baseline_drift||0)+'%</b></div>';
+      html+='<div style="font-size:.78rem;color:var(--dim)">Active Processes: <b style="color:var(--text)">'+(diag.active_processes||0)+'</b></div>';
+      html+='<div style="font-size:.78rem;color:var(--dim)">Listeners: <b style="color:var(--text)">'+(diag.listening_ports?diag.listening_ports.length:0)+'</b></div>';
+      html+='</div>';
+    }
+
+    // Sentinel intelligence
+    if(sent){
+      var si=sent.sentinel||{};
+      html+='<div style="margin-top:16px;padding:14px 16px;border-radius:10px;border:1px solid rgba(57,210,224,.3);background:rgba(57,210,224,.04)">';
+      html+='<h3 style="font-size:.9rem;margin:0 0 10px;color:var(--cyan)">&#128737; Sentinel Intelligence</h3>';
+      // Strategy bar
+      html+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">';
+      html+='<div style="font-size:.78rem">Sensitivity: <b style="color:var(--cyan)">'+(si.sensitivity_level||'normal').toUpperCase()+'</b></div>';
+      html+='<div style="font-size:.78rem">Active Flows: <b style="color:var(--text)">'+(si.active_flows||0)+'</b></div>';
+      html+='<div style="font-size:.78rem">Bandwidth: <b style="color:var(--text)">'+(si.bandwidth_pattern||'baseline')+'</b></div>';
+      html+='<div style="font-size:.78rem">Adapt Count: <b style="color:var(--text)">'+(si.adapt_count||0)+'</b></div>';
+      var upS=si.uptime_seconds||0;var upH=upS>3600?Math.floor(upS/3600)+'h '+Math.floor((upS%3600)/60)+'m':Math.floor(upS/60)+'m';
+      html+='<div style="font-size:.78rem">Uptime: <b style="color:var(--text)">'+upH+'</b></div>';
+      html+='</div>';
+      // WiFi watcher
+      var wch=sent.wifi_change_log||[];
+      if(wch.length){
+        html+='<div style="margin-bottom:8px"><b style="font-size:.78rem;color:var(--blue)">WiFi Changes ('+wch.length+')</b>';
+        html+='<div style="max-height:120px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-top:4px">';
+        wch.slice(-20).reverse().forEach(function(c){
+          var icon=c.type==='new_ap'?'&#128994;':c.type==='disappeared'?'&#128308;':c.type==='rogue_suspect'?'&#128721;':'&#128309;';
+          html+='<div style="font-size:.72rem;margin:2px 0">'+icon+' '+c.type+': <b>'+(c.ssid||c.bssid||'')+'</b>'+(c.detail?' — '+c.detail:'')+'</div>';
+        });
+        html+='</div></div>';
+      }
+      // Flow anomalies
+      var fan=sent.flow_anomaly_log||[];
+      if(fan.length){
+        html+='<div style="margin-bottom:8px"><b style="font-size:.78rem;color:var(--orange)">Flow Anomalies ('+fan.length+')</b>';
+        html+='<div style="max-height:120px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-top:4px">';
+        fan.slice(-15).reverse().forEach(function(a){
+          html+='<div style="font-size:.72rem;margin:2px 0">&#9888;&#65039; '+a.type+': '+(a.detail||JSON.stringify(a))+'</div>';
+        });
+        html+='</div></div>';
+      }
+      // Rogue AP alerts
+      var rog=sent.rogue_ap_log||[];
+      if(rog.length){
+        html+='<div style="margin-bottom:8px"><b style="font-size:.78rem;color:var(--red)">&#128721; Rogue AP Alerts ('+rog.length+')</b>';
+        html+='<div style="max-height:100px;overflow-y:auto;background:rgba(248,81,73,.05);border-radius:6px;padding:6px;margin-top:4px">';
+        rog.slice(-10).reverse().forEach(function(r){
+          html+='<div style="font-size:.72rem;margin:2px 0;color:var(--red)">SSID: <b>'+r.ssid+'</b> — '+r.bssid_count+' BSSIDs, signal spread: '+r.signal_spread+'dBm</div>';
+        });
+        html+='</div></div>';
+      }
+      html+='</div>';
+    }
+
+    // WiFi / Hosts
+    var nets=d.wifi_networks||[];
+    html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#128225; WiFi Networks ('+nets.length+')</h3>';
     if(nets.length){html+='<div>';nets.forEach(function(n){html+='<span class="wifi-mini">'+(n.ssid||'Hidden')+' ('+n.signal+'dBm)</span>';});html+='</div>';}
     else{html+='<div class="empty">No networks</div>';}
-    var hosts=r.discovered_hosts||[];
-    html+='<h3 style="font-size:.9rem;margin:12px 0 8px">&#128187; Discovered Hosts ('+hosts.length+')</h3>';
+    var hosts=d.discovered_hosts||[];
+    html+='<h3 style="font-size:.9rem;margin:16px 0 8px">&#128187; Discovered Hosts ('+hosts.length+')</h3>';
     if(hosts.length){html+='<div>';hosts.forEach(function(h){html+='<span class="host-mini">'+h.ip+(h.hostname?' ('+h.hostname+')':'')+'</span>';});html+='</div>';}
     else{html+='<div class="empty">No hosts</div>';}
+
     document.getElementById('detailContent').innerHTML=html;
     document.getElementById('overlay').classList.add('show');
   });
@@ -274,7 +548,6 @@ function drawMap(agents){
   ctx.clearRect(0,0,W,H);
   if(!agents.length){ctx.fillStyle='#8b949e';ctx.textAlign='center';ctx.font='14px sans-serif';ctx.fillText('No agents deployed',W/2,H/2);return;}
   var cx=W/2,cy=H/2,r=Math.min(W,H)/2-50;
-  // Base station center
   ctx.beginPath();ctx.arc(cx,cy,18,0,Math.PI*2);ctx.fillStyle='rgba(88,166,255,.2)';ctx.fill();
   ctx.beginPath();ctx.arc(cx,cy,10,0,Math.PI*2);ctx.fillStyle='#58a6ff';ctx.fill();
   ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText('BASE',cx,cy+3);
@@ -282,18 +555,87 @@ function drawMap(agents){
     var ang=(i/agents.length)*Math.PI*2-Math.PI/2;
     var x=cx+r*Math.cos(ang),y=cy+r*Math.sin(ang);
     var col=a.status==='online'?'#3fb950':a.status==='stale'?'#d29922':'#f85149';
-    // Line to base
+    // Risk ring
+    if(a.react_active&&a.risk_level!=='low'&&a.risk_level!=='unknown'){
+      var ringCol=a.risk_level==='critical'?'#f85149':a.risk_level==='high'?'#db6d28':'#d29922';
+      ctx.beginPath();ctx.arc(x,y,18,0,Math.PI*2);ctx.strokeStyle=ringCol;ctx.lineWidth=2;ctx.stroke();
+    }
+    // Sentinel ring
+    if(a.is_sentinel){
+      ctx.beginPath();ctx.arc(x,y,22,0,Math.PI*2);ctx.strokeStyle='#39d2e0';ctx.lineWidth=1.5;ctx.stroke();
+    }
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(x,y);
     ctx.strokeStyle=col+'66';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
-    // Node
     ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);ctx.fillStyle=a.status==='online'?'rgba(63,185,80,.15)':'rgba(248,81,73,.1)';ctx.fill();
     ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
-    // Label
+    // ReAct indicator
+    if(a.react_active){
+      ctx.beginPath();ctx.arc(x+12,y-12,4,0,Math.PI*2);ctx.fillStyle='#bc8cff';ctx.fill();
+    }
+    // Sentinel indicator
+    if(a.is_sentinel){
+      ctx.beginPath();ctx.arc(x-12,y-12,4,0,Math.PI*2);ctx.fillStyle='#39d2e0';ctx.fill();
+    }
     ctx.fillStyle='#c9d1d9';ctx.font='10px sans-serif';ctx.textAlign='center';
     ctx.fillText(a.label||a.agent_id,x,y+22);
     ctx.fillStyle='#8b949e';ctx.font='9px monospace';
     ctx.fillText(a.local_ip||'',x,y+33);
+    if(a.react_active&&a.threat_score>0){
+      ctx.fillStyle=a.risk_level==='critical'?'#f85149':a.risk_level==='high'?'#db6d28':a.risk_level==='medium'?'#d29922':'#8b949e';
+      ctx.font='bold 8px sans-serif';
+      ctx.fillText(Math.round(a.threat_score)+'T',x,y+42);
+    }
   });
+}
+
+async function loadThreatIntel(){
+  try{
+    var r=await fetch('/api/fleet/threats');var d=await r.json();
+    var el=document.getElementById('threatIntel');
+    if(!d.fleet_agents_with_react){
+      el.innerHTML='<div class="empty">No agents reporting ReAct diagnostics yet. Deploy agents with ReAct enabled.</div>';
+      return;
+    }
+    var html='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">';
+    html+='<div style="font-size:.82rem">ReAct Agents: <b style="color:var(--cyan)">'+d.fleet_agents_with_react+'</b></div>';
+    html+='<div style="font-size:.82rem">Total Threats: <b style="color:var(--orange)">'+d.total_threats_detected+'</b></div>';
+    html+='</div>';
+    var crit=d.critical_agents||[];
+    if(crit.length){
+      html+='<div style="margin-bottom:10px">';
+      html+='<div style="font-size:.78rem;color:var(--red);font-weight:700;margin-bottom:6px">&#128680; AGENTS AT RISK</div>';
+      crit.forEach(function(a){
+        html+='<div class="threat-entry '+a.risk_level+'">';
+        html+='<span class="threat-badge '+a.risk_level+'">'+a.risk_level.toUpperCase()+'</span> ';
+        html+='<b>'+a.label+'</b> — Score: '+Math.round(a.threat_score)+'/100, '+a.threats+' threats';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+    var cats=d.threat_categories||{};
+    if(Object.keys(cats).length){
+      html+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+      Object.entries(cats).forEach(function(kv){
+        html+='<span style="padding:4px 10px;border-radius:8px;font-size:.75rem;background:rgba(188,140,255,.1);color:var(--purple)">'+kv[0]+': '+kv[1]+'</span>';
+      });
+      html+='</div>';
+    }
+    el.innerHTML=html;
+    // Update banner badge
+    var bb=document.getElementById('threatBadge');
+    if(crit.length){
+      bb.textContent=crit.length+' Agent'+(crit.length>1?'s':'')+' At Risk';
+      bb.style.background='rgba(248,81,73,.15)';bb.style.color='var(--red)';
+    }else if(d.total_threats_detected>0){
+      bb.textContent=d.total_threats_detected+' Threat'+(d.total_threats_detected>1?'s':'');
+      bb.style.background='rgba(210,153,34,.15)';bb.style.color='var(--yellow)';
+    }else{
+      bb.textContent='Fleet Secure';
+      bb.style.background='rgba(63,185,80,.15)';bb.style.color='var(--green)';
+    }
+    document.getElementById('kTh').textContent=d.total_threats_detected;
+    document.getElementById('kRe').textContent=d.fleet_agents_with_react;
+  }catch(e){console.error('Threat intel error',e);}
 }
 
 async function load(){
@@ -318,10 +660,31 @@ async function load(){
     else{
       el.innerHTML=agents.map(function(a){
         var ago=a.seconds_ago<60?a.seconds_ago+'s ago':a.seconds_ago<3600?Math.floor(a.seconds_ago/60)+'m ago':Math.floor(a.seconds_ago/3600)+'h ago';
+        var riskHtml='';
+        if(a.react_active){
+          var rc=riskColor[a.risk_level]||'--dim';
+          riskHtml='<div style="margin-top:6px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,.3);border:1px solid var('+rc+')">';
+          riskHtml+='<span class="threat-badge '+a.risk_level+'">'+a.risk_level.toUpperCase()+'</span> ';
+          riskHtml+='<span style="font-size:.78rem">Score: <b>'+Math.round(a.threat_score)+'</b>/100</span>';
+          if(a.threats_count>0){riskHtml+=' <span style="font-size:.72rem;color:var(--orange)">'+a.threats_count+' threats</span>';}
+          if(a.issues_count>0){riskHtml+=' <span style="font-size:.72rem;color:var(--yellow)">'+a.issues_count+' issues</span>';}
+          riskHtml+='</div>';
+        }
+        var sentinelHtml='';
+        if(a.is_sentinel){
+          sentinelHtml='<div style="margin-top:6px;padding:6px 10px;border-radius:8px;background:rgba(57,210,224,.08);border:1px solid rgba(57,210,224,.25)">';
+          sentinelHtml+='<span style="color:var(--cyan);font-weight:700;font-size:.72rem">&#128737; SENTINEL</span> ';
+          sentinelHtml+='<span style="font-size:.72rem;color:var(--dim)">'+(a.sentinel_sensitivity||'normal').toUpperCase()+' | Flows: '+(a.sentinel_active_flows||0)+' | '+(a.sentinel_bandwidth||'baseline')+'</span>';
+          if(a.sentinel_wifi_changes>0){sentinelHtml+=' <span style="font-size:.72rem;color:var(--blue)">'+(a.sentinel_wifi_changes)+' WiFi chg</span>';}
+          if(a.sentinel_rogue_alerts>0){sentinelHtml+=' <span style="font-size:.72rem;color:var(--red)">'+(a.sentinel_rogue_alerts)+' rogues</span>';}
+          sentinelHtml+='</div>';
+        }
+        var typeLabel=a.is_sentinel?' <span style="color:var(--cyan);font-size:.65rem">&#128737; Sentinel</span>':'';
+        typeLabel+=a.react_active?' <span style="color:var(--purple);font-size:.65rem">&#129504; ReAct</span>':'';
         return '<div class="agent-card '+a.status+'" onclick="showAgent(&apos;'+a.agent_id+'&apos;)">'+
           '<div class="hdr"><div class="name"><span class="status-dot '+a.status+'"></span>'+a.label+'</div>'+
           '<span style="font-size:.72rem;padding:2px 8px;border-radius:8px;background:rgba('+(a.status==='online'?'63,185,80':a.status==='stale'?'210,153,34':'248,81,73')+',.15);color:var(--'+(a.status==='online'?'green':a.status==='stale'?'yellow':'red')+')">'+a.status.toUpperCase()+'</span></div>'+
-          '<div class="id">'+a.agent_id+'</div>'+
+          '<div class="id">'+a.agent_id+typeLabel+'</div>'+
           '<div class="stats" style="margin-top:8px">'+
             '<div>IP: <span>'+(a.local_ip||'-')+'</span></div>'+
             '<div>Subnet: <span>'+(a.subnet||'-')+'</span></div>'+
@@ -329,14 +692,14 @@ async function load(){
             '<div>Hosts: <span>'+a.host_count+'</span></div>'+
             '<div>Reports: <span>'+a.report_count+'</span></div>'+
             '<div>Seen: <span>'+ago+'</span></div>'+
-          '</div></div>';
+          '</div>'+riskHtml+sentinelHtml+'</div>';
       }).join('');
     }
     drawMap(agents);
     document.getElementById('ts').textContent=new Date().toLocaleTimeString()+' | Auto 5s';
   }catch(e){console.error(e);}
 }
-load();setInterval(load,5000);
+load();loadThreatIntel();setInterval(load,5000);setInterval(loadThreatIntel,10000);
 </script></body></html>'''
 
 
