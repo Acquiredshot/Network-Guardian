@@ -32,6 +32,10 @@ remote = [
 network-guardian = "network_guardian.__main__:main"
 ng-probe = "network_guardian.agent.probe:main"
 ng-build-agent = "network_guardian.agent.build:main"
+# Wolfpak admin CLI tools
+ng-fleet = "network_guardian.wolfpak.ng_fleet:main"
+ng-ids = "network_guardian.wolfpak.ng_ids:main"
+ng-status = "network_guardian.wolfpak.ng_status:main"
 
 [tool.setuptools.packages.find]
 include = ["network_guardian*"]

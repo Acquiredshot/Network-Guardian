@@ -28,6 +28,7 @@ from network_guardian.interface._security import (
     sanitize_data, get_login_page,
 )
 from network_guardian.interface._fleet import FleetStore, get_fleet_page
+from network_guardian.interface._wolfpak_store import WolfpakClientStore
 
 import ipaddress
 import os
@@ -153,6 +154,9 @@ class Dashboard:
         self._fleet = FleetStore(data_dir)
         logger.info("Fleet key: %s", self._fleet.fleet_key[:8] + "...")
 
+        # Wolfpak admin client registry
+        self._wolfpak = WolfpakClientStore()
+
         # ReAct cloaking agent
         from network_guardian.cloaking.react_agent import CloakingAgent
         self._cloak_agent = CloakingAgent(data_dir)
@@ -196,10 +200,14 @@ class Dashboard:
             }
         return len(timestamps) > self.RATE_LIMIT_MAX
 
-    def _check_auth(self, headers: dict[str, str]) -> bool:
-        """Return True if authenticated via session cookie."""
+    def _check_auth(self, headers: dict[str, str], return_data: bool = False) -> bool | dict:
+        """Return True if authenticated via session cookie.
+
+        If return_data=True, returns a dict with session info on success
+        or an empty dict on failure (for extracting username etc.).
+        """
         if not self._api_key:
-            return False  # Fail-closed: no secret = no access
+            return {} if return_data else False  # Fail-closed: no secret = no access
         # Session cookie
         for part in headers.get("cookie", "").split(";"):
             part = part.strip()
@@ -209,8 +217,8 @@ class Dashboard:
                     token, self._api_key, self._csp_nonce, self._team
                 )
                 if username:
-                    return True
-        return False
+                    return {"username": username} if return_data else True
+        return {} if return_data else False
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         client_ip = "unknown"
@@ -321,6 +329,15 @@ class Dashboard:
                 logger.warning("Unauthenticated request from %s: %s %s", client_ip, method, path)
                 return
 
+            # Record wolfpak admin client if headers present (runs after auth gate)
+            wp_tag    = headers.get("x-wp-tag", "").strip()
+            wp_client = headers.get("x-wp-client", "").strip()
+            wp_host   = headers.get("x-wp-host", "").strip()
+            if wp_tag and wp_client and path not in ("/api/auth/login", "/api/auth/change-password"):
+                session_data = self._check_auth(headers, return_data=True)
+                wp_user = (session_data or {}).get("username", "")
+                self._wolfpak.record(wp_tag, wp_host, wp_client, wp_user, path, client_ip)
+
             # Route to handler
             if path == "/api/auth/login":
                 response = await self._auth_login(body, client_ip)
@@ -386,6 +403,7 @@ class Dashboard:
             "/api/fleet/list": self._api_fleet_list,
             "/api/fleet/key": self._api_fleet_key,
             "/api/fleet/threats": self._api_fleet_threats,
+            "/api/wolfpak/clients": self._api_wolfpak_clients,
         }
 
         # Dynamic fleet routes
@@ -882,6 +900,15 @@ class Dashboard:
         """Aggregate threat intelligence across all fleet agents."""
         summary = self._fleet.get_fleet_threat_summary()
         return self._json_response(summary)
+
+    def _api_wolfpak_clients(self) -> str:
+        """List all registered wolfpak admin client devices."""
+        clients = self._wolfpak.list_clients()
+        return self._json_response({
+            "clients":      clients,
+            "total":        self._wolfpak.total_count(),
+            "active":       self._wolfpak.active_count(),
+        })
 
     def _page_login(self) -> str:
         return self._http_response(200, "text/html",
