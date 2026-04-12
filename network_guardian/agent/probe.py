@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from network_guardian.agent.covert_comms import CovertComms, build_comms
+from network_guardian.agent.threat_analyzer import ProbeThrottleAnalyzer, ThreatAlert
 
 logger = logging.getLogger("ng-probe")
 
@@ -574,6 +575,7 @@ class AgentReport:
     gateway: str = ""
     open_ports_by_host: dict = field(default_factory=dict)
     diagnostics: dict = field(default_factory=dict)  # ReAct diagnostic intelligence
+    threat_alerts: list[dict] = field(default_factory=list)  # Threats discovered by local analysis
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -640,6 +642,24 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
 
+    # Analyze for threats
+    threat_alerts = []
+    try:
+        analyzer = ProbeThrottleAnalyzer()
+        logger.debug("Analyzing %d WiFi networks for security issues", len(wifi))
+        # Analyze WiFi security
+        analyzer.analyze_wifi_networks(wifi)
+        logger.debug("Analyzing %d discovered hosts for exposed services", len(hosts))
+        # Analyze discovered hosts
+        analyzer.analyze_discovered_hosts(hosts, local_subnet=subnet)
+        threat_alerts = [a.to_dict() for a in analyzer.alerts]
+        logger.info("Threat analysis complete: %d alert(s) detected", len(threat_alerts))
+        if threat_alerts:
+            for alert in threat_alerts:
+                logger.warning("THREAT [%s]: %s", alert["threat_type"], alert["description"])
+    except Exception as e:
+        logger.warning("Threat analysis failed: %s", e)
+
     # Run ReAct diagnostic cycle
     diagnostics = {}
     try:
@@ -663,6 +683,7 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
         gateway=gateway,
         open_ports_by_host=port_map,
         diagnostics=diagnostics,
+        threat_alerts=threat_alerts,
     )
 
 
@@ -696,10 +717,11 @@ def phone_home(base_url: str, agent_key: str, report: AgentReport,
     ok, body = c.post(url, headers, payload)
     if ok:
         if body.get("ok"):
-            logger.info("Report accepted by base station")
+            logger.info("Report accepted by base station ✓")
             return True
         logger.warning("Base station rejected report: %s", body.get("message"))
         return False
+    logger.warning("Report delivery FAILED — base station unreachable (network change?)")
     return False
 
 

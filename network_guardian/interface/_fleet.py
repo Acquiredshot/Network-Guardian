@@ -252,11 +252,31 @@ class FleetStore:
         }
 
     def verify_signature(self, payload: bytes, signature: str) -> bool:
-        """Verify an agent's HMAC-SHA256 signature."""
-        expected = hmac.new(
-            self.fleet_key.encode(), payload, hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+        """Verify an agent's HMAC-SHA256 signature.
+
+        CovertComms pads the body (adds a ``_t`` field and compacts the JSON)
+        after the probe computes the HMAC on the original, unpadded payload.
+        We therefore try two forms:
+          1. Exact match against the received bytes.
+          2. Strip the ``_t`` field and re-serialise with default separators
+             to recover the bytes the probe originally signed.
+        """
+        key = self.fleet_key.encode()
+        expected = hmac.new(key, payload, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, signature):
+            return True
+        # Attempt to recover original pre-padding payload
+        try:
+            data = json.loads(payload)
+            if "_t" in data:
+                original = {k: v for k, v in data.items() if k != "_t"}
+                original_bytes = json.dumps(original).encode()
+                exp2 = hmac.new(key, original_bytes, hashlib.sha256).hexdigest()
+                if hmac.compare_digest(exp2, signature):
+                    return True
+        except Exception:
+            pass
+        return False
 
 
 # ---------------------------------------------------------------------------

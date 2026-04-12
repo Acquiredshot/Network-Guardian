@@ -829,6 +829,38 @@ class Dashboard:
             # Auto-register if unknown
             self._fleet.register_agent(agent_id, data.get("identity", {}))
             self._fleet.accept_report(agent_id, data)
+        
+        # Process threat alerts from the agent
+        threat_alerts = data.get("threat_alerts", [])
+        if threat_alerts and self.engine and self.engine.ids:
+            logger.info("Processing %d threat alert(s) from agent %s", len(threat_alerts), agent_id)
+            for alert_data in threat_alerts:
+                try:
+                    # Convert bot threat alert to IDS alert format
+                    threat_type = alert_data.get("threat_type", "unknown")
+                    severity_map = {
+                        "critical": "critical",
+                        "high": "high",
+                        "medium": "medium",
+                        "low": "low",
+                    }
+                    severity_str = severity_map.get(alert_data.get("severity", "medium"), "medium")
+                    
+                    # Create payload string for signature matching
+                    payload = f"{threat_type}: {alert_data.get('description', '')}. Items: {', '.join(alert_data.get('affected_items', [])[:3])}"
+                    
+                    # Analyze through IDS (will match generic rules)
+                    import asyncio
+                    asyncio.create_task(self.engine.ids.analyse_payload(
+                        payload,
+                        source_ip=alert_data.get("source_ip", agent_id),
+                        destination_ip=alert_data.get("target_ip", ""),
+                        destination_port=alert_data.get("target_port", 0),
+                    ))
+                    logger.debug("Threat from %s: %s", agent_id, alert_data.get("description"))
+                except Exception as e:
+                    logger.warning("Failed to process bot threat alert: %s", e)
+        
         return self._json_response({"ok": True, "agent_id": agent_id})
 
     def _fleet_auth(self, body: bytes, headers: dict[str, str]) -> str:
