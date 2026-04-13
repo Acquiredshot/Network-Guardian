@@ -277,6 +277,24 @@ Three permission levels control remote access:
 | **EXECUTE** | All READ commands + `audit`, `explore`, `ids scan`, `sensors collect` |
 | **ADMIN** | Full access including `monitor start/stop`, `ips block/unblock`, `train` |
 
+## GitHub Privacy and Secret Hygiene
+
+Use these rules before every push to keep the repository private and prevent accidental credential leaks:
+
+1. Keep repository visibility set to **Private**.
+2. Never commit runtime secrets from `~/.network_guardian/` (team store, fleet keys, session/token material).
+3. Use placeholders in docs and examples (`your_auth_token`, `ACxxxxxxxxxxxx`) instead of real values.
+4. Rotate and replace any credential immediately if it is ever exposed in logs, screenshots, commits, or chat.
+5. Verify before push:
+
+```bash
+git status
+git diff --staged
+grep -RInE "(token|secret|api[_-]?key|fleet_key|password|twilio_auth_token)" README.md network_guardian pyproject.toml config.example.yaml
+```
+
+6. Use local env vars or platform secrets for runtime values; do not hard-code credentials in source files.
+
 ## AI Node Graph
 
 Network Guardian uses a ROS-inspired reactive compute graph where independent AI nodes communicate via the shared event bus:
