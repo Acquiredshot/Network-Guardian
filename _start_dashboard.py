@@ -18,7 +18,7 @@ async def main() -> None:
     await engine.start()
 
     dash = engine.dashboard
-    dash.host = "127.0.0.1"
+    dash.host = "0.0.0.0"
     dash.port = 8080
     await dash.start()
 
