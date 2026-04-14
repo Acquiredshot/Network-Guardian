@@ -153,9 +153,23 @@ The `/fleet` page shows all deployed agents in real time:
 - **Sentinel badge** — continuous monitoring bots shown with cyan `🛡 Sentinel` tag and WiFi change / rogue AP counters
 - **Covert badge** — `🔒 Tor` (green) / `🔒 Proxy` (blue) / `🔓 Direct` (gray) per agent showing anonymization state
 - **Fleet KPIs** — total agents, online/stale/offline counts, threat count, ReAct agents, WiFi nets, hosts, covert count
-- **Fleet Map** — canvas network diagram with threat rings, sentinel rings, and lock dots for covert agents
 - **Fleet Threat Intelligence** — aggregated ReAct diagnostics across all agents
 - **Detail overlay** — click any agent for full drill-down: covert channel info, threats, ReAct log, sentinel intelligence, WiFi/host inventory
+
+#### Fleet Map
+
+Live animated canvas network diagram rendered at 60 fps via `requestAnimationFrame`:
+
+| Element | Description |
+|---|---|
+| **Dark radar grid** | Subtle dot-grid background gives a tactical display feel |
+| **Pulsing base station** | Central node with animated blue halo and radial glow |
+| **Gradient connection lines** | Animated dashed lines flow from base to each agent in the agent's status color |
+| **Agent glow rings** | Online agents emit a breathing glow; offline agents show a static red ring |
+| **Threat score arc** | A colored progress arc (green → yellow → orange → red) wraps each node showing exact ReAct threat score out of 100 |
+| **Sentinel orbit ring** | Animated dashed cyan orbit circle for persistent sentinel bots |
+| **Indicator dots** | Purple (top-right) = ReAct active; Cyan (top-left) = Sentinel; Green/Blue (bottom-right) = Covert/Tor |
+| **Legend bar** | Inline color legend below the canvas |
 
 ## Covert Communications
 
