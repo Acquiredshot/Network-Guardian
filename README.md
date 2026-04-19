@@ -63,3 +63,20 @@ pytest tests/ -v   # 388 tests, all passing
 ## Secret Hygiene
 
 Never commit real credentials. Use env vars or platform secrets. Run `grep -RInE "(token|secret|password|fleet_key)" .` before every push. Keep the repo **private**.
+
+## License
+
+This project is proprietary and closed-source.
+
+- Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+- Legal owner: Wolf-Pak Innovations LLC (Michigan, USA).
+- No permission is granted to use, copy, modify, distribute, sublicense, sell, or create derivatives without prior written authorization.
+- Commercial use requires a separate paid commercial license agreement.
+- See LICENSE and COPYRIGHT for full terms.
+
+## Legal and Commercial Ops
+
+- Federal filing checklist packet: FEDERAL_COPYRIGHT_REGISTRATION_PACKET.txt
+- Commercial license agreement template: COMMERCIAL_EULA.txt
+- Inbound commercial request intake form: LICENSE_REQUEST_INTAKE_FORM.txt
+- Internal pricing and tier matrix: PRICING_TIER_MATRIX.txt

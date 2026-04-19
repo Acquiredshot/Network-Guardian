@@ -1,0 +1,77 @@
+NETWORK GUARDIAN LICENSE REQUEST INTAKE FORM
+Wolf-Pak Innovations LLC
+Version 1.0
+
+REQUEST DETAILS
+- Date:
+- Request ID:
+- Sales Rep:
+
+COMPANY INFORMATION
+- Legal Company Name:
+- DBA (if any):
+- Billing Address:
+- Country:
+- Website:
+- Company Size (employees):
+- Industry:
+
+CONTACTS
+- Primary Contact Name:
+- Title:
+- Email:
+- Phone:
+- Legal Contact Name/Email:
+- Security Contact Name/Email:
+
+USE CASE
+- Intended Use (brief description):
+- Authorized Network Ownership/Permission Model:
+- Environments: dev/test/prod
+- Deployment: on-prem/private cloud/hybrid
+- Planned Go-Live Date:
+
+LICENSE SCOPE
+- Requested Plan Tier:
+- Number of Agents/Endpoints:
+- Number of Users:
+- Regions/Territories:
+- Multi-tenant use requested? yes/no
+- OEM/White-label requested? yes/no
+- Reseller rights requested? yes/no
+
+COMMERCIAL TERMS
+- Contract Term: monthly/annual/multi-year
+- Budget Range:
+- Currency:
+- Procurement Process Required? yes/no
+- Required Paperwork: NDA / MSA / DPA / Security Exhibit / Other
+
+SECURITY AND COMPLIANCE
+- Compliance Requirements: SOC2 / ISO27001 / HIPAA / PCI / Other
+- Data Residency Requirements:
+- Logging and Retention Requirements:
+- Pen test / security review required? yes/no
+
+SUPPORT REQUIREMENTS
+- Support Tier Requested: Standard / Business / Enterprise
+- Required SLA Response Times:
+- Training Required? yes/no
+- Professional Services Needed? yes/no
+
+APPROVAL CHECKLIST (INTERNAL)
+- Authorization and legal use case verified
+- Export control screen completed
+- Sanctions screen completed
+- Risk review completed
+- Pricing approved
+- Legal approved
+- Executive approval
+
+FINAL DISPOSITION
+- Approved / Rejected / Pending
+- Proposed SKU/Tier:
+- Quoted Price:
+- Start Date:
+- End Date:
+- Notes:

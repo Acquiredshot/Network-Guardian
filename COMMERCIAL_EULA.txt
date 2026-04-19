@@ -1,0 +1,102 @@
+NETWORK GUARDIAN COMMERCIAL LICENSE AGREEMENT (TEMPLATE)
+Version 1.0
+Effective Date: 2026-04-19
+
+This Commercial License Agreement (Agreement) is entered into by and between
+Wolf-Pak Innovations LLC (Licensor) and the purchasing entity identified in an
+applicable Order Form (Licensee).
+
+1. DEFINITIONS
+1.1 Software means Network Guardian, including source code, object code, models,
+signatures, detection content, updates, APIs, documentation, and related materials.
+1.2 Order Form means a document that sets pricing, term, seat/agent count, and scope.
+1.3 Authorized Users means employees and contractors of Licensee using Software for
+Licensee internal business purposes.
+
+2. LICENSE GRANT
+2.1 Subject to this Agreement and payment of fees, Licensor grants Licensee a limited,
+non-exclusive, non-transferable, non-sublicensable license to use Software solely
+within the scope of the Order Form.
+2.2 License scope may include any combination of:
+- number of agents/endpoints
+- environments (dev/test/prod)
+- deployment type (on-prem, private cloud)
+- territory and business unit limits
+
+3. RESTRICTIONS
+Licensee shall not, and shall not permit others to:
+3.1 copy, distribute, sell, sublicense, lease, or assign Software outside licensed scope;
+3.2 provide Software as a managed service, hosted service, or SaaS unless expressly allowed;
+3.3 reverse engineer, decompile, disassemble, or attempt to derive source code except as required by law;
+3.4 remove or alter copyright, trademark, or proprietary notices;
+3.5 use Software to build a competing product or derivative detection feed.
+
+4. OWNERSHIP
+4.1 Software is licensed, not sold.
+4.2 Licensor retains all right, title, and interest in and to Software and all derivatives.
+4.3 No implied rights are granted.
+
+5. FEES AND PAYMENT
+5.1 Licensee will pay fees in the Order Form.
+5.2 Late payments may accrue interest at 1.5% per month or maximum lawful rate.
+5.3 Fees are non-refundable except as stated in this Agreement.
+
+6. TERM AND TERMINATION
+6.1 Term starts on Effective Date in Order Form and continues for stated duration.
+6.2 Licensor may terminate for material breach not cured within 15 days of written notice.
+6.3 Upon termination, Licensee must cease use and certify deletion within 10 business days.
+
+7. SUPPORT AND UPDATES
+7.1 Support level, response times, and update rights are defined in the Order Form.
+7.2 Unless stated otherwise, no obligation exists to provide new features.
+
+8. SECURITY AND COMPLIANCE
+8.1 Licensee is responsible for secure operation of its infrastructure.
+8.2 Licensee must use lawful authorization before scanning or monitoring third-party networks.
+8.3 Licensee must comply with all applicable laws and export controls.
+
+9. CONFIDENTIALITY
+9.1 Each party will protect confidential information using reasonable safeguards.
+9.2 Licensee shall treat Software internals, pricing, and documentation as confidential.
+
+10. WARRANTIES DISCLAIMER
+SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+11. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR WILL NOT BE LIABLE FOR INDIRECT,
+INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR LOST PROFITS, DATA,
+OR REVENUE. TOTAL LIABILITY WILL NOT EXCEED FEES PAID BY LICENSEE IN THE 12 MONTHS
+PRECEDING THE CLAIM.
+
+12. INDEMNITY
+12.1 Licensee will indemnify Licensor for claims arising from Licensee misuse,
+unauthorized scanning, or unlawful operation.
+12.2 Any IP indemnity by Licensor must be expressly stated in Order Form.
+
+13. AUDIT RIGHTS
+Licensor may request reasonable records to verify license scope compliance.
+If material under-licensing is found, Licensee will promptly cure and pay fees due.
+
+14. GOVERNING LAW; VENUE
+This Agreement is governed by the laws of the State of Michigan, without regard to
+conflicts of laws principles. Venue for disputes is in courts located in Michigan,
+unless otherwise required by law.
+
+15. GENERAL
+15.1 Entire Agreement: This Agreement plus Order Form is the complete agreement.
+15.2 Assignment: Licensee may not assign without prior written consent.
+15.3 Amendments: Must be in writing and signed by both parties.
+15.4 Severability: Invalid provisions are replaced with enforceable equivalents.
+
+LICENSOR:
+Wolf-Pak Innovations LLC
+Authorized Signatory: ______________________
+Name/Title: ________________________________
+Date: _____________________________________
+
+LICENSEE:
+Entity Name: _______________________________
+Authorized Signatory: ______________________
+Name/Title: ________________________________
+Date: _____________________________________

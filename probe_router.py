@@ -5,11 +5,14 @@ import http.cookiejar
 import ssl
 import re
 import time
+import os
 from base64 import b64encode
 
 ip = "192.168.1.1"
-password = "Family10130120"
-serial = "6YN3477TD0A60"
+password = os.getenv("NG_ROUTER_PASSWORD", "")
+serial = os.getenv("NG_ROUTER_SERIAL", "")
+if not password:
+    raise RuntimeError("Set NG_ROUTER_PASSWORD before running probe_router.py")
 creds = b64encode(f"admin:{password}".encode()).decode()
 
 ctx = ssl.create_default_context()
@@ -158,7 +161,9 @@ from base64 import b64encode
 from urllib.parse import urlencode
 
 ip = "192.168.1.1"
-password = "Family10130120"
+password = os.getenv("NG_ROUTER_PASSWORD", "")
+if not password:
+    raise RuntimeError("Set NG_ROUTER_PASSWORD before running probe_router.py")
 creds = b64encode(f"admin:{password}".encode()).decode()
 
 ctx = ssl.create_default_context()

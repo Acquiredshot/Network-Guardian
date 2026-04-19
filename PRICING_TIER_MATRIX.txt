@@ -1,0 +1,82 @@
+NETWORK GUARDIAN COMMERCIAL TIER MATRIX (DRAFT)
+Wolf-Pak Innovations LLC
+Version 1.0
+Currency: USD
+
+IMPORTANT
+- This is an internal planning matrix.
+- Replace placeholder pricing before publishing or quoting.
+
+TIER 1 - STARTER
+- Intended Customer: small teams / lab environments
+- Agents Included: up to 25
+- Users Included: up to 5
+- Deployment: on-prem only
+- Features:
+  - Core IDS/IPS
+  - Dashboard
+  - Basic anomaly detection
+  - Standard logging
+- Support: email, business hours
+- SLA: best effort
+- Suggested Price:
+  - Monthly: 499
+  - Annual: 4,990
+- Overage:
+  - Per additional agent/month: 12
+
+TIER 2 - PROFESSIONAL
+- Intended Customer: SMB and security teams
+- Agents Included: up to 250
+- Users Included: up to 25
+- Deployment: on-prem or private cloud
+- Features:
+  - Everything in Starter
+  - Fleet management
+  - Advanced anomaly controls
+  - Alert routing integrations
+  - Role-based access
+- Support: priority email + scheduled calls
+- SLA: next-business-day response
+- Suggested Price:
+  - Monthly: 2,500
+  - Annual: 25,000
+- Overage:
+  - Per additional agent/month: 9
+
+TIER 3 - ENTERPRISE
+- Intended Customer: large organizations and MSSP operations
+- Agents Included: up to 2,500
+- Users Included: up to 250
+- Deployment: on-prem, private cloud, hybrid
+- Features:
+  - Everything in Professional
+  - High-scale fleet controls
+  - Custom policies and compliance mapping
+  - Premium audit and reporting package
+  - Dedicated technical account manager
+- Support: 24x7 priority
+- SLA: 4-hour response for Sev-1
+- Suggested Price:
+  - Annual only: 120,000
+- Overage:
+  - Per additional agent/month: 6
+
+ADD-ONS
+- OEM/White-label rights: custom quote
+- Reseller rights: custom quote
+- Premium onboarding package: 5,000 one-time
+- Custom integration package: 8,000 minimum
+- Dedicated training day: 2,500/day
+
+DISCOUNTS AND COMMERCIAL GUARDRAILS
+- Multi-year discount guidance:
+  - 2-year: up to 8%
+  - 3-year: up to 15%
+- Nonprofit/public-sector discount: case-by-case
+- Floor pricing requires executive approval
+
+REVENUE MODEL NOTES
+- Default contract term: annual prepaid
+- Production use requires commercial agreement execution
+- Use outside licensed scope triggers true-up and potential termination

@@ -1,0 +1,106 @@
+NETWORK GUARDIAN
+Federal Copyright Registration Packet
+Prepared for: Wolf-Pak Innovations LLC
+Date: 2026-04-19
+
+IMPORTANT
+- This packet helps you file with the U.S. Copyright Office.
+- Filing is completed at https://copyright.gov (eCO system).
+- U.S. copyright registration is federal, not state-level.
+
+============================================================
+STEP 1 - PREPARE CLAIM DATA
+============================================================
+Use these values when completing the application.
+
+A) TYPE OF WORK
+- Work Type: Literary Work (computer software)
+- Work Title: Network Guardian
+- Nature of Authorship: Computer program (source code), text, architecture, and documentation
+
+B) CLAIMANT / OWNER
+- Claimant Name: Wolf-Pak Innovations LLC
+- Entity Type: Limited Liability Company
+- State: Michigan
+- Country: United States
+
+C) AUTHORSHIP
+- Author: Wolf-Pak Innovations LLC
+- Work Made for Hire: Select if all code was authored within company scope
+- Year of Completion: 2026
+- Date of First Publication: Use actual first publication date if already distributed
+- Nation of First Publication: United States (if published)
+
+D) RIGHTS AND PERMISSIONS CONTACT
+- Organization: Wolf-Pak Innovations LLC
+- Email: legal@wolfpakinnovations.com (replace if different)
+
+E) CORRESPONDENT
+- Name: Authorized company representative
+- Email and phone: Company legal/admin contact
+
+============================================================
+STEP 2 - PREPARE DEPOSIT MATERIAL
+============================================================
+For software source code deposit (typical approach):
+- Create a deposit file with first 25 and last 25 pages of source code.
+- Redact trade secrets only where truly necessary.
+- Ensure redactions are clearly marked and consistent.
+
+Suggested command workflow:
+1) Freeze a release snapshot (tag or archive)
+2) Generate source listing for deposit
+3) Save as PDF named: NG_USCO_DEPOSIT_2026-04-19.pdf
+
+Retention:
+- Keep the exact source snapshot used for filing.
+- Store hash of deposit artifact for evidence integrity.
+
+============================================================
+STEP 3 - FILE ONLINE
+============================================================
+Portal:
+- https://copyright.gov
+- Open eCO and start a new registration for software
+
+Application checklist:
+- Complete claimant, author, and rights fields
+- Upload deposit file
+- Pay filing fee
+- Submit and download filing receipt
+
+============================================================
+STEP 4 - POST-FILING EVIDENCE PACKAGE
+============================================================
+Save all of the following in your legal records:
+- Submitted application PDF/summary
+- Deposit file uploaded
+- Payment receipt
+- Confirmation email
+- Registration certificate (when issued)
+
+Recommended internal evidence file names:
+- legal/usco/2026-04-19_application_receipt.pdf
+- legal/usco/2026-04-19_deposit_source.pdf
+- legal/usco/2026-04-19_payment_receipt.pdf
+- legal/usco/2026-04-19_certificate.pdf
+
+============================================================
+STEP 5 - ENFORCEMENT READINESS CHECKLIST
+============================================================
+- Keep repository private by default
+- Keep signed contributor assignments if outside contributors exist
+- Keep dated release artifacts and changelogs
+- Keep copy of LICENSE and COPYRIGHT notices in all releases
+- Track customer license grants and terminations
+
+============================================================
+FILING NOTES FOR THIS PROJECT
+============================================================
+Project Name: Network Guardian
+Owner: Wolf-Pak Innovations LLC
+Current License Posture: Proprietary, all rights reserved
+Commercial Model: Paid license required for production/commercial use
+
+This packet is an operational template and not legal advice.
+Consult a qualified attorney for legal strategy or litigation planning.
