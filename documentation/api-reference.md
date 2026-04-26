@@ -96,7 +96,7 @@ Reset a member's password (admin) or your own (any role).
 
 **Request:**
 ```json
-{ "username": "C.Curry", "new_password": "NewP@ss1word" }
+{ "username": "member-username", "new_password": "NewP@ss1word" }
 ```
 
 **Response:** `{ "ok": true, "message": "Password reset" }`
@@ -148,7 +148,7 @@ Retrieve the raw fleet HMAC key.
 
 **Auth required:** Session + **admin role**
 
-**Response:** `{ "fleet_key": "eNyg..." }`
+**Response:** `{ "fleet_key": "<your-fleet-key>" }`
 
 **Non-admin returns:** HTTP 403
 
