@@ -164,6 +164,28 @@ class Dashboard:
         # Brute-force protection tracker
         self._login_attempts: dict[str, list[float]] = {}
 
+        # 24/7 AI monitor state — rolling time-series + live events
+        self._ai_state: dict[str, Any] = {
+            "metrics": {
+                "threat_score": [],
+                "connections": [],
+                "external_conns": [],
+                "net_drift_%": [],
+                "proc_drift_%": [],
+                "processes": [],
+                "listening_ports": [],
+            },
+            "anomaly_count": 0,
+            "assessment_count": 0,
+            "latest_score": 0.0,
+            "ai_events": [],          # newest-first, capped at 500
+            "last_tick": "",
+            "uptime_cycles": 0,
+            "agents_monitored": 0,
+            "status": "starting",
+        }
+        self._ai_monitor_task: asyncio.Task | None = None
+
         # Subscribe to key events for the live feed
         for topic in ("audit.finding", "monitor.anomaly", "ai.anomaly_detected",
                        "explorer.discovery_complete", "automator.task_complete",
@@ -680,88 +702,18 @@ class Dashboard:
     # -- AI / Monitor API endpoints ---------------------------------------
 
     def _api_ai_metrics(self) -> str:
-        # Build time-series metrics + AI events from fleet agent data
-        metrics: dict[str, list] = {
-            "threat_score": [],
-            "connections": [],
-            "external_conns": [],
-            "net_drift_%": [],
-            "proc_drift_%": [],
-            "processes": [],
-        }
-        anomaly_count = 0
-        prediction_count = 0
-        latest_score = 0.0
-        ai_events: list[dict] = []
-
-        agents = self._fleet._data.get("agents", {})
-        for aid, agent in agents.items():
-            # Time-series from stored threat reports (each has observations snapshot)
-            for rpt in agent.get("threat_reports", []):
-                obs = rpt.get("observations", {})
-                bl = rpt.get("baselines", {})
-                ts = rpt.get("generated_at", "")
-                score = rpt.get("threat_score", 0)
-                metrics["threat_score"].append(score)
-                metrics["connections"].append(obs.get("connections", 0))
-                metrics["external_conns"].append(obs.get("external_connections", 0))
-                metrics["net_drift_%"].append(bl.get("network_drift_pct", 0))
-                metrics["proc_drift_%"].append(bl.get("process_drift_pct", 0))
-                metrics["processes"].append(obs.get("active_processes", 0))
-                prediction_count += 1
-                # Emit an ai.assessment event for each report
-                ai_events.append({
-                    "timestamp": ts,
-                    "topic": "ai.assessment",
-                    "data": {"score": score, "risk": rpt.get("risk_level", "low"),
-                             "agent": aid},
-                })
-
-            # Threat events from threat_history
-            for t in agent.get("threat_history", []):
-                anomaly_count += 1
-                ai_events.append({
-                    "timestamp": t.get("timestamp", ""),
-                    "topic": f"ai.anomaly.{t.get('category', 'unknown')}",
-                    "data": {"title": t.get("title", ""), "severity": t.get("severity", ""),
-                             "agent": aid},
-                })
-
-            # Latest score from live diagnostics
-            diag = agent.get("last_diagnostics", {})
-            if diag:
-                latest_score = max(latest_score, diag.get("threat_score", 0))
-                # Add live metrics point if not already covered by threat_reports
-                if not agent.get("threat_reports"):
-                    metrics["threat_score"].append(diag.get("threat_score", 0))
-                    metrics["connections"].append(
-                        len(diag.get("network_connections", [])))
-                    metrics["external_conns"].append(0)
-                    metrics["net_drift_%"].append(diag.get("network_baseline_drift", 0))
-                    metrics["proc_drift_%"].append(diag.get("process_baseline_drift", 0))
-                    metrics["processes"].append(diag.get("active_processes", 0))
-
-        # Keep only last 30 data points per metric
-        metrics = {k: v[-30:] for k, v in metrics.items() if any(v)}
-
-        # Sort AI events newest-first, cap at 100
-        ai_events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
-        ai_events = ai_events[:100]
-
-        # Inject into recent_events so the AI events panel shows them
-        for ev in ai_events[:20]:
-            ev_entry = {"topic": ev["topic"], "timestamp": ev["timestamp"],
-                        "data": ev.get("data", {})}
-            if ev_entry not in self._recent_events:
-                self._recent_events.append(ev_entry)
-        self._recent_events = self._recent_events[-200:]
-
+        """Serve live AI metrics from the 24/7 background monitor state."""
+        state = self._ai_state
         return self._json_response({
-            "metrics": metrics,
-            "anomaly_count": anomaly_count,
-            "prediction_count": prediction_count,
-            "latest_anomaly_score": latest_score,
-            "ai_events": ai_events,
+            "metrics":              state["metrics"],
+            "anomaly_count":        state["anomaly_count"],
+            "prediction_count":     state["assessment_count"],
+            "latest_anomaly_score": state["latest_score"],
+            "ai_events":            state["ai_events"][:100],
+            "uptime_cycles":        state["uptime_cycles"],
+            "agents_monitored":     state["agents_monitored"],
+            "last_tick":            state["last_tick"],
+            "monitor_status":       state["status"],
         })
 
     # -- Control route handlers (POST /api/control/*) --------------------
@@ -1635,6 +1587,186 @@ class Dashboard:
         body = json.dumps(sanitize_data(data), default=str)
         return cls._http_response(200, "application/json", body)
 
+    # -- 24/7 AI Monitor Loop ------------------------------------------
+
+    async def _ai_monitor_loop(self) -> None:
+        """Continuously ingest fleet agent data, build rolling AI metrics,
+        detect anomalies, and emit AI events. Runs every 10 seconds forever."""
+        logger.info("[AI-MONITOR] 24/7 AI monitoring loop started")
+        self._ai_state["status"] = "active"
+
+        while True:
+            try:
+                await self._ai_monitor_tick()
+            except Exception as exc:  # pragma: no cover
+                logger.warning("[AI-MONITOR] tick error: %s", exc)
+            await asyncio.sleep(10)
+
+    async def _ai_monitor_tick(self) -> None:
+        """Single monitoring tick — ingest all fleet agents, update state."""
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        state = self._ai_state
+        metrics = state["metrics"]
+
+        agents = self._fleet._data.get("agents", {})
+        active_agents = 0
+        new_events: list[dict] = []
+
+        for aid, agent in agents.items():
+            diag = agent.get("last_diagnostics", {})
+            last_report = agent.get("last_report", {})
+            threat_reports = agent.get("threat_reports", [])
+
+            # --- Live diagnostics (arrives every ~60s from probe) ---
+            if diag:
+                active_agents += 1
+                score = diag.get("threat_score", 0)
+                net_drift = diag.get("network_baseline_drift", 0)
+                proc_drift = diag.get("process_baseline_drift", 0)
+                conns = len(diag.get("network_connections", []))
+                ext_conns = sum(1 for c in diag.get("network_connections", [])
+                                if isinstance(c, dict) and c.get("remote", "").split(":")[0]
+                                not in ("127.0.0.1", "", "0.0.0.0", "::1", "::"))
+                procs = diag.get("active_processes", 0)
+                listeners = len([c for c in diag.get("network_connections", [])
+                                 if isinstance(c, dict) and c.get("state") == "LISTEN"])
+
+                # Append to rolling time-series (keep last 100 points)
+                metrics["threat_score"].append(round(score, 1))
+                metrics["connections"].append(conns)
+                metrics["external_conns"].append(ext_conns)
+                metrics["net_drift_%"].append(round(net_drift, 1))
+                metrics["proc_drift_%"].append(round(proc_drift, 1))
+                metrics["processes"].append(procs)
+                metrics["listening_ports"].append(listeners)
+
+                state["latest_score"] = max(state["latest_score"], score)
+                state["assessment_count"] += 1
+
+                # Emit assessment event
+                new_events.append({
+                    "timestamp": now_iso,
+                    "topic": "ai.assessment",
+                    "data": {
+                        "agent": aid,
+                        "score": score,
+                        "risk": diag.get("risk_level", "low"),
+                        "connections": conns,
+                        "processes": procs,
+                    },
+                })
+
+                # --- Anomaly detection (threshold-based) ---
+                if score >= 70:
+                    state["anomaly_count"] += 1
+                    new_events.append({
+                        "timestamp": now_iso,
+                        "topic": "ai.anomaly.critical_score",
+                        "data": {
+                            "agent": aid,
+                            "score": score,
+                            "title": f"Critical threat score {score:.0f}/100",
+                        },
+                    })
+                elif score >= 40:
+                    state["anomaly_count"] += 1
+                    new_events.append({
+                        "timestamp": now_iso,
+                        "topic": "ai.anomaly.elevated_score",
+                        "data": {
+                            "agent": aid,
+                            "score": score,
+                            "title": f"Elevated threat score {score:.0f}/100",
+                        },
+                    })
+
+                if net_drift > 30:
+                    state["anomaly_count"] += 1
+                    new_events.append({
+                        "timestamp": now_iso,
+                        "topic": "ai.anomaly.network_drift",
+                        "data": {
+                            "agent": aid,
+                            "drift_pct": net_drift,
+                            "title": f"Network baseline drift {net_drift:.0f}%",
+                        },
+                    })
+
+                if proc_drift > 40:
+                    state["anomaly_count"] += 1
+                    new_events.append({
+                        "timestamp": now_iso,
+                        "topic": "ai.anomaly.process_drift",
+                        "data": {
+                            "agent": aid,
+                            "drift_pct": proc_drift,
+                            "title": f"Process baseline drift {proc_drift:.0f}%",
+                        },
+                    })
+
+                # Spike detection: last value vs rolling average
+                for key, series in metrics.items():
+                    if len(series) >= 5:
+                        recent = series[-5:]
+                        avg = sum(recent[:-1]) / (len(recent) - 1)
+                        last = recent[-1]
+                        if avg > 0 and last > avg * 2.5 and last > 10:
+                            new_events.append({
+                                "timestamp": now_iso,
+                                "topic": f"ai.spike.{key}",
+                                "data": {
+                                    "agent": aid,
+                                    "metric": key,
+                                    "value": last,
+                                    "avg": round(avg, 1),
+                                    "title": f"Spike: {key} = {last} (avg {avg:.0f})",
+                                },
+                            })
+
+            # --- Per-threat events from threat_history ---
+            for t in agent.get("threat_history", [])[-10:]:
+                state["anomaly_count"] += 1
+                new_events.append({
+                    "timestamp": t.get("timestamp", now_iso),
+                    "topic": f"ai.threat.{t.get('category', 'unknown')}",
+                    "data": {
+                        "agent": aid,
+                        "title": t.get("title", ""),
+                        "severity": t.get("severity", ""),
+                        "action": t.get("action_taken", ""),
+                    },
+                })
+
+        # Trim series to last 100 data points
+        for key in metrics:
+            if len(metrics[key]) > 100:
+                metrics[key] = metrics[key][-100:]
+
+        # Prepend new events (newest-first), cap at 500
+        existing_events = state["ai_events"]
+        merged = new_events + existing_events
+        # Deduplicate by topic+timestamp
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for ev in merged:
+            key = ev.get("topic", "") + ev.get("timestamp", "")[:19]
+            if key not in seen:
+                seen.add(key)
+                deduped.append(ev)
+        state["ai_events"] = deduped[:500]
+
+        state["last_tick"] = now_iso
+        state["uptime_cycles"] = state.get("uptime_cycles", 0) + 1
+        state["agents_monitored"] = active_agents
+        state["status"] = "active"
+
+        # Also push into _recent_events for the live feed
+        for ev in new_events[:5]:
+            self._recent_events.append(ev)
+        if len(self._recent_events) > 200:
+            self._recent_events = self._recent_events[-200:]
+
     # -- Server lifecycle -----------------------------------------------
 
     async def start(self) -> None:
@@ -1642,8 +1774,17 @@ class Dashboard:
             self._handle_client, self.host, self.port
         )
         logger.info("Dashboard listening on %s:%d", self.host, self.port)
+        # Start the 24/7 AI monitoring loop as a background task
+        self._ai_monitor_task = asyncio.create_task(self._ai_monitor_loop())
+        logger.info("[AI-MONITOR] Background monitoring task created")
 
     async def stop(self) -> None:
+        if self._ai_monitor_task:
+            self._ai_monitor_task.cancel()
+            try:
+                await self._ai_monitor_task
+            except asyncio.CancelledError:
+                pass
         if self._server:
             self._server.close()
             await self._server.wait_closed()

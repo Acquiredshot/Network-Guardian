@@ -1547,13 +1547,13 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
         self._save_threat_history()
 
         # Auto-generate a detailed threat report whenever threats exist,
-        # or every 50 cycles for a clean baseline audit trail.
+        # or every 10 cycles for a clean baseline audit trail (feeds the 24/7 AI monitor).
         cycle = self._baselines.get("cycle_count", 0)
         has_threats = bool(strategy.get("threats"))
-        if has_threats or cycle % 50 == 0:
+        if has_threats or cycle % 10 == 0:
             report = self._generate_threat_report(obs, strategy, self._actions_taken[-20:], cycle)
             report_dict = report.to_dict()
-            # Generate full Markdown incident report (always on threats, every 50 on clean)
+            # Generate full Markdown incident report (always on threats, every 10 on clean)
             md = self._generate_incident_report_md(report, obs)
             report_dict["incident_report_md"] = md
             self._save_incident_report(md, report.report_id)
