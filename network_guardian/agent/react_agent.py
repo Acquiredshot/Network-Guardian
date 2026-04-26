@@ -375,6 +375,204 @@ class ProbeReActAgent:
         except OSError as e:
             logger.warning("Failed to save threat reports: %s", e)
 
+    def _generate_incident_report_md(self, report: "ThreatReport", obs: dict[str, Any]) -> str:
+        """Render a full Markdown incident report matching the Network Guardian IR format."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        date_str = now.strftime("%B %d, %Y")
+        date_tag = now.strftime("%Y-%m-%d")
+        time_str = now.strftime("%H:%M UTC")
+
+        sev_icon = {
+            "critical": "🚨 CRITICAL",
+            "high": "⚠️ HIGH",
+            "medium": "🟡 MEDIUM",
+            "low": "✅ LOW",
+        }
+
+        # Severity counts
+        sev_counts: dict[str, int] = {}
+        for t in report.threats:
+            sev_counts[t["severity"]] = sev_counts.get(t["severity"], 0) + 1
+        sev_summary = ", ".join(
+            f"{v} {k.upper()}" for k, v in sorted(
+                sev_counts.items(),
+                key=lambda x: ["critical","high","medium","low","info"].index(x[0])
+                if x[0] in ["critical","high","medium","low","info"] else 99
+            )
+        ) or "None"
+
+        status = "ACTIVE — UNDER INVESTIGATION"
+        if report.risk_level == "low":
+            status = "CLEAN — NO THREATS"
+        elif all(t.get("resolved") for t in report.threats):
+            status = "RESOLVED — THREAT CONTAINED"
+
+        # Build timeline from threat timestamps
+        timeline_rows = []
+        seen_ts: set[str] = set()
+        for t in report.threats:
+            ts = t.get("timestamp", "")
+            if ts and ts not in seen_ts:
+                seen_ts.add(ts)
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    ts_fmt = dt.strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    ts_fmt = ts[:16]
+                timeline_rows.append(f"| {ts_fmt} | {t['title']} detected — severity {t['severity'].upper()} |")
+        # Add actions to timeline
+        for a in report.actions_taken:
+            if a.get("success"):
+                timeline_rows.append(f"| {date_tag} {time_str[:5]} | Automated action: `{a['action']}` executed successfully |")
+
+        timeline_md = "\n".join(timeline_rows) if timeline_rows else f"| {date_tag} {time_str[:5]} | Automated assessment cycle completed — no threat events |"
+
+        # Build per-threat sections
+        threat_sections = []
+        for i, t in enumerate(report.threats, 1):
+            sev_label = sev_icon.get(t.get("severity", "medium"), t.get("severity", "medium").upper())
+            threat_sections.append(f"""
+### {i}. {t.get("title", "Unnamed Threat")}
+
+| Field | Value |
+|---|---|
+| **Severity** | {sev_label} |
+| **Category** | `{t.get("category", "")}` |
+| **Source IP** | `{t.get("source_ip") or "N/A"}` |
+| **MITRE ATT&CK** | {t.get("mitre_att_ck") or "—"} |
+| **CVSS Base Score** | {t.get("cvss_base_score") or "—"} |
+| **Status** | {"✅ Resolved" if t.get("resolved") else "🔴 Active"} |
+
+**What It Is:**
+{t.get("what_it_is", "")}
+
+**Technical Detail:**
+`{t.get("technical_detail", "")}`
+
+**Why It Was Triggered:**
+{t.get("why_triggered", "")}
+
+**Potential Impact:**
+{t.get("potential_impact", "")}
+
+**Automated Response:**
+`{t.get("action_taken") or "None"}` — {t.get("action_explanation", "No automated action taken.")}
+""")
+
+        threats_md = "\n".join(threat_sections) if threat_sections else "_No threats detected in this assessment cycle._"
+
+        # Build actions section
+        action_rows = []
+        for a in report.actions_taken:
+            result = "✅ Success" if a.get("success") else "❌ Failed"
+            action_rows.append(f"| `{a.get('action','')}` | {a.get('explanation') or a.get('detail','')} | {result} |")
+        actions_table = "\n".join(action_rows) if action_rows else "| — | No automated actions executed | — |"
+
+        # Recommendations
+        rec_lines = "\n".join(
+            f"{j+1}. {r}" for j, r in enumerate(report.recommendations)
+        ) if report.recommendations else "_No specific recommendations generated for this cycle._"
+
+        # Observations
+        obs_data = report.observations
+        gateway = obs_data.get("gateway", "—")
+        local_ip = obs_data.get("local_ip", report.host)
+        dns_servers = ", ".join(obs_data.get("dns_servers", [])) or "—"
+
+        md = f"""# Incident Report — {", ".join(set(t.get("title","") for t in report.threats)) or "Clean Assessment"}
+**Report ID:** IR-{date_tag}-{report.report_id}
+**Classification:** Confidential
+**Date of Detection:** {date_str}
+**Date of Report:** {date_str} at {time_str}
+**Reported By:** Network Guardian (Agent: {report.agent_id or "unknown"})
+**Assessment Cycle:** #{report.cycle}
+**Risk Level:** {report.risk_level.upper()} — Threat Score {report.threat_score:.0f}/100
+**Status:** {status}
+
+---
+
+## 1. Executive Summary
+
+{report.narrative}
+
+Threat severity breakdown: {sev_summary}.
+Total threats identified: **{len(report.threats)}**.
+Automated protective actions executed: **{len([a for a in report.actions_taken if a.get("success")])}**.
+
+---
+
+## 2. Timeline of Events
+
+| Time (UTC) | Event |
+|---|---|
+{timeline_md}
+
+---
+
+## 3. Threat Details
+
+{threats_md}
+
+---
+
+## 4. Automated Actions Taken
+
+| Action | Description | Result |
+|---|---|---|
+{actions_table}
+
+---
+
+## 5. Environment Snapshot
+
+| Field | Value |
+|---|---|
+| **Agent ID** | `{report.agent_id or "—"}` |
+| **Host IP** | `{local_ip}` |
+| **Gateway** | `{gateway}` |
+| **DNS Servers** | `{dns_servers}` |
+| **Active Connections** | {obs_data.get("connections", 0)} |
+| **Listening Ports** | {obs_data.get("listening_ports", 0)} |
+| **External Connections** | {obs_data.get("external_connections", 0)} |
+| **Active Processes** | {obs_data.get("active_processes", 0)} |
+| **Network Baseline Drift** | {report.baselines.get("network_drift_pct", 0):.1f}% |
+| **Process Baseline Drift** | {report.baselines.get("process_drift_pct", 0):.1f}% |
+| **Assessment Cycle** | #{report.cycle} |
+
+---
+
+## 6. Recommendations
+
+{rec_lines}
+
+---
+
+## 7. Report Metadata
+
+| Field | Value |
+|---|---|
+| **Report ID** | `IR-{date_tag}-{report.report_id}` |
+| **Generated At** | {report.generated_at} |
+| **Agent** | `{report.agent_id or "—"}` |
+| **Platform** | {platform.system()} {platform.release()} ({platform.machine()}) |
+"""
+        return md
+
+    def _save_incident_report(self, md: str, report_id: str) -> Path | None:
+        """Write the Markdown incident report to disk."""
+        try:
+            ir_dir = self._data_dir / "incident_reports"
+            ir_dir.mkdir(parents=True, exist_ok=True)
+            now_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+            path = ir_dir / f"INCIDENT_REPORT_{now_tag}_{report_id}.md"
+            path.write_text(md)
+            logger.info("[INCIDENT] Report written to %s", path)
+            return path
+        except OSError as e:
+            logger.warning("Failed to save incident report: %s", e)
+            return None
+
     def _log_step(self, phase: str, thought: str, detail: Any = None) -> None:
         step = ReActStep(phase=phase, thought=thought, detail=detail)
         self._react_log.append(step)
@@ -1334,7 +1532,12 @@ class ProbeReActAgent:
         has_threats = bool(strategy.get("threats"))
         if has_threats or cycle % 50 == 0:
             report = self._generate_threat_report(obs, strategy, self._actions_taken[-20:], cycle)
-            self._threat_reports.append(report.to_dict())
+            report_dict = report.to_dict()
+            # Generate full Markdown incident report (always on threats, every 50 on clean)
+            md = self._generate_incident_report_md(report, obs)
+            report_dict["incident_report_md"] = md
+            self._save_incident_report(md, report.report_id)
+            self._threat_reports.append(report_dict)
             self._threat_reports = self._threat_reports[-100:]
             self._save_threat_reports()
             if has_threats:
