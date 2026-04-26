@@ -95,6 +95,14 @@ class FleetStore:
                 hist.append(t)
             # Keep last 200
             agents[agent_id]["threat_history"] = hist[-200:]
+        # Store detailed threat reports sent by the agent
+        for rpt in report.get("threat_reports", []):
+            rpt_store = agents[agent_id].setdefault("threat_reports", [])
+            # Deduplicate by report_id
+            existing_ids = {r.get("report_id") for r in rpt_store}
+            if rpt.get("report_id") not in existing_ids:
+                rpt_store.append(rpt)
+            agents[agent_id]["threat_reports"] = rpt_store[-50:]
         # Track sentinel data (stay-behind bot intelligence)
         sentinel = report.get("sentinel", {})
         if sentinel:
@@ -205,6 +213,24 @@ class FleetStore:
         if agent:
             return agent.get("threat_history", [])
         return []
+
+    def get_agent_threat_reports(self, agent_id: str) -> list[dict]:
+        """Return all detailed threat assessment reports for an agent."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if not agent:
+            return []
+        return agent.get("threat_reports", [])
+
+    def get_all_threat_reports(self) -> list[dict]:
+        """Aggregate threat reports across all agents, newest first."""
+        all_reports = []
+        for aid, agent in self._data.get("agents", {}).items():
+            for r in agent.get("threat_reports", []):
+                r_copy = dict(r)
+                r_copy.setdefault("agent_id", aid)
+                all_reports.append(r_copy)
+        all_reports.sort(key=lambda r: r.get("generated_at", ""), reverse=True)
+        return all_reports[:200]
 
     def get_agent_sentinel(self, agent_id: str) -> dict | None:
         """Return sentinel bot intelligence for an agent."""

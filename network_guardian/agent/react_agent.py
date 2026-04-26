@@ -86,6 +86,125 @@ class ThreatEvent:
 
 
 @dataclass
+class ThreatReport:
+    """Detailed auto-generated report for a single threat assessment cycle."""
+    report_id: str
+    generated_at: str
+    agent_id: str
+    host: str
+    cycle: int
+    risk_level: str
+    threat_score: float
+    threats: list[dict]
+    actions_taken: list[dict]
+    observations: dict         # key stats from observe phase
+    baselines: dict            # drift values
+    narrative: str             # Plain-English explanation of what happened
+    recommendations: list[str] # Prioritised fix list
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# ---------------------------------------------------------------------------
+# Threat report narrative templates
+# ---------------------------------------------------------------------------
+
+_THREAT_EXPLANATIONS: dict[str, dict[str, str]] = {
+    "arp_spoof": {
+        "what": (
+            "ARP (Address Resolution Protocol) spoofing is a man-in-the-middle attack where "
+            "an attacker sends forged ARP messages on the local network. This maps the attacker's "
+            "MAC address to a legitimate IP address (typically the default gateway), causing all "
+            "traffic destined for that IP to be intercepted by the attacker instead."
+        ),
+        "impact": (
+            "If successful, the attacker can read, modify, or drop all traffic on the network "
+            "segment — including unencrypted passwords, session tokens, and sensitive data. "
+            "This is one of the most dangerous local-network attacks."
+        ),
+        "why_triggered": "The MAC address recorded for a known IP changed between scan cycles.",
+        "cvss_base": "8.1 (High)",
+        "mitre": "T1557.002 — ARP Cache Poisoning",
+    },
+    "rogue_process": {
+        "what": (
+            "A process was detected whose name matches a known offensive security or hacking tool. "
+            "These tools are designed for network scanning, credential harvesting, traffic interception, "
+            "or remote code execution."
+        ),
+        "impact": (
+            "The presence of offensive tooling may indicate an active attacker, a red-team exercise "
+            "not coordinated with the security team, or malware that includes embedded hacking modules."
+        ),
+        "why_triggered": "Process name matched a known offensive tool signature list.",
+        "cvss_base": "7.5 (High)",
+        "mitre": "T1059 — Command and Scripting Interpreter / T1106 — Native API",
+    },
+    "port_scan": {
+        "what": (
+            "A port was found listening on the host that is commonly associated with backdoors, "
+            "command-and-control (C2) frameworks, or reverse shells. Legitimate applications "
+            "rarely use these port numbers."
+        ),
+        "impact": (
+            "An open backdoor port allows an attacker to maintain persistent access to the system "
+            "or receive instructions from a remote command server, even after initial malware removal."
+        ),
+        "why_triggered": "Listening port number matched known backdoor/C2 port signature.",
+        "cvss_base": "6.5 (Medium–High)",
+        "mitre": "T1571 — Non-Standard Port / T1090 — Proxy",
+    },
+    "data_exfil": {
+        "what": (
+            "An unusually high number of simultaneous outbound network connections was detected. "
+            "This pattern is consistent with data exfiltration — where malware or an attacker "
+            "copies large volumes of data to remote servers by fanning out across many connections."
+        ),
+        "impact": (
+            "Sensitive files, credentials, or intellectual property may be leaving the network. "
+            "Multiple simultaneous connections are used to maximise transfer speed and evade "
+            "per-connection bandwidth alerts."
+        ),
+        "why_triggered": "Active external TCP connections exceeded the threshold of 50 simultaneous sessions.",
+        "cvss_base": "7.2 (High)",
+        "mitre": "T1041 — Exfiltration Over C2 Channel",
+    },
+    "anomaly": {
+        "what": (
+            "A significant deviation from the learned baseline was detected. This could represent "
+            "a misconfigured service, a resource-hungry process (such as a cryptominer), or an "
+            "indicator of compromise where malware is consuming system resources."
+        ),
+        "impact": (
+            "Sustained CPU or memory anomalies can degrade system performance and may indicate "
+            "cryptomining malware, a denial-of-service attempt, or a runaway compromised process."
+        ),
+        "why_triggered": "Resource usage or network behaviour deviated significantly from the established baseline.",
+        "cvss_base": "5.3 (Medium)",
+        "mitre": "T1496 — Resource Hijacking",
+    },
+}
+
+_ACTION_EXPLANATIONS: dict[str, str] = {
+    "alert_and_log":       "Flagged the process for operator review and logged it to the threat history. "
+                           "No automated process termination was performed — requires manual investigation.",
+    "alert_arp_spoof":     "Immediately alerted the base station with CRITICAL priority. The MAC-to-IP "
+                           "mapping was logged for forensic analysis. Network traffic should be treated "
+                           "as compromised until the spoofing source is identified and removed.",
+    "flag_suspicious_port":"Logged the suspicious listening port and notified the base station. "
+                           "The port binding and associated process have been recorded for investigation.",
+    "alert_data_exfil":    "Reported the high outbound connection count to base with HIGH priority. "
+                           "Detailed connection metadata has been preserved for forensic review.",
+    "alert_dns_change":    "Sent a CRITICAL alert to base — DNS server changes can redirect all "
+                           "web traffic through an attacker-controlled resolver, enabling phishing "
+                           "and credential harvesting at scale.",
+    "increase_monitoring": "Monitoring frequency increased — the agent will report more frequently "
+                           "to give operators real-time visibility during the elevated threat period.",
+}
+
+
+@dataclass
 class DiagnosticReport:
     """Full diagnostic intelligence package sent to base."""
     agent_id: str
@@ -199,6 +318,10 @@ class ProbeReActAgent:
         self._threat_history_path = self._data_dir / "threat_history.json"
         self._threat_history: list[dict] = self._load_threat_history()
 
+        # Detailed threat reports
+        self._reports_path = self._data_dir / "threat_reports.json"
+        self._threat_reports: list[dict] = self._load_threat_reports()
+
     # -- Persistence ---------------------------------------------------
 
     def _load_baselines(self) -> dict[str, Any]:
@@ -234,6 +357,23 @@ class ProbeReActAgent:
             )
         except OSError as e:
             logger.warning("Failed to save threat history: %s", e)
+
+    def _load_threat_reports(self) -> list[dict]:
+        if self._reports_path.exists():
+            try:
+                data = json.loads(self._reports_path.read_text())
+                return data[-100:]
+            except (json.JSONDecodeError, OSError):
+                pass
+        return []
+
+    def _save_threat_reports(self) -> None:
+        try:
+            self._reports_path.write_text(
+                json.dumps(self._threat_reports[-100:], indent=2)
+            )
+        except OSError as e:
+            logger.warning("Failed to save threat reports: %s", e)
 
     def _log_step(self, phase: str, thought: str, detail: Any = None) -> None:
         step = ReActStep(phase=phase, thought=thought, detail=detail)
@@ -951,6 +1091,180 @@ class ProbeReActAgent:
             logger.error("Action failed (%s): %s", act_type, e)
             return False
 
+    # -- GENERATE REPORT -----------------------------------------------
+
+    def _generate_threat_report(
+        self,
+        obs: dict[str, Any],
+        strategy: dict[str, Any],
+        actions: list[dict],
+        cycle: int,
+    ) -> ThreatReport:
+        """Auto-generate a detailed threat assessment report for this cycle."""
+        import uuid, socket as _socket
+
+        threats = strategy.get("threats", [])
+        risk = strategy.get("risk_level", "low")
+        score = strategy.get("threat_score", 0.0)
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Build per-threat detail blocks
+        threat_dicts: list[dict] = []
+        for t in threats:
+            cat = t.category if isinstance(t, ThreatEvent) else t.get("category", "anomaly")
+            sev = t.severity if isinstance(t, ThreatEvent) else t.get("severity", "medium")
+            title = t.title if isinstance(t, ThreatEvent) else t.get("title", "")
+            detail = t.detail if isinstance(t, ThreatEvent) else t.get("detail", "")
+            action = t.action_taken if isinstance(t, ThreatEvent) else t.get("action_taken", "")
+            resolved = t.resolved if isinstance(t, ThreatEvent) else t.get("resolved", False)
+            ts = t.timestamp if isinstance(t, ThreatEvent) else t.get("timestamp", now)
+            src = t.source_ip if isinstance(t, ThreatEvent) else t.get("source_ip", "")
+
+            info = _THREAT_EXPLANATIONS.get(cat, _THREAT_EXPLANATIONS["anomaly"])
+            threat_dicts.append({
+                "timestamp": ts,
+                "severity": sev,
+                "category": cat,
+                "title": title,
+                "technical_detail": detail,
+                "source_ip": src,
+                "what_it_is": info["what"],
+                "potential_impact": info["impact"],
+                "why_triggered": info["why_triggered"],
+                "cvss_base_score": info["cvss_base"],
+                "mitre_att_ck": info["mitre"],
+                "action_taken": action,
+                "action_explanation": _ACTION_EXPLANATIONS.get(action, "No automated action available for this threat type."),
+                "resolved": resolved,
+            })
+
+        # Build actions block
+        action_dicts: list[dict] = []
+        for a in actions:
+            atype = a.get("action", "")
+            action_dicts.append({
+                "action": atype,
+                "target": a.get("target", ""),
+                "detail": a.get("detail", ""),
+                "success": a.get("success", False),
+                "explanation": _ACTION_EXPLANATIONS.get(atype, a.get("detail", "")),
+            })
+
+        # Observations snapshot
+        observations = {
+            "connections": obs.get("connection_count", 0),
+            "listening_ports": obs.get("listener_count", 0),
+            "external_connections": obs.get("external_count", 0),
+            "active_processes": obs.get("process_count", 0),
+            "arp_entries": obs.get("arp_entry_count", 0),
+            "gateway": obs.get("gateway", ""),
+            "local_ip": obs.get("local_ip", ""),
+            "dns_servers": obs.get("dns_servers", []),
+        }
+
+        baseline_info = {
+            "network_drift_pct": round(strategy.get("network_drift", 0), 1),
+            "process_drift_pct": round(strategy.get("process_drift", 0), 1),
+            "avg_connections_baseline": self._baselines.get("avg_connections", 0),
+            "avg_external_baseline": self._baselines.get("avg_external", 0),
+            "cycle_count": cycle,
+        }
+
+        narrative = self._build_narrative(risk, score, threats, actions, obs, strategy)
+
+        report = ThreatReport(
+            report_id=str(uuid.uuid4())[:8].upper(),
+            generated_at=now,
+            agent_id=self._agent_id,
+            host=obs.get("local_ip", "unknown"),
+            cycle=cycle,
+            risk_level=risk,
+            threat_score=round(score, 1),
+            threats=threat_dicts,
+            actions_taken=action_dicts,
+            observations=observations,
+            baselines=baseline_info,
+            narrative=narrative,
+            recommendations=strategy.get("recommendations", []),
+        )
+        return report
+
+    def _build_narrative(
+        self,
+        risk: str,
+        score: float,
+        threats: list,
+        actions: list[dict],
+        obs: dict,
+        strategy: dict,
+    ) -> str:
+        """Build a plain-English narrative summary of the assessment cycle."""
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        host = obs.get("local_ip", "unknown host")
+        cycle = self._baselines.get("cycle_count", 0)
+
+        if not threats:
+            return (
+                f"Assessment cycle #{cycle} completed at {now_str} on {host}. "
+                f"No threats detected. The environment is operating within normal baselines. "
+                f"Threat score: 0/100 (low risk)."
+            )
+
+        sev_counts: dict[str, int] = {}
+        for t in threats:
+            sev = t.severity if isinstance(t, ThreatEvent) else t.get("severity", "medium")
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
+
+        sev_summary = ", ".join(f"{v} {k}" for k, v in sorted(
+            sev_counts.items(), key=lambda x: ["critical","high","medium","low","info"].index(x[0])
+            if x[0] in ["critical","high","medium","low","info"] else 99
+        ))
+
+        cats = list({(t.category if isinstance(t, ThreatEvent) else t.get("category","")) for t in threats})
+        cat_names = {
+            "arp_spoof": "ARP spoofing / man-in-the-middle",
+            "rogue_process": "suspicious process activity",
+            "port_scan": "suspicious listening ports",
+            "data_exfil": "potential data exfiltration",
+            "anomaly": "system anomalies",
+        }
+        cat_summary = " and ".join(cat_names.get(c, c) for c in cats)
+
+        action_count = len([a for a in actions if a.get("success")])
+        action_str = (
+            f"{action_count} automated protective action(s) were executed."
+            if action_count else
+            "No automated blocking actions were available for these threat types — manual investigation is required."
+        )
+
+        net_drift = strategy.get("network_drift", 0)
+        drift_str = ""
+        if net_drift > 20:
+            drift_str = (
+                f" Network behaviour deviated {net_drift:.0f}% from the established baseline, "
+                f"suggesting the host environment has changed since the last clean state."
+            )
+
+        critical_titles = [
+            (t.title if isinstance(t, ThreatEvent) else t.get("title", ""))
+            for t in threats
+            if (t.severity if isinstance(t, ThreatEvent) else t.get("severity")) in ("critical", "high")
+        ]
+        critical_str = ""
+        if critical_titles:
+            critical_str = (
+                f" The highest-priority finding(s) requiring immediate attention: "
+                + "; ".join(f'"{x}"' for x in critical_titles[:3]) + "."
+            )
+
+        return (
+            f"Threat assessment cycle #{cycle} completed at {now_str} on agent {self._agent_id} ({host}). "
+            f"Overall risk level: {risk.upper()} — threat score {score:.0f}/100. "
+            f"{len(threats)} threat(s) were identified ({sev_summary}), spanning {cat_summary}.{critical_str} "
+            f"{action_str}{drift_str} "
+            f"Full technical details and remediation steps are documented in the threat entries below."
+        )
+
     # -- LEARN ---------------------------------------------------------
 
     def learn(self, obs: dict[str, Any], strategy: dict[str, Any]) -> None:
@@ -1013,6 +1327,22 @@ class ProbeReActAgent:
                 "resolved": t.resolved,
             })
         self._save_threat_history()
+
+        # Auto-generate a detailed threat report whenever threats exist,
+        # or every 50 cycles for a clean baseline audit trail.
+        cycle = self._baselines.get("cycle_count", 0)
+        has_threats = bool(strategy.get("threats"))
+        if has_threats or cycle % 50 == 0:
+            report = self._generate_threat_report(obs, strategy, self._actions_taken[-20:], cycle)
+            self._threat_reports.append(report.to_dict())
+            self._threat_reports = self._threat_reports[-100:]
+            self._save_threat_reports()
+            if has_threats:
+                logger.info(
+                    "[REPORT] Assessment report %s generated — %d threat(s) | risk: %s | score: %.0f/100",
+                    report.report_id, len(strategy["threats"]),
+                    report.risk_level, report.threat_score,
+                )
 
         self._log_step("learn",
                         f"Baselines updated (cycle #{self._baselines.get('cycle_count', 0)}), "
@@ -1107,6 +1437,11 @@ class ProbeReActAgent:
     @property
     def threat_history_count(self) -> int:
         return len(self._threat_history)
+
+    @property
+    def latest_threat_reports(self) -> list[dict]:
+        """Return the last 20 detailed threat reports."""
+        return self._threat_reports[-20:]
 
     @property
     def latest_threats(self) -> list[dict]:

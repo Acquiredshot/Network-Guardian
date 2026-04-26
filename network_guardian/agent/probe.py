@@ -674,6 +674,7 @@ class AgentReport:
     open_ports_by_host: dict = field(default_factory=dict)
     diagnostics: dict = field(default_factory=dict)  # ReAct diagnostic intelligence
     threat_alerts: list[dict] = field(default_factory=list)  # Threats discovered by local analysis
+    threat_reports: list[dict] = field(default_factory=list)  # Detailed auto-generated reports
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -857,10 +858,12 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
 
     # Run ReAct diagnostic cycle
     diagnostics = {}
+    threat_reports: list[dict] = []
     try:
         react = _get_react_agent()
         diag = react.run_cycle(agent_id=identity.agent_id)
         diagnostics = diag.to_dict()
+        threat_reports = react.latest_threat_reports
         logger.info("ReAct cycle complete — threat score: %.0f/100 (%s)",
                      diag.threat_score, diag.risk_level)
     except Exception as e:
@@ -879,6 +882,7 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
         open_ports_by_host=port_map,
         diagnostics=diagnostics,
         threat_alerts=threat_alerts,
+        threat_reports=threat_reports,
     )
 
 
