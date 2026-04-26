@@ -445,6 +445,16 @@ class Dashboard:
 
     def _api_hosts(self) -> str:
         hosts = self.engine.explorer.hosts if self.engine._explorer else {}
+        if not hosts:
+            # Fall back to aggregated fleet agent discovery data
+            merged: dict[str, dict] = {}
+            for aid, agent in self._fleet._data.get("agents", {}).items():
+                report = agent.get("last_report") or {}
+                for h in report.get("discovered_hosts", []):
+                    ip = h.get("ip", "")
+                    if ip and ip not in merged:
+                        merged[ip] = h
+            return self._json_response(merged)
         return self._json_response({ip: _serialise(h) for ip, h in hosts.items()})
 
     def _api_tasks(self) -> str:
@@ -542,12 +552,26 @@ class Dashboard:
 
     # -- WiFi API endpoints -----------------------------------------------
 
+    def _fleet_wifi_networks(self) -> list[dict]:
+        """Aggregate WiFi networks from all fleet agent reports."""
+        seen: dict[str, dict] = {}
+        for aid, agent in self._fleet._data.get("agents", {}).items():
+            report = agent.get("last_report") or {}
+            for net in report.get("wifi_networks", []):
+                ssid = net.get("ssid") or net.get("SSID") or ""
+                key = ssid or net.get("bssid") or net.get("BSSID") or str(net)
+                if key not in seen:
+                    seen[key] = net
+        return list(seen.values())
+
     def _api_wifi_networks(self) -> str:
         ws = self.engine.wifi_stealth
         scanner = ws._scanner if hasattr(ws, '_scanner') else None
-        if scanner is None:
-            return self._json_response([])
-        nets = getattr(scanner, '_last_scan', None) or []
+        nets = getattr(scanner, '_last_scan', None) if scanner else None
+        if not nets:
+            # Fall back to fleet agent data
+            fleet_nets = self._fleet_wifi_networks()
+            return self._json_response(fleet_nets)
         return self._json_response([n.as_dict if hasattr(n, 'as_dict') else _serialise(n) for n in nets])
 
     def _api_wifi_status(self) -> str:
@@ -562,9 +586,25 @@ class Dashboard:
                     scanner._last_connected = connected
             except Exception:
                 pass
+        # Fall back to most recent fleet agent report for connected network
+        if connected is None:
+            for aid, agent in self._fleet._data.get("agents", {}).items():
+                report = agent.get("last_report") or {}
+                nets = report.get("wifi_networks", [])
+                for net in nets:
+                    if net.get("connected") or net.get("is_connected"):
+                        connected = net
+                        break
+                if connected:
+                    break
+        fleet_nets = self._fleet_wifi_networks()
+        scans_total = sum(
+            a.get("report_count", 0)
+            for a in self._fleet._data.get("agents", {}).values()
+        ) if not getattr(ws, '_stats_scans', 0) else getattr(ws, '_stats_scans', 0)
         return self._json_response({
-            "scans": getattr(ws, '_stats_scans', 0),
-            "connected": connected.as_dict if connected and hasattr(connected, 'as_dict') else None,
+            "scans": scans_total,
+            "connected": connected.as_dict if connected and hasattr(connected, 'as_dict') else (connected if isinstance(connected, dict) else None),
             "stealth_active": getattr(ws, '_stealth_active', False),
             "home_ssid": getattr(ws, '_home_ssid', None),
         })
@@ -612,10 +652,22 @@ class Dashboard:
 
     def _api_explorer_topology(self) -> str:
         explorer = self.engine._explorer
-        if explorer is None:
-            return self._json_response({})
-        topo = getattr(explorer, '_topology', None) or {}
-        return self._json_response({k: list(v) if isinstance(v, (set, frozenset)) else v for k, v in topo.items()})
+        if explorer is not None:
+            topo = getattr(explorer, '_topology', None) or {}
+            if topo:
+                return self._json_response({k: list(v) if isinstance(v, (set, frozenset)) else v for k, v in topo.items()})
+        # Build topology from fleet agent reports (gateway → hosts)
+        topo: dict[str, list[str]] = {}
+        for aid, agent in self._fleet._data.get("agents", {}).items():
+            report = agent.get("last_report") or {}
+            gateway = report.get("gateway", "")
+            hosts = [h.get("ip", "") for h in report.get("discovered_hosts", []) if h.get("ip")]
+            if gateway and hosts:
+                bucket = topo.setdefault(gateway, [])
+                for ip in hosts:
+                    if ip not in bucket:
+                        bucket.append(ip)
+        return self._json_response(topo)
 
     # -- AI / Monitor API endpoints ---------------------------------------
 
