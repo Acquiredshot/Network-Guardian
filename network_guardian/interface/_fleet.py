@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import secrets
 import time
 from pathlib import Path
@@ -39,7 +40,13 @@ class FleetStore:
             except (json.JSONDecodeError, OSError) as e:
                 logger.error("Failed to load fleet file: %s", e)
                 self._data = {"agents": {}, "fleet_key": ""}
-        if not self._data.get("fleet_key"):
+        # Always honour a pinned key from the environment (survives Heroku restarts)
+        env_key = os.environ.get("FLEET_KEY", "").strip()
+        if env_key and self._data.get("fleet_key") != env_key:
+            self._data["fleet_key"] = env_key
+            self._save()
+        elif not self._data.get("fleet_key"):
+            # No env var — generate and persist one
             self._data["fleet_key"] = secrets.token_urlsafe(32)
             self._save()
 
