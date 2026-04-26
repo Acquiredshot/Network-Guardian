@@ -2,7 +2,7 @@
 
 > **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, fleet agents with covert comms, automatic incident reporting, remote control via phone, and a live web dashboard. Pure Python 3.11, zero heavy ML deps.
 
-**Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (login: `admin` / `<password>`)
+**Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (credentials provided separately)
 
 ---
 
