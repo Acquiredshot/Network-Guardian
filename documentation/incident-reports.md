@@ -25,7 +25,7 @@ Defined in `network_guardian/agent/react_agent.py` as a `@dataclass`.
 |---|---|---|
 | `report_id` | `str` | UUID — unique identifier for this report |
 | `generated_at` | `str` | ISO 8601 UTC timestamp |
-| `agent_id` | `str` | Probe identity (e.g. `NG-608852BB`) |
+| `agent_id` | `str` | Probe identity (e.g. `NG-XXXXXXXX`) |
 | `host` | `str` | Hostname of the agent machine |
 | `cycle` | `int` | ReAct cycle number since agent start |
 | `risk_level` | `str` | `critical`, `high`, `medium`, `low`, `clean` |

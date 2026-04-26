@@ -26,6 +26,10 @@ from __future__ import annotations
 
 # ---------------------------------------------------------------------------
 # BASE STATION CONFIG — pre-configured, do not change
+# SECURITY: This file contains a pre-shared fleet key. Treat it like a
+# password. Do NOT post it publicly, commit it to a public repo, or share
+# it outside of the Wolfpak. If the key is compromised, regenerate it on
+# the dashboard Fleet page and redistribute a new copy of this file.
 # ---------------------------------------------------------------------------
 _BASE_URL  = "https://network-guardian-cc8900c70290.herokuapp.com"
 _FLEET_KEY = "eNygMdjbr5om9cSL1T5on4s4A1srY7Dg2ro-SpKdzYc"

@@ -13,7 +13,7 @@ Authenticate with Wolfpak credentials and receive a session cookie.
 
 **Request:**
 ```json
-{ "username": "admin", "password": "<password>" }
+{ "username": "your-username", "password": "your-password" }
 ```
 
 **Response:**

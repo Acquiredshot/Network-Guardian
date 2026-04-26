@@ -129,10 +129,12 @@ export TWILIO_ACCOUNT_SID=ACxxxxxxxxx
 
 ```bash
 python -m network_guardian.agent.probe \
-  --base https://network-guardian-cc8900c70290.herokuapp.com \
-  --key eNygMdjbr5om9cSL1T5on4s4A1srY7Dg2ro-SpKdzYc \
+  --base https://YOUR-HEROKU-APP.herokuapp.com \
+  --key YOUR_FLEET_KEY \
   --stealth
 ```
+
+> Get `YOUR_FLEET_KEY` from the dashboard Fleet page → "Copy Fleet Key" (admin login required).
 
 The fleet key is permanent via the `FLEET_KEY` Heroku config var — it survives dyno restarts.
 

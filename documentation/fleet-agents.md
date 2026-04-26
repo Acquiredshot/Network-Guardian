@@ -24,22 +24,21 @@ Runs a full ReAct (Observe → Reason → Act → Learn) security scan on the ho
 ```bash
 # Basic
 python -m network_guardian.agent.probe \
-  --base https://network-guardian-cc8900c70290.herokuapp.com \
-  --key eNygMdjbr5om9cSL1T5on4s4A1srY7Dg2ro-SpKdzYc
+  --base https://YOUR-DASHBOARD-URL \
+  --key YOUR_FLEET_KEY
 
 # With covert comms (recommended)
 python -m network_guardian.agent.probe \
-  --base https://YOUR-DASHBOARD \
+  --base https://YOUR-DASHBOARD-URL \
   --key YOUR_FLEET_KEY \
   --tor \
   --stealth
 
-# With explicit credentials
+# With explicit credentials (not recommended — prefer interactive prompt)
 python -m network_guardian.agent.probe \
-  --base https://YOUR-DASHBOARD \
+  --base https://YOUR-DASHBOARD-URL \
   --key YOUR_FLEET_KEY \
-  --username admin \
-  --password <password>
+  --username YOUR_USERNAME
 ```
 
 ### CLI Arguments
@@ -60,12 +59,12 @@ Each probe generates a persistent identity on first run:
 
 ```json
 {
-  "agent_id": "NG-608852BB",
-  "hostname": "Cortezs-MacBook-Air.local",
+  "agent_id": "NG-XXXXXXXX",
+  "hostname": "your-hostname.local",
   "platform_os": "Darwin",
   "arch": "arm64",
   "python_ver": "3.11.x",
-  "mac_addr": "aa:bb:cc:dd:ee:ff"
+  "mac_addr": "<redacted>"
 }
 ```
 
@@ -86,8 +85,8 @@ Each probe cycle transmits:
 
 ```json
 {
-  "agent_id": "NG-608852BB",
-  "hostname": "Cortezs-MacBook-Air.local",
+  "agent_id": "NG-XXXXXXXX",
+  "hostname": "your-hostname.local",
   "timestamp": "2026-04-26T12:00:00Z",
   "platform": "darwin",
   "arch": "arm64",
@@ -312,7 +311,7 @@ The dashboard stores all agent data in `~/.network_guardian/fleet.json` via `Fle
 ```json
 {
   "agents": {
-    "NG-608852BB": {
+    "NG-XXXXXXXX": {
       "last_report": { ... },
       "last_seen": 1714132800,
       "report_count": 42,
