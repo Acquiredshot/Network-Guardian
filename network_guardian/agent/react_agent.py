@@ -560,18 +560,38 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
         return md
 
     def _save_incident_report(self, md: str, report_id: str) -> Path | None:
-        """Write the Markdown incident report to disk."""
+        """Write the Markdown incident report to disk.
+
+        Saves to two locations:
+        1. ~/.ng_agent/incident_reports/  (agent data dir)
+        2. ./incident_reports/            (project folder, next to codebase)
+        """
+        saved = None
+        now_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+        filename = f"INCIDENT_REPORT_{now_tag}_{report_id}.md"
+
+        # 1 — agent data dir
         try:
             ir_dir = self._data_dir / "incident_reports"
             ir_dir.mkdir(parents=True, exist_ok=True)
-            now_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-            path = ir_dir / f"INCIDENT_REPORT_{now_tag}_{report_id}.md"
+            path = ir_dir / filename
             path.write_text(md)
+            saved = path
             logger.info("[INCIDENT] Report written to %s", path)
-            return path
         except OSError as e:
-            logger.warning("Failed to save incident report: %s", e)
-            return None
+            logger.warning("Failed to save incident report to data dir: %s", e)
+
+        # 2 — project incident_reports/ folder (cwd-relative)
+        try:
+            proj_dir = Path("incident_reports")
+            proj_dir.mkdir(parents=True, exist_ok=True)
+            proj_path = proj_dir / filename
+            proj_path.write_text(md)
+            logger.info("[INCIDENT] Report also written to %s", proj_path)
+        except OSError as e:
+            logger.warning("Failed to save incident report to project dir: %s", e)
+
+        return saved
 
     def _log_step(self, phase: str, thought: str, detail: Any = None) -> None:
         step = ReActStep(phase=phase, thought=thought, detail=detail)

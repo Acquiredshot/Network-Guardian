@@ -34,3 +34,5 @@ Thumbs.db
 
 # Local incident reports (sensitive)
 INCIDENT_REPORT_*.md
+incident_reports/*.md
+!incident_reports/INCIDENT_REPORT_2026-04-13.md
