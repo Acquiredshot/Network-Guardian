@@ -362,7 +362,7 @@ class Dashboard:
 
             # Route to handler
             if path == "/api/auth/login":
-                response = await self._auth_login(body, client_ip)
+                response = await self._auth_login(body, client_ip, headers)
             elif path == "/api/auth/change-password":
                 response = await self._auth_change_password(body, client_ip)
             elif path.startswith("/api/team/"):
@@ -375,6 +375,15 @@ class Dashboard:
                 response = self._fleet_register(body, headers)
             elif path == "/api/fleet/auth":
                 response = self._fleet_auth(body, headers)
+            elif path == "/api/fleet/key":
+                # Fleet key is sensitive — admin role required
+                _session = self._check_auth(headers, return_data=True)
+                _user = ((_session or {}).get("username", ""))
+                _member = self._team.members.get(_user) if _user else None
+                if not _member or _member.get("role") != "admin":
+                    response = self._http_response(403, _CONTENT_TEXT, "Admin access required")
+                else:
+                    response = self._route(path)
             elif path == "/api/ai/live":
                 # SSE — takes over the connection; returns without writing a response
                 await self._sse_ai_live(writer)
@@ -1380,7 +1389,7 @@ class Dashboard:
             ),
         )
 
-    async def _auth_login(self, body: bytes, client_ip: str) -> str:
+    async def _auth_login(self, body: bytes, client_ip: str, headers: dict[str, str] | None = None) -> str:
         """Authenticate team member and issue a session cookie."""
         import time as _time
         now = _time.monotonic()
@@ -1420,7 +1429,9 @@ class Dashboard:
         # Success — create session
         self._login_attempts.pop(client_ip, None)
         session_token = create_session_token(username, self._api_key, self._csp_nonce)
-        cookie = f"Set-Cookie: ng_session={session_token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600\r\n"
+        # Add Secure flag when served over HTTPS (Heroku sets X-Forwarded-Proto)
+        _secure_flag = "; Secure" if (headers or {}).get("x-forwarded-proto") == "https" else ""
+        cookie = f"Set-Cookie: ng_session={session_token}; HttpOnly{_secure_flag}; SameSite=Strict; Path=/; Max-Age=3600\r\n"
 
         # Warn if password expiring within 7 days
         days_left = self._team.days_until_expiry(username)

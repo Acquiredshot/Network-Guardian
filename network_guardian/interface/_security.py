@@ -45,6 +45,21 @@ def _verify_password(password: str, stored_hash: str, salt: str) -> bool:
     return hmac.compare_digest(h.hex(), stored_hash)
 
 
+_SPECIAL_CHARS = set("!@#$%^&*()_+-=[]{}|;':,./<>?")
+
+
+def _validate_password_complexity(password: str) -> None:
+    """Enforce minimum complexity: length, uppercase, digit, special char."""
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one number")
+    if not any(c in _SPECIAL_CHARS for c in password):
+        raise ValueError("Password must contain at least one special character (!@#$%^&* etc.)")
+
+
 # ---------------------------------------------------------------------------
 # Team store — JSON file in data_dir
 # ---------------------------------------------------------------------------
@@ -173,8 +188,7 @@ class TeamStore:
         member = self._data.get("members", {}).get(username)
         if not member:
             return False
-        if len(new_password) < 8:
-            raise ValueError("Password must be at least 8 characters")
+        _validate_password_complexity(new_password)
         pw_hash, salt = _hash_password(new_password)
         member["password_hash"] = pw_hash
         member["salt"] = salt
