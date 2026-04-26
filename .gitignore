@@ -32,6 +32,13 @@ Thumbs.db
 # Environment files with secrets
 .env
 
+# Standalone probe — contains live fleet key, distribute directly to team members only
+# NEVER push to a public repo
+ng_probe_standalone.py
+
+# Member setup files — contain usernames/role info, keep off GitHub
+PROBE_SETUP_*.md
+
 # Local incident reports (sensitive)
 INCIDENT_REPORT_*.md
 incident_reports/*.md

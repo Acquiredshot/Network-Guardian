@@ -185,7 +185,7 @@ The following vulnerabilities were found on other hosts during the secondary swe
 | Agent ID | Name | IP | Platform | Role |
 |---|---|---|---|---|
 | `NG-TEST0001` | probe-alpha | `10.0.0.12` | — | Primary probe — detected, flagged, and isolated threat |
-| `NG-608852BB` | MacBookAir.lan | — | Darwin 25.4.0 (arm64) | Secondary sensor — contributed to anomaly correlation |
+| `NG-XXXXXXXX` | MacBookAir.lan | — | Darwin 25.4.0 (arm64) | Secondary sensor — contributed to anomaly correlation |
 
 ---
 

@@ -73,7 +73,7 @@ Add a new team member.
 
 **Request:**
 ```json
-{ "username": "C.Curry", "password": "P@kTerr1tory", "role": "operator" }
+{ "username": "new-member", "password": "<strong-password>", "role": "operator" }
 ```
 
 **Roles:** `admin`, `operator`, `viewer`
