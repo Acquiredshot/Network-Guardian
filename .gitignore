@@ -36,6 +36,9 @@ Thumbs.db
 # NEVER push to a public repo
 ng_probe_standalone.py
 
+# Documentation — company internal knowledge only, never push to GitHub
+documentation/
+
 # Member setup files — contain usernames/role info, keep off GitHub
 PROBE_SETUP_*.md
 
