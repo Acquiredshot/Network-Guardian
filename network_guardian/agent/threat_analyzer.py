@@ -6,15 +6,23 @@ Generates threat events based on:
   - Open services on discovered hosts
   - Suspicious port activity
   - Network reconnaissance exposure
+  - Rogue AP / evil-twin detection
+  - Deauth / signal anomalies
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("ng-probe.threat-analyzer")
+
+# Persistent SSID→BSSID memory so we can detect BSSID changes (evil-twin)
+_KNOWN_BSSID_CACHE = Path.home() / ".ng_agent" / "known_bssids.json"
 
 
 @dataclass
@@ -91,36 +99,103 @@ class ProbeThrottleAnalyzer:
         self._alert_counter += 1
         return f"PROBE-{self._alert_counter:06d}"
 
+    def _load_bssid_cache(self) -> dict[str, list[str]]:
+        """Load known SSID→BSSID mappings from disk."""
+        if _KNOWN_BSSID_CACHE.exists():
+            try:
+                return json.loads(_KNOWN_BSSID_CACHE.read_text())
+            except Exception:
+                pass
+        return {}
+
+    def _save_bssid_cache(self, cache: dict[str, list[str]]) -> None:
+        """Persist SSID→BSSID mappings."""
+        try:
+            _KNOWN_BSSID_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _KNOWN_BSSID_CACHE.write_text(json.dumps(cache, indent=2))
+        except Exception:
+            pass
+
     def analyze_wifi_networks(self, networks: list[dict[str, Any]]) -> list[ThreatAlert]:
         """Analyze WiFi networks for security issues."""
         self.alerts.clear()
 
         unencrypted = []
         weak_security = []
+        evil_twins: list[str] = []
+        ssid_bssid_map: dict[str, list[str]] = {}  # ssid → list of unique BSSIDs seen this scan
 
+        # Build per-SSID BSSID map for this scan
+        for net in networks:
+            ssid = net.get("ssid", "")
+            bssid = net.get("bssid", "")
+            if not ssid or ssid == "(hidden)":
+                continue
+            ssid_bssid_map.setdefault(ssid, [])
+            if bssid and bssid not in ssid_bssid_map[ssid]:
+                ssid_bssid_map[ssid].append(bssid)
+
+        # Detect evil-twin / rogue AP: same SSID with a BSSID never seen before
+        known_cache = self._load_bssid_cache()
+        for ssid, bssids in ssid_bssid_map.items():
+            known = known_cache.get(ssid, [])
+            for b in bssids:
+                if known and b not in known:
+                    evil_twins.append(f"{ssid} — new BSSID: {b} (known: {', '.join(known[:3])})")
+            # Merge new BSSIDs into cache
+            for b in bssids:
+                if b not in known:
+                    known.append(b)
+            known_cache[ssid] = known[-20:]  # keep last 20 per SSID
+        self._save_bssid_cache(known_cache)
+
+        # Duplicate SSID alert: same SSID broadcasting from 3+ different BSSIDs
+        for ssid, bssids in ssid_bssid_map.items():
+            if len(bssids) >= 3:
+                evil_twins.append(f"{ssid} broadcasting from {len(bssids)} BSSIDs simultaneously")
+
+        # Security level check
         for net in networks:
             ssid = net.get("ssid", "")
             if not ssid or ssid == "(hidden)":
                 continue
-
             security = net.get("security", "Open")
-
-            # Check for unencrypted networks
             if security == "Open":
                 unencrypted.append(ssid)
-            # Check for deprecated/weak protocols
             elif security in ["WEP", "WPA", "WPA-PSK"]:
                 weak_security.append(f"{ssid} ({security})")
 
         # Generate alerts
+        if evil_twins:
+            alert = ThreatAlert(
+                alert_id=self._generate_alert_id(),
+                threat_type="rogue_ap_evil_twin",
+                severity="critical",
+                description=(
+                    f"Possible rogue AP / evil-twin attack: {len(evil_twins)} "
+                    f"network(s) showing unexpected BSSID(s). "
+                    "Someone may be impersonating a trusted network to intercept your traffic."
+                ),
+                affected_items=evil_twins,
+                remediation=(
+                    "Do NOT connect to these networks. Verify with your network admin. "
+                    "Use a VPN if you must connect to any untrusted WiFi."
+                ),
+            )
+            self.alerts.append(alert)
+            logger.warning("THREAT: Possible rogue AP / evil-twin: %s", evil_twins)
+
         if unencrypted:
             alert = ThreatAlert(
                 alert_id=self._generate_alert_id(),
                 threat_type="unencrypted_network",
                 severity="high",
-                description=f"Detected {len(unencrypted)} open WiFi network(s) without encryption",
+                description=(
+                    f"Detected {len(unencrypted)} open WiFi network(s) with no encryption. "
+                    "All traffic on these networks is visible to anyone nearby."
+                ),
                 affected_items=unencrypted,
-                remediation="Enable WPA2/WPA3 encryption on all WiFi networks",
+                remediation="Never send sensitive data on open networks. Use a VPN when on public WiFi.",
             )
             self.alerts.append(alert)
             logger.warning("THREAT: Unencrypted WiFi networks: %s", unencrypted)
@@ -130,7 +205,7 @@ class ProbeThrottleAnalyzer:
                 alert_id=self._generate_alert_id(),
                 threat_type="weak_wifi_security",
                 severity="medium",
-                description=f"Detected {len(weak_security)} WiFi network(s) with deprecated security",
+                description=f"Detected {len(weak_security)} WiFi network(s) with deprecated security (WEP/WPA)",
                 affected_items=weak_security,
                 remediation="Upgrade all networks to WPA2 or WPA3",
             )

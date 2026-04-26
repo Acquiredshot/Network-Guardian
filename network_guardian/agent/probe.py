@@ -243,6 +243,86 @@ class WiFiNetwork:
     hidden: bool = False
 
 
+def _normalise_security(raw: str) -> str:
+    """Convert macOS internal security key strings to readable names."""
+    if not raw or raw in ("None", "none"):
+        return "Open"
+    r = raw.lower()
+    if "wpa3" in r:
+        return "WPA3"
+    if "wpa2" in r or "rsn" in r:
+        return "WPA2"
+    if "wpa" in r:
+        return "WPA"
+    if "wep" in r:
+        return "WEP"
+    if "open" in r:
+        return "Open"
+    # If it looks like a readable string already, return as-is
+    if raw in ("WPA3", "WPA2", "WPA", "WEP", "Open", "Unknown"):
+        return raw
+    # Last resort — strip macOS prefix
+    cleaned = raw.replace("spairport_security_mode_", "").replace("_", " ").upper()
+    return cleaned if cleaned else "Unknown"
+
+
+def _airport_scan_macos() -> list[dict[str, Any]]:
+    """Fallback: use the legacy airport binary to scan WiFi on macOS."""
+    airport = (
+        "/System/Library/PrivateFrameworks/Apple80211.framework"
+        "/Versions/Current/Resources/airport"
+    )
+    if not Path(airport).exists():
+        return []
+    try:
+        r = subprocess.run([airport, "-s"], capture_output=True, text=True, timeout=15)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    networks: list[dict[str, Any]] = []
+    for line in r.stdout.splitlines()[1:]:  # skip header
+        line = line.strip()
+        if not line:
+            continue
+        # Format: SSID  BSSID  RSSI  CHANNEL  HT  CC  SECURITY
+        parts = line.rsplit(None, 6)
+        if len(parts) < 7:
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            ssid = parts[0]
+            bssid = parts[1] if len(parts) > 1 else ""
+            rssi = int(parts[2]) if len(parts) > 2 and parts[2].lstrip("-").isdigit() else 0
+            channel = int(parts[3].split(",")[0]) if len(parts) > 3 else 0
+            security = " ".join(parts[6:]) if len(parts) > 6 else "Unknown"
+        else:
+            # ssid may have spaces; BSSID is aa:bb:cc:dd:ee:ff pattern
+            import re as _re
+            m = _re.search(r'([0-9a-f]{2}(?::[0-9a-f]{2}){5})', line, _re.I)
+            if not m:
+                continue
+            bssid_pos = m.start()
+            ssid = line[:bssid_pos].strip()
+            tail = line[bssid_pos:].split()
+            bssid = tail[0] if tail else ""
+            rssi = int(tail[1]) if len(tail) > 1 and tail[1].lstrip("-").isdigit() else 0
+            ch_raw = tail[2] if len(tail) > 2 else "0"
+            channel = int(ch_raw.split(",")[0]) if ch_raw.split(",")[0].isdigit() else 0
+            security = " ".join(tail[5:]) if len(tail) > 5 else "Unknown"
+        if not ssid:
+            continue
+        networks.append({
+            "ssid": ssid,
+            "bssid": bssid,
+            "signal": rssi,
+            "channel": channel,
+            "frequency": "5 GHz" if channel > 14 else "2.4 GHz",
+            "security": _normalise_security(security),
+            "hidden": False,
+            "connected": False,
+        })
+    return networks
+
+
 def scan_wifi() -> list[dict[str, Any]]:
     """Scan for nearby WiFi networks. Returns list of dicts."""
     os_name = platform.system().lower()
@@ -274,18 +354,23 @@ def _scan_macos() -> list[dict[str, Any]]:
         for iface in interfaces:
             other = iface.get("spairport_airport_other_local_wireless_networks", [])
             current = iface.get("spairport_current_network_information", {})
+            connected_ssid = current.get("_name", "") if current else ""
             all_nets = ([current] if current else []) + other
             for net in all_nets:
                 ssid = net.get("_name", "")
                 rssi_raw = net.get("spairport_network_signal_noise", "")
                 rssi = rssi_raw.split("/")[0].strip() if rssi_raw else ""
+                channel = _parse_channel(net.get("spairport_network_channel", ""))
+                security_raw = net.get("spairport_security_mode", "Unknown")
                 networks.append({
                     "ssid": ssid,
                     "bssid": net.get("spairport_network_bssid", ""),
                     "signal": int(rssi) if rssi.lstrip("-").isdigit() else 0,
-                    "channel": _parse_channel(net.get("spairport_network_channel", "")),
-                    "security": net.get("spairport_security_mode", "Unknown"),
+                    "channel": channel,
+                    "frequency": "5 GHz" if channel > 14 else "2.4 GHz",
+                    "security": _normalise_security(security_raw),
                     "hidden": not bool(ssid),
+                    "connected": bool(ssid and ssid == connected_ssid),
                 })
         # Fallback: older macOS format with nested interface dicts
         if not networks:
@@ -299,16 +384,27 @@ def _scan_macos() -> list[dict[str, Any]]:
                         for net in other:
                             if isinstance(net, dict):
                                 name = net.get("_name", "")
+                                channel = _parse_channel(net.get("spairport_network_channel", ""))
                                 networks.append({
                                     "ssid": name,
                                     "bssid": net.get("spairport_network_bssid", ""),
                                     "signal": _parse_signal(net.get("spairport_signal_noise", "")),
-                                    "channel": _parse_channel(net.get("spairport_network_channel", "")),
-                                    "security": net.get("spairport_security_mode", "Unknown"),
+                                    "channel": channel,
+                                    "frequency": "5 GHz" if channel > 14 else "2.4 GHz",
+                                    "security": _normalise_security(net.get("spairport_security_mode", "Unknown")),
                                     "hidden": not bool(name),
+                                    "connected": False,
                                 })
     except (json.JSONDecodeError, KeyError, TypeError, IndexError):
         pass
+    # If system_profiler returned no SSIDs (likely needs location permission),
+    # fall back to the airport binary which often works without it.
+    has_ssids = any(n.get("ssid") for n in networks)
+    if not has_ssids:
+        airport_nets = _airport_scan_macos()
+        if airport_nets:
+            logger.info("system_profiler returned no SSIDs; using airport fallback (%d nets)", len(airport_nets))
+            return airport_nets
     return networks
 
 
@@ -597,6 +693,101 @@ def _get_react_agent() -> Any:
     return _react_agent
 
 
+# ---------------------------------------------------------------------------
+# Auto-protection: real-time threat notifications to the user
+# ---------------------------------------------------------------------------
+
+_ANSI = {
+    "red":    "\033[1;31m",
+    "yellow": "\033[1;33m",
+    "orange": "\033[0;33m",
+    "cyan":   "\033[1;36m",
+    "reset":  "\033[0m",
+    "bold":   "\033[1m",
+}
+
+
+def _send_os_notification(title: str, message: str) -> None:
+    """Send a native OS notification so the user is alerted even if the terminal is minimised."""
+    os_name = platform.system().lower()
+    try:
+        if os_name == "darwin":
+            script = (
+                f'display notification "{message}" with title "{title}" '
+                f'sound name "Sosumi"'
+            )
+            subprocess.run(["osascript", "-e", script],
+                           capture_output=True, timeout=5)
+        elif os_name == "linux":
+            subprocess.run(["notify-send", "-u", "critical", title, message],
+                           capture_output=True, timeout=5)
+        elif os_name == "windows":
+            # PowerShell toast — works on Windows 10+
+            ps = (
+                "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]|Out-Null;"
+                f"$xml=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(0);"
+                f"$xml.SelectSingleNode('//text').InnerText='{title}: {message}';"
+                "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Network Guardian')"
+                ".Show([Windows.UI.Notifications.ToastNotification]::new($xml))"
+            )
+            subprocess.run(["powershell", "-Command", ps],
+                           capture_output=True, timeout=10)
+    except Exception:
+        pass  # Notifications are best-effort
+
+
+def _emit_threat_banners(alerts: list[dict]) -> None:
+    """Print coloured console banners and fire OS notifications for active threats."""
+    if not alerts:
+        return
+    critical = [a for a in alerts if a.get("severity") == "critical"]
+    high     = [a for a in alerts if a.get("severity") == "high"]
+    medium   = [a for a in alerts if a.get("severity") == "medium"]
+
+    # Console banners
+    sep = "=" * 70
+    print(f"\n{_ANSI['red']}{sep}")
+    print(f"  ⚠  NETWORK GUARDIAN — THREAT DETECTION REPORT")
+    print(f"{sep}{_ANSI['reset']}")
+
+    for a in critical:
+        print(f"{_ANSI['red']}[CRITICAL] {a.get('threat_type','').upper()}")
+        print(f"  {a.get('description', '')}")
+        for item in a.get("affected_items", [])[:5]:
+            print(f"  → {item}")
+        if a.get("remediation"):
+            print(f"  FIX: {a['remediation']}{_ANSI['reset']}")
+        print()
+
+    for a in high:
+        print(f"{_ANSI['yellow']}[HIGH]     {a.get('threat_type','').upper()}")
+        print(f"  {a.get('description', '')}")
+        for item in a.get("affected_items", [])[:5]:
+            print(f"  → {item}")
+        if a.get("remediation"):
+            print(f"  FIX: {a['remediation']}{_ANSI['reset']}")
+        print()
+
+    for a in medium:
+        print(f"{_ANSI['orange']}[MEDIUM]   {a.get('threat_type','').upper()}")
+        print(f"  {a.get('description', '')}{_ANSI['reset']}")
+        print()
+
+    print(f"{_ANSI['red']}{sep}{_ANSI['reset']}\n")
+
+    # OS notifications for critical/high only (avoid spamming medium)
+    urgent = critical + high
+    if urgent:
+        top = urgent[0]
+        sev  = top.get("severity", "high").upper()
+        desc = top.get("description", "Threat detected on your network")
+        extra = f" (+{len(urgent)-1} more)" if len(urgent) > 1 else ""
+        _send_os_notification(
+            f"⚠ Network Guardian [{sev}]{extra}",
+            desc[:120],
+        )
+
+
 async def build_report(identity: AgentIdentity, do_discovery: bool = True,
                        do_port_scan: bool = False) -> AgentReport:
     """Collect all data and build a report."""
@@ -657,6 +848,8 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
         if threat_alerts:
             for alert in threat_alerts:
                 logger.warning("THREAT [%s]: %s", alert["threat_type"], alert["description"])
+        # Emit console banners + OS notifications immediately so the user knows
+        _emit_threat_banners(threat_alerts)
     except Exception as e:
         logger.warning("Threat analysis failed: %s", e)
 
