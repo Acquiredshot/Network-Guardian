@@ -1,1 +1,1 @@
-web: python -m network_guardian
+web: python _start_dashboard.py

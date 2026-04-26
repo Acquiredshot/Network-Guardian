@@ -17,9 +17,10 @@ async def main() -> None:
     engine = Engine(config)
     await engine.start()
 
+    import os
     dash = engine.dashboard
     dash.host = "0.0.0.0"
-    dash.port = 8080
+    dash.port = int(os.environ.get("PORT", 8080))
     await dash.start()
 
     # Start IDS and IPS automatically
