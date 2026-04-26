@@ -397,9 +397,11 @@ def _scan_macos() -> list[dict[str, Any]]:
                                 })
     except (json.JSONDecodeError, KeyError, TypeError, IndexError):
         pass
-    # If system_profiler returned no SSIDs (likely needs location permission),
-    # fall back to the airport binary which often works without it.
-    has_ssids = any(n.get("ssid") for n in networks)
+    # Strip macOS privacy-redacted entries (<redacted> appears when Terminal
+    # does not have Location Services access in System Settings).
+    networks = [n for n in networks if n.get("ssid") and n["ssid"] != "<redacted>"]
+    # If system_profiler returned no real SSIDs, fall back to airport binary.
+    has_ssids = bool(networks)
     if not has_ssids:
         airport_nets = _airport_scan_macos()
         if airport_nets:
