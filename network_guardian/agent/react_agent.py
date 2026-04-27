@@ -28,6 +28,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from network_guardian.ai.ethics import wrap_report as _ethics_wrap, transparency_meta as _ethics_meta
+except ImportError:  # running standalone outside the package
+    def _ethics_wrap(d: dict, score: float = 0.0, reasoning: str = "") -> dict:  # type: ignore[misc]
+        return d
+    def _ethics_meta(score: float = 0.0, reasoning: str = "", engine: str = "") -> dict:  # type: ignore[misc]
+        return {}
+
 logger = logging.getLogger("ng-probe.react")
 
 
@@ -101,6 +109,7 @@ class ThreatReport:
     baselines: dict            # drift values
     narrative: str             # Plain-English explanation of what happened
     recommendations: list[str] # Prioritised fix list
+    ai_transparency: dict = field(default_factory=dict)  # Pillar 5: transparency metadata
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -1405,6 +1414,14 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
             narrative=narrative,
             recommendations=strategy.get("recommendations", []),
         )
+
+        # Apply AI ethics: output filtering, misinformation guard, transparency
+        report_dict = report.to_dict()
+        _ethics_wrap(report_dict, score=round(score, 1), reasoning=f"risk={risk}, threats={len(threat_dicts)}, cycle={cycle}")
+        report.narrative = report_dict.get("narrative", report.narrative)
+        report.recommendations = report_dict.get("recommendations", report.recommendations)
+        report.ai_transparency = report_dict.get("_ai_transparency", {})
+
         return report
 
     def _build_narrative(

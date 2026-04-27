@@ -29,6 +29,7 @@ from network_guardian.interface._security import (
 )
 from network_guardian.interface._fleet import FleetStore, get_fleet_page
 from network_guardian.interface._wolfpak_store import WolfpakClientStore
+from network_guardian.ai.ethics import transparency_meta as _ethics_transparency_meta, check_confidence as _ethics_check_confidence
 
 import ipaddress
 import os
@@ -717,16 +718,31 @@ class Dashboard:
     def _api_ai_metrics(self) -> str:
         """Serve live AI metrics from the 24/7 background monitor state."""
         state = self._ai_state
+        score = state["latest_score"]
+        confidence = _ethics_check_confidence(score)
         return self._json_response({
             "metrics":              state["metrics"],
             "anomaly_count":        state["anomaly_count"],
             "prediction_count":     state["assessment_count"],
-            "latest_anomaly_score": state["latest_score"],
+            "latest_anomaly_score": score,
             "ai_events":            state["ai_events"][:100],
             "uptime_cycles":        state["uptime_cycles"],
             "agents_monitored":     state["agents_monitored"],
             "last_tick":            state["last_tick"],
             "monitor_status":       state["status"],
+            # Pillar 5: Transparency — every AI response discloses origin and confidence
+            "_ai_transparency": _ethics_transparency_meta(
+                score=score,
+                reasoning=(
+                    f"monitor_status={state['status']}, "
+                    f"agents={state['agents_monitored']}, "
+                    f"cycles={state['uptime_cycles']}"
+                ),
+                engine="network_guardian_ai_monitor",
+            ),
+            # Pillar 4: Misinformation guard — surface confidence label so UI can warn operators
+            "confidence_label":   confidence.label,
+            "confidence_warning": confidence.warning or None,
         })
 
     # -- Control route handlers (POST /api/control/*) --------------------
