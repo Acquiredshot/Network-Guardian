@@ -46,3 +46,6 @@ PROBE_SETUP_*.md
 INCIDENT_REPORT_*.md
 incident_reports/*.md
 !incident_reports/INCIDENT_REPORT_2026-04-13.md
+
+# Face detection developer report (internal only)
+face\ detection/FACE_DETECTION_DEV_REPORT.md

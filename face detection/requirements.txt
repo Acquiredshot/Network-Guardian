@@ -1,0 +1,66 @@
+# Network Guardian — Facial Detection
+# Requirements
+opencv-python>=4.8.0
+face_recognition>=1.3.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# ─────────────────────────────────────────────────────────────────
+# QUICK START
+# ─────────────────────────────────────────────────────────────────
+#
+# 1. Install dependencies
+#    pip install -r requirements.txt
+#
+#    On macOS with Apple Silicon:
+#    brew install cmake
+#    pip install dlib face_recognition opencv-python numpy Pillow
+#
+#    On Linux (Ubuntu/Debian), first run:
+#    sudo apt-get install build-essential cmake libopenblas-dev liblapack-dev
+#    pip install -r requirements.txt
+#
+# 2. Register authorized faces
+#    mkdir known_faces
+#    # Copy a clear frontal photo of each person into known_faces/
+#    # Name the file after the person: Alice.jpg, Bob.png, etc.
+#
+# 3. (Optional) Assign roles
+#    Create known_faces/roles.json:
+#    {
+#      "Alice": "Admin",
+#      "Bob":   "Engineer",
+#      "Carol": "Security"
+#    }
+#
+# 4. Run
+#    python network_guardian_face.py
+#
+# ─────────────────────────────────────────────────────────────────
+# KEYBOARD SHORTCUTS (while the window is open)
+# ─────────────────────────────────────────────────────────────────
+#   Q  — quit
+#   R  — reload faces from disk (hot-swap without restarting)
+#   S  — save screenshot with timestamp
+#
+# ─────────────────────────────────────────────────────────────────
+# OUTPUT FILES
+# ─────────────────────────────────────────────────────────────────
+#   access_log.json  — full audit log of every access attempt:
+#   [
+#     {
+#       "timestamp": "2025-04-27T14:23:11.042",
+#       "name": "Alice",
+#       "status": "authorized",
+#       "confidence_pct": 87.3
+#     },
+#     ...
+#   ]
+#
+# ─────────────────────────────────────────────────────────────────
+# TUNING CONFIDENCE
+# ─────────────────────────────────────────────────────────────────
+#   In network_guardian_face.py, adjust CONFIDENCE_THRESHOLD:
+#     0.40  — strict  (fewer false accepts, more false rejects)
+#     0.50  — balanced (default)
+#     0.60  — lenient  (more false accepts, fewer false rejects)

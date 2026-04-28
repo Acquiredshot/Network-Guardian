@@ -12,6 +12,7 @@
 |---|---|
 | **IDS** | 15 signature rules, payload analysis, brute-force & multi-stage attack correlation, alert suppression |
 | **IPS** | IP block/allowlist, rate limiting, quarantine zones, auto-respond to IDS alerts |
+| **Facial Access Control** | Real-time webcam face recognition, authorized/unauthorized labeling, role badges, confidence scoring, tamper-proof JSON access log, screenshot capture |
 | **IP Cloaking** | MAC masking, IP obfuscation, source rotation, decoy generation, proxy chains, named identities |
 | **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy |
 | **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding — base IP never exposed |
@@ -162,9 +163,45 @@ pytest tests/ -v   # 388 tests, all passing
 
 ## Requirements
 
-- Python 3.11+, zero external ML deps
+- Python 3.11+, zero external ML deps (core platform)
 - Root/admin for network scanning (ping, Nmap)
 - Optional: `pyyaml`, `twilio`, `cmdop`, `cmdop-bot`, `openclaw`
+- **Face Detection module** (separate): `opencv-python`, `face_recognition`, `dlib`, `numpy`, `Pillow`, `cmake` (build dep)
+
+---
+
+## Facial Access Control Module
+
+Located in `face detection/`. Provides a standalone real-time face recognition access control overlay using your system webcam.
+
+```bash
+cd "face detection"
+pip install -r requirements.txt   # opencv-python face_recognition numpy Pillow dlib
+python network_guardian_face.py
+```
+
+**Registering authorized faces:**
+
+```
+face detection/
+  known_faces/
+    Alice.jpg       # filename = person's name
+    Bob.png
+    roles.json      # optional: {"Alice": "Admin", "Bob": "Engineer"}
+```
+
+| Control | Action |
+|---|---|
+| `Q` | Quit |
+| `R` | Reload faces from `known_faces/` at runtime |
+| `S` | Save screenshot |
+
+- Green box + `AUTH` badge = authorized face recognized above confidence threshold
+- Red box + `DENY` badge = unknown or unrecognized face
+- All events (authorized + denied) are timestamped and written to `access_log.json`
+- HUD panel shows live face count, authorized count, unknown count, FPS, and last event
+
+**macOS note:** Camera permission must be granted to the application running the script (e.g., Terminal or VS Code). Grant access via System Settings → Privacy & Security → Camera.
 
 ---
 
