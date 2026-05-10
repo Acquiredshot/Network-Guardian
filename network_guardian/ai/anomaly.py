@@ -84,6 +84,7 @@ class IsolationForest(AnomalyDetector):
     Reference: Liu, Ting & Zhou (2008).  Trees are built by randomly
     selecting a feature and split value, then partitioning.  Anomalies
     are isolated in fewer splits so have shorter average path lengths.
+    Features are z-score normalised during fit to handle mixed-scale data.
     """
 
     name = "isolation_forest"
@@ -92,7 +93,7 @@ class IsolationForest(AnomalyDetector):
         self,
         n_trees: int = 100,
         max_samples: int = 256,
-        threshold: float = 0.6,
+        threshold: float = 0.50,
         seed: int | None = None,
     ) -> None:
         self.n_trees = n_trees
@@ -101,17 +102,38 @@ class IsolationForest(AnomalyDetector):
         self._rng = random.Random(seed) if seed is not None else secrets.SystemRandom()
         self._trees: list[_IsolationNode] = []
         self._n_samples = 0
+        self._mean: list[float] = []
+        self._std: list[float] = []
+
+    # -- Normalisation --------------------------------------------------
+
+    def _fit_normaliser(self, data: list[list[float]]) -> None:
+        """Compute per-feature mean and std from training data."""
+        n = len(data)
+        n_feat = len(data[0])
+        self._mean = [sum(row[f] for row in data) / n for f in range(n_feat)]
+        self._std = [
+            max(math.sqrt(sum((row[f] - self._mean[f]) ** 2 for row in data) / n), 1e-9)
+            for f in range(n_feat)
+        ]
+
+    def _normalise(self, sample: list[float]) -> list[float]:
+        if not self._mean:
+            return sample
+        return [(x - m) / s for x, m, s in zip(sample, self._mean, self._std)]
 
     # -- Training -------------------------------------------------------
 
     def fit(self, data: list[list[float]]) -> None:
         if not data:
             return
-        self._n_samples = min(len(data), self.max_samples)
+        self._fit_normaliser(data)
+        norm_data = [self._normalise(row) for row in data]
+        self._n_samples = min(len(norm_data), self.max_samples)
         max_depth = math.ceil(math.log2(max(self._n_samples, 2)))
         self._trees = []
         for _ in range(self.n_trees):
-            sample = self._rng.sample(data, min(len(data), self._n_samples))
+            sample = self._rng.sample(norm_data, min(len(norm_data), self._n_samples))
             tree = self._build_tree(sample, depth=0, max_depth=max_depth)
             self._trees.append(tree)
         logger.info(
@@ -157,8 +179,9 @@ class IsolationForest(AnomalyDetector):
         if not self._trees:
             return AnomalyScore(score=0.0, is_anomaly=False, method=self.name,
                                 details={"error": "model not fitted"})
+        norm_sample = self._normalise(sample)
         avg_path = sum(
-            self._path_length(sample, tree, 0) for tree in self._trees
+            self._path_length(norm_sample, tree, 0) for tree in self._trees
         ) / len(self._trees)
         c = _avg_path_length(self._n_samples)
         # anomaly score ∈ [0, 1]; closer to 1 = more anomalous
@@ -194,24 +217,47 @@ class OneClassSVM(AnomalyDetector):
         max_support: int = 500,
         seed: int | None = None,
     ) -> None:
-        self.gamma = gamma  # if None, use 1/n_features
-        self.nu = nu  # expected fraction of anomalies
+        self.gamma = gamma  # if None, use 1/n_features after normalisation
+        self.nu = nu  # expected fraction of anomalies in training data
         self._max_support = max_support
         self._rng = random.Random(seed) if seed is not None else secrets.SystemRandom()
 
         self._support_vectors: list[list[float]] = []
         self._threshold: float = 0.0
         self._gamma_val: float = 1.0
+        self._mean: list[float] = []
+        self._std: list[float] = []
+
+    # -- Normalisation --------------------------------------------------
+
+    def _fit_normaliser(self, data: list[list[float]]) -> None:
+        n = len(data)
+        n_feat = len(data[0])
+        self._mean = [sum(row[f] for row in data) / n for f in range(n_feat)]
+        self._std = [
+            max(math.sqrt(sum((row[f] - self._mean[f]) ** 2 for row in data) / n), 1e-9)
+            for f in range(n_feat)
+        ]
+
+    def _normalise(self, sample: list[float]) -> list[float]:
+        if not self._mean:
+            return sample
+        return [(x - m) / s for x, m, s in zip(sample, self._mean, self._std)]
 
     def fit(self, data: list[list[float]]) -> None:
         if not data:
             return
-        # Subsample for tractability
-        if len(data) > self._max_support:
-            self._support_vectors = self._rng.sample(data, self._max_support)
-        else:
-            self._support_vectors = list(data)
+        # Fit normaliser on raw data, then normalise
+        self._fit_normaliser(data)
+        norm_data = [self._normalise(row) for row in data]
 
+        # Subsample for tractability
+        if len(norm_data) > self._max_support:
+            self._support_vectors = self._rng.sample(norm_data, self._max_support)
+        else:
+            self._support_vectors = list(norm_data)
+
+        # After normalisation all features are unit-scale, so 1/n_features is meaningful
         n_features = len(data[0])
         self._gamma_val = self.gamma if self.gamma else 1.0 / max(n_features, 1)
 
@@ -240,7 +286,8 @@ class OneClassSVM(AnomalyDetector):
         if not self._support_vectors:
             return AnomalyScore(score=0.0, is_anomaly=False, method=self.name,
                                 details={"error": "model not fitted"})
-        density = self._kernel_density(sample)
+        norm_sample = self._normalise(sample)
+        density = self._kernel_density(norm_sample)
         # Invert: low density → high anomaly score
         anomaly_score = max(0.0, min(1.0, 1.0 - density))
         is_anomaly = density < self._threshold
@@ -262,7 +309,7 @@ class EnsembleDetector(AnomalyDetector):
 
     name = "ensemble_detector"
 
-    def __init__(self, detectors: list[AnomalyDetector] | None = None, threshold: float = 0.55) -> None:
+    def __init__(self, detectors: list[AnomalyDetector] | None = None, threshold: float = 0.50) -> None:
         self._detectors: list[AnomalyDetector] = detectors or []
         self.threshold = threshold
 
