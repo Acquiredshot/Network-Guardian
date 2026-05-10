@@ -49,3 +49,10 @@ incident_reports/*.md
 
 # Face detection developer report (internal only)
 face\ detection/FACE_DETECTION_DEV_REPORT.md
+
+# Face recognition — personal biometric data, NEVER push to any repo
+known_faces/
+
+# Face detection runtime data — contains hashed passwords and access logs
+users_db.json
+access_log.json
