@@ -227,7 +227,7 @@ class InteractiveCLI:
         else:
             await self.engine.dashboard.stop()
 
-    def _handle_train(self, args: list[str]) -> None:
+    async def _handle_train(self, args: list[str]) -> None:
         if not args:
             print("Usage: train anomaly|forecast [method]")
             return
@@ -263,7 +263,7 @@ class InteractiveCLI:
         else:
             print("Usage: nodes start|stop|status|topology")
 
-    def _handle_datasets(self, args: list[str]) -> None:
+    async def _handle_datasets(self, args: list[str]) -> None:
         if not args:
             print("Usage: datasets generate|stats")
             return
