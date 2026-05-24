@@ -1,6 +1,6 @@
 # Network Guardian
 
-> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, fleet agents with covert comms, automatic incident reporting, remote control via phone, and a live web dashboard. Pure Python 3.11, zero heavy ML deps.
+> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, and a live web dashboard. Pure Python 3.11, zero heavy ML deps.
 
 **Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (credentials provided separately)
 
@@ -16,11 +16,14 @@
 | **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy |
 | **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding — base IP never exposed |
 | **24/7 AI Monitor** | Background asyncio loop — rolling time-series, spike detection, 4-tier anomaly thresholds, live AI event stream |
-| **Threat Reports** | Automatic `ThreatReport` generated on every threat (or every 10 clean cycles) with full CVSS-style scoring, explanations, and recommended response steps |
+| **Malware ReAct Agent** | Autonomous process scanner running Observe → Reason → Act → Learn. Classifies each finding by severity (critical/high/medium), computes a 0–100 threat score, and generates a branded PDF report on every threat detection |
+| **Ransomware ReAct Agent** | Real-time file-system watcher that triggers a full ReAct reasoning cycle on every alert (ransomware extension or burst activity), with optional auto-quarantine and per-alert PDF reports |
+| **PDF Threat Reports** | ReportLab-generated, branded PDF reports covering the full ReAct chain, threat inventory, actions taken, and recommendations — auto-saved and downloadable from the dashboard |
+| **Threat Reports** | Automatic `ThreatReport` generated on every threat with full CVSS-style scoring, explanations, and recommended response steps |
 | **Incident Reports** | Auto-generated Markdown incident reports saved to `incident_reports/` on every detection event |
 | **ML / AI Engine** | Isolation Forest, One-Class SVM, ARIMA/Holt-Winters forecasting, ROS-style AI node graph, NLP parsing |
 | **Remote Control** | WhatsApp, SMS (Twilio), Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
-| **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Reports, and Incidents pages |
+| **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection page, Reports, and Incidents pages |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
 
 ---
@@ -40,6 +43,7 @@
 | **Fleet** | `/fleet` | All registered agents, per-agent drill-down, threat summary |
 | **Reports** | `/reports` | Filterable threat assessment cards with expandable detail |
 | **Incidents** | `/incidents` | Inline rendered Markdown incident reports with `.md` download |
+| **Threat Detection** | `/security` | Malware ReAct scanner + Ransomware ReAct monitor with live results and PDF download |
 
 ---
 
@@ -50,6 +54,80 @@ pip install -e ".[dev]"
 network-guardian            # interactive CLI
 python _start_dashboard.py  # web dashboard at http://127.0.0.1:8080
 ```
+
+---
+
+## Threat Detection (Malware + Ransomware)
+
+### Malware ReAct Agent
+
+Scans all running processes and runs a full autonomous ReAct cycle:
+
+```
+OBSERVE  → scan_processes() via psutil; collect host metadata
+REASON   → classify each finding by severity; compute 0–100 threat score
+ACT      → log threats; optionally SIGTERM suspicious PIDs; publish event; generate PDF
+LEARN    → persist threat history to ~/.network_guardian/malware_react/
+```
+
+**Triggered from the dashboard** — click **Run ReAct Scan** on the Threat Detection page. Results render inline with severity badges, risk level, and a one-click PDF download.
+
+Can also be run programmatically:
+
+```python
+from network_guardian.agent.malware_react_agent import MalwareReActAgent
+import asyncio
+
+agent = MalwareReActAgent(auto_kill=False, generate_pdf="on_threat")
+report = asyncio.run(agent.run_cycle())
+print(report.risk_level, report.threat_score, report.pdf_path)
+```
+
+### Ransomware ReAct Agent
+
+Watches a directory tree in real time (watchdog) and triggers a ReAct cycle on every alert:
+
+```
+OBSERVE  → capture file-system event (ransomware extension or burst of N+ writes in T seconds)
+REASON   → classify severity; correlate with recent alert history; escalate if pattern repeats
+ACT      → optionally quarantine file; publish event; generate PDF report
+LEARN    → persist alert history to ~/.network_guardian/ransomware_react/
+```
+
+**Triggered from the dashboard** — click **Start ReAct Monitor** on the Threat Detection page. The button becomes **Stop ReAct Monitor** while active. Alerts render live and a PDF download link appears after the first detection.
+
+```python
+from network_guardian.agent.ransomware_react_agent import RansomwareReActAgent
+
+agent = RansomwareReActAgent(
+    auto_quarantine=False,
+    generate_pdf="on_threat",
+    watch_folder="/home/user/Documents",
+)
+agent.start()   # watchdog + ReAct consumer run in background threads/tasks
+```
+
+### PDF Report Output
+
+Every ReAct cycle that detects a threat produces a branded A4 PDF containing:
+
+- **Header banner** with report ID, date, and type
+- **KPI strip** — Risk Level · Threat Score · Threats Found · Actions Taken
+- **Assessment Overview** — agent label, platform, scan metadata
+- **ReAct Chain** — colour-coded Observe/Reason/Act/Learn steps with timestamps
+- **Threat Inventory** — severity, category, detail, action, resolution status
+- **Automated Actions** — action name, description, success/fail
+- **Recommendations** — prioritised numbered list
+
+PDFs are saved to:
+- `~/.network_guardian/pdf_reports/` (persistent storage)
+- `./pdf_reports/` (project directory mirror)
+
+Download directly from the dashboard via the **Download ReAct PDF Report** button that appears after each scan or alert.
+
+Detection history is also persisted as JSON:
+- Malware: `~/.network_guardian/malware_react/threat_history.json`
+- Ransomware: `~/.network_guardian/ransomware_react/alert_history.json`
 
 ---
 
@@ -103,15 +181,22 @@ The dashboard runs a background `asyncio` task (`_ai_monitor_loop`) that ticks e
 
 ## Threat Reports & Incident Reports
 
-Every threat detection generates two documents:
+Every threat detection generates up to three documents:
 
-1. **Threat Report** (`ThreatReport` dataclass) — structured JSON with:
+1. **PDF Threat Report** — branded A4 PDF produced by the ReAct agents via ReportLab:
+   - Full Observe → Reason → Act → Learn chain with colour-coded steps
+   - Threat inventory with severity, CVSS-style scores, and actions taken
+   - Recommendations and environment snapshot
+   - Saved to `~/.network_guardian/pdf_reports/` and `./pdf_reports/`
+   - Downloadable from the **Threat Detection** dashboard page (`/security`)
+
+2. **Threat Report** (`ThreatReport` dataclass) — structured JSON with:
    - Per-threat severity, CVSS-style scoring, and plain-English explanations
    - Recommended immediate and long-term response steps
    - Observation snapshot (connections, processes, ports, baseline drift)
    - Stored in fleet per-agent, accessible via `/reports`
 
-2. **Markdown Incident Report** — prose narrative saved to:
+3. **Markdown Incident Report** — prose narrative saved to:
    - `~/.ng_agent/incident_reports/` (on the agent machine)
    - `./incident_reports/` (in the project directory)
    - Available for download from the `/incidents` dashboard page
@@ -130,13 +215,15 @@ Key commands: `status`, `ids scan <text>`, `ips block <ip>`, `audit <target>`, `
 
 ---
 
-## Security Hardening (v18)
+## Security Hardening (v19)
 
 | Hardening | Detail |
 |---|---|
 | **Secure session cookie** | `ng_session` cookie gets `; Secure` flag automatically when served over HTTPS (`X-Forwarded-Proto: https`). Active on Heroku by default. |
 | **Admin-only fleet key API** | `GET /api/fleet/key` returns HTTP 403 to any non-admin account. Operators cannot extract the raw HMAC fleet key. |
 | **Password complexity** | Passwords require 8+ chars, one uppercase, one digit, and one special character. Enforced on set and change. |
+| **Cache-Control on Threat Detection** | `/security` page is served with `Cache-Control: no-store, no-cache, must-revalidate` so browsers never serve a stale nonce'd page after a server restart. |
+| **Unauthenticated API redirect** | All fetch calls on the Threat Detection page check the HTTP status code. A `401` response automatically redirects the browser to `/login` rather than silently failing. |
 
 ---
 
@@ -152,6 +239,15 @@ The `FLEET_KEY` config var persists across dyno restarts. Agents connect with `-
 
 ---
 
+## Session Management
+
+The dashboard uses a nonce-based CSP policy (`script-src 'nonce-...'`). The nonce is generated **once at startup** and embedded in every session token. This means:
+
+- **Restarting the server invalidates all open browser sessions.** After a restart, navigate to `http://127.0.0.1:8080/login` and log in again — any cached page will redirect automatically.
+- The Threat Detection page (`/security`) is served with `Cache-Control: no-store` to prevent browsers from caching the old nonce.
+
+---
+
 ## Testing
 
 ```bash
@@ -164,6 +260,9 @@ pytest tests/ -v   # 388 tests, all passing
 
 - Python 3.11+, zero external ML deps (core platform)
 - Root/admin for network scanning (ping, Nmap)
+- `reportlab` — PDF report generation (installed automatically via `pip install -e .`)
+- `psutil` — malware process scanning
+- `watchdog` — real-time ransomware filesystem monitoring
 - Optional: `pyyaml`, `twilio`, `cmdop`, `cmdop-bot`, `openclaw`
 
 ---

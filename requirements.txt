@@ -1,3 +1,5 @@
 pyyaml>=6.0,<7
+psutil>=5.9,<7
+watchdog>=4.0,<7
 setuptools>=68.0,<76
 wheel

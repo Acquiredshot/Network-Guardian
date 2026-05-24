@@ -65,6 +65,256 @@ _TMPL_AI = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta nam
 
 
 # ---------------------------------------------------------------------------
+# Threat Detection page template
+# ---------------------------------------------------------------------------
+
+_TMPL_SECURITY = (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<title>Threat Detection &#8212; Network Guardian</title>'
+    '<style nonce="{{NONCE}}">'
+    ':root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;'
+    '--dim:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;'
+    '--orange:#db6d28;--red:#f85149;--purple:#bc8cff;--cyan:#39d2e0}'
+    '*{margin:0;padding:0;box-sizing:border-box}'
+    'body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif;overflow-x:hidden}'
+    '.wrap{max-width:1400px;margin:0 auto;padding:20px}'
+    '.banner{display:flex;align-items:center;gap:16px;padding:16px 24px;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;flex-wrap:wrap}'
+    '.banner h1{font-size:1.4rem;white-space:nowrap}'
+    '.badge{padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700;letter-spacing:.5px}'
+    '.nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}'
+    '.nav a{padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--blue);text-decoration:none;font-size:.85rem;transition:.2s}'
+    '.nav a:hover{background:var(--border)}.nav a.active{background:var(--blue);color:#fff;border-color:var(--blue)}'
+    '.grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}'
+    '.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px}'
+    '.card h2{font-size:1rem;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}'
+    'table{width:100%;border-collapse:collapse;font-size:.82rem}'
+    'th{text-align:left;color:var(--dim);text-transform:uppercase;font-size:.7rem;letter-spacing:.8px;padding:8px 6px;border-bottom:1px solid var(--border)}'
+    'td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}'
+    '.kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}'
+    '.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;min-width:130px;flex:1}'
+    '.kpi .v{font-size:1.6rem;font-weight:700;color:var(--blue)}.kpi .l{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}'
+    '.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600}'
+    '.sev-critical{background:rgba(248,81,73,.2);color:var(--red)}.sev-high{background:rgba(219,109,40,.2);color:var(--orange)}'
+    '.sev-medium{background:rgba(210,153,34,.2);color:var(--yellow)}.sev-low{background:rgba(63,185,80,.2);color:var(--green)}'
+    '.empty{color:var(--dim);font-style:italic;padding:20px;text-align:center}'
+    '.scan-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:8px;border:1px solid var(--green);background:rgba(63,185,80,.1);color:var(--green);font-size:.9rem;cursor:pointer;transition:.2s;font-family:inherit}'
+    '.scan-btn:hover{background:rgba(63,185,80,.2)}.scan-btn:disabled{opacity:.4;cursor:not-allowed}'
+    '.scan-btn.danger{border-color:var(--red);background:rgba(248,81,73,.1);color:var(--red)}'
+    '.scan-btn.danger:hover{background:rgba(248,81,73,.2)}'
+    '.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(63,185,80,.3);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}'
+    '@keyframes spin{to{transform:rotate(360deg)}}'
+    '.alert-row{display:flex;gap:8px;padding:10px;border-bottom:1px solid rgba(48,54,61,.3);font-size:.82rem;align-items:flex-start}'
+    '.alert-row:last-child{border-bottom:none}'
+    '.alert-time{color:var(--dim);font-size:.75rem;min-width:80px;padding-top:2px;white-space:nowrap}'
+    '</style></head><body>'
+    '<div class="wrap">'
+    '<div class="banner"><h1>&#128737; Threat Detection</h1>'
+    '<span id="overallBadge" class="badge" style="background:rgba(63,185,80,.15);color:var(--green)">&#10003; All Clear</span>'
+    '<span id="ts" style="margin-left:auto;color:var(--dim);font-size:.85rem"></span></div>'
+    '<div class="kpi-row">'
+    '<div class="kpi"><div class="v" id="kProcs" style="color:var(--blue)">&#8212;</div><div class="l">Processes Checked</div></div>'
+    '<div class="kpi"><div class="v" id="kSusp" style="color:var(--red)">&#8212;</div><div class="l">Suspicious</div></div>'
+    '<div class="kpi"><div class="v" id="kAlerts" style="color:var(--orange)">0</div><div class="l">Ransomware Alerts</div></div>'
+    '<div class="kpi"><div class="v" id="kMon" style="color:var(--dim)">STOPPED</div><div class="l">Monitor Status</div></div>'
+    '</div>'
+    '<div class="nav"><a href="/">Dashboard</a><a href="/ids">IDS</a><a href="/ips">IPS</a>'
+    '<a href="/wifi">WiFi</a><a href="/cloaking">Cloaking</a><a href="/explorer">Explorer</a>'
+    '<a href="/auditor">Auditor</a><a href="/ai">AI Engine</a><a href="/fleet">Fleet</a>'
+    '<a href="/reports">Reports</a><a href="/incidents">Incidents</a>'
+    '<a href="/security" class="active">&#128737; Threats</a></div>'
+    '<div class="grid g2">'
+    '<div class="card"><h2>&#128030; Malware Process Scanner</h2>'
+    '<p style="color:var(--dim);font-size:.83rem;margin-bottom:16px">'
+    'Scans all running processes for suspicious names, paths, and behaviour indicators.</p>'
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
+    '<button class="scan-btn" id="btnScan">&#9654; Run ReAct Scan</button>'
+    '<span id="lastScan" style="color:var(--dim);font-size:.78rem"></span></div>'
+    '<div id="scanResults"><div class="empty">Press &ldquo;Run Scan&rdquo; to check running processes</div></div></div>'
+    '<div class="card"><h2>&#128274; Ransomware Monitor</h2>'
+    '<p style="color:var(--dim);font-size:.83rem;margin-bottom:16px">'
+    'Watches the filesystem in real time for ransomware-style burst activity and suspicious extensions.</p>'
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">'
+    '<button class="scan-btn" id="btnMon">&#9654; Start ReAct Monitor</button>'
+    '<span id="monStatus" class="badge" style="background:rgba(139,148,158,.15);color:var(--dim)">STOPPED</span></div>'
+    '<div style="font-size:.82rem;color:var(--dim);margin-bottom:12px">'
+    'Watch folder: <span id="watchFolder" style="color:var(--text);font-family:monospace;font-size:.8rem">&#8212;</span></div>'
+    '<div id="ransomAlerts"><div class="empty">No ransomware alerts</div></div></div>'
+    '</div></div>'
+    '<script nonce="{{NONCE}}">'
+    'var _scanning=false,_monRunning=false,_alertTotal=0;'
+    'function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}'
+    'function sevColor(s){'
+    '  if(s==="critical")return "var(--red)";'
+    '  if(s==="high")return "#f56e30";'
+    '  if(s==="low")return "var(--green)";'
+    '  return "var(--orange)";'
+    '}'
+    'function runScan(){'
+    '  if(_scanning)return;'
+    '  _scanning=true;'
+    '  var btn=document.getElementById("btnScan");'
+    '  btn.disabled=true;'
+    '  btn.innerHTML=\'<span class="spin"></span> Running ReAct...\';'
+    '  fetch("/api/control/malware/scan",{method:"POST",'
+    '    headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},'
+    '    body:"{}"})'
+    '  .then(function(r){'
+    '    if(!r.ok){'
+    '      if(r.status===401){window.location.href="/login?next=/security";}'
+    '      throw new Error("HTTP "+r.status);'
+    '    }'
+    '    return r.json();'
+    '  })'
+    '  .then(function(d){'
+    '    _scanning=false;btn.disabled=false;btn.innerHTML="&#9654; Run ReAct Scan";'
+    '    renderMalwareResults(d);'
+    '  })'
+    '  .catch(function(e){'
+    '    _scanning=false;btn.disabled=false;btn.innerHTML="&#9654; Run ReAct Scan";'
+    '    document.getElementById("scanResults").innerHTML='
+    '      \'<div class="empty" style="color:var(--red)">Scan error: \'+esc(e.message)+\'</div>\';'
+    '  });'
+    '}'
+    'function renderMalwareResults(d){'
+    '  var el=document.getElementById("scanResults");'
+    '  var sc=d.scanned||0,fi=d.findings||[],er=d.errors||0;'
+    '  var rl=d.risk_level||"low",ts=d.threat_score||0,steps=d.react_steps||0;'
+    '  document.getElementById("kProcs").textContent=sc;'
+    '  document.getElementById("kSusp").textContent=fi.length;'
+    '  document.getElementById("lastScan").textContent='
+    '    "Last ReAct: "+new Date().toLocaleTimeString()+'
+    '    " | Risk: "+rl.toUpperCase()+" | Score: "+ts+"/100 | Steps: "+steps;'
+    '  updateOverallBadge();'
+    '  var pdfHtml="";'
+    '  if(d.pdf_file){'
+    '    pdfHtml=\'<div style="margin-top:10px">\''
+    '      +\'<a href="/api/reports/pdf/\'+encodeURIComponent(d.pdf_file)+\'" target="_blank"\''
+    '      +\' style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;\''
+    '      +\'background:rgba(30,120,222,.15);border:1px solid rgba(30,120,222,.4);\''
+    '      +\'border-radius:6px;color:var(--blue);text-decoration:none;font-size:.82rem">\''
+    '      +\'&#128196; Download ReAct PDF Report</a></div>\';'
+    '  }'
+    '  if(!fi.length){'
+    '    el.innerHTML='
+    '      \'<div style="display:flex;align-items:center;gap:10px;padding:14px;\''
+    '      +\'background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px">\''
+    '      +\'<span style="font-size:1.5rem">&#10003;</span>\''
+    '      +\'<div><div style="color:var(--green);font-weight:700">All Clear &mdash; ReAct Cycle Complete</div>\''
+    '      +\'<div style="color:var(--dim);font-size:.78rem">\'+sc+\' processes scanned\''
+    '      +(er?\' &mdash; \'+er+\' errors\':\'\')+'
+    '      \'</div></div></div>\'+pdfHtml;'
+    '    return;'
+    '  }'
+    '  var rows=fi.map(function(f){'
+    '    var sc2=sevColor(f.severity||"medium");'
+    '    return \'<tr>\''
+    '      +\'<td><code style="font-size:.78rem">\'+esc(f.pid||"")+\'</code></td>\''
+    '      +\'<td><span style="color:var(--orange);font-weight:600">\'+esc(f.name||"?")+\'</span></td>\''
+    '      +\'<td><code style="font-size:.72rem;color:var(--dim)">\'+esc((f.exe||"").slice(0,55))+\'</code></td>\''
+    '      +\'<td><span style="color:\'+sc2+\';font-size:.75rem;font-weight:700">\''
+    '        +esc((f.severity||"medium").toUpperCase())+\'</span></td>\''
+    '      +\'<td><span class="pill sev-high">\'+esc(f.matched_reason||"suspicious")+\'</span></td>\''
+    '      +\'</tr>\';'
+    '  }).join("");'
+    '  el.innerHTML='
+    '    \'<div style="color:var(--red);font-weight:700;margin-bottom:10px">\''
+    '    +\'&#9888; \'+fi.length+\' Suspicious Process\'+(fi.length!==1?"es":"")+\' Found\''
+    '    +\' &mdash; Risk: <span style="color:\'+sevColor(rl)+\'">\'+rl.toUpperCase()+\'</span></div>\''
+    '    +\'<div style="overflow-x:auto"><table>\''
+    '    +\'<thead><tr><th>PID</th><th>Process</th><th>Executable</th><th>Sev</th><th>Reason</th></tr></thead>\''
+    '    +\'<tbody>\'+rows+\'</tbody></table></div>\''
+    '    +pdfHtml;'
+    '}'
+    'function toggleMonitor(){'
+    '  var url=_monRunning?"/api/control/ransomware/stop":"/api/control/ransomware/start";'
+    '  var btn=document.getElementById("btnMon");'
+    '  btn.disabled=true;'
+    '  fetch(url,{method:"POST",'
+    '    headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},'
+    '    body:"{}"})'
+    '  .then(function(r){'
+    '    if(!r.ok){'
+    '      if(r.status===401){window.location.href="/login?next=/security";}'
+    '      throw new Error("HTTP "+r.status);'
+    '    }'
+    '    return r.json();'
+    '  })'
+    '  .then(function(d){btn.disabled=false;setTimeout(loadStatus,400);})'
+    '  .catch(function(e){'
+    '    btn.disabled=false;'
+    '    document.getElementById("ransomAlerts").innerHTML='
+    '      \'<div class="empty" style="color:var(--red)">Monitor error: \'+esc(String(e))+\'</div>\';'
+    '  });'
+    '}'
+    'function loadStatus(){'
+    '  fetch("/api/ransomware/status")'
+    '  .then(function(r){return r.json();})'
+    '  .then(function(d){'
+    '    _monRunning=d.running||false;'
+    '    _alertTotal=d.alert_count||0;'
+    '    document.getElementById("kAlerts").textContent=_alertTotal;'
+    '    document.getElementById("kMon").textContent=_monRunning?"RUNNING":"STOPPED";'
+    '    document.getElementById("kMon").style.color=_monRunning?"var(--green)":"var(--dim)";'
+    '    var badge=document.getElementById("monStatus");'
+    '    badge.textContent=_monRunning?"RUNNING":"STOPPED";'
+    '    badge.style.background=_monRunning?"rgba(63,185,80,.15)":"rgba(139,148,158,.15)";'
+    '    badge.style.color=_monRunning?"var(--green)":"var(--dim)";'
+    '    var btn=document.getElementById("btnMon");'
+    '    btn.innerHTML=_monRunning?"&#9632; Stop ReAct Monitor":"&#9654; Start ReAct Monitor";'
+    '    btn.className=_monRunning?"scan-btn danger":"scan-btn";'
+    '    document.getElementById("watchFolder").textContent=d.watch_folder||"&#8212;";'
+    '    renderAlerts(d.recent_alerts||[],d.last_pdf||null);'
+    '    document.getElementById("ts").textContent=new Date().toLocaleTimeString()+" | Auto 3s";'
+    '    updateOverallBadge();'
+    '  })'
+    '  .catch(function(e){});'
+    '}'
+    'function renderAlerts(alerts,lastPdf){'
+    '  var el=document.getElementById("ransomAlerts");'
+    '  var pdfHtml="";'
+    '  if(lastPdf){'
+    '    pdfHtml=\'<div style="margin-bottom:10px">\''
+    '      +\'<a href="/api/reports/pdf/\'+encodeURIComponent(lastPdf)+\'" target="_blank"\''
+    '      +\' style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;\''
+    '      +\'background:rgba(30,120,222,.15);border:1px solid rgba(30,120,222,.4);\''
+    '      +\'border-radius:6px;color:var(--blue);text-decoration:none;font-size:.82rem">\''
+    '      +\'&#128196; Download Latest ReAct PDF Report</a></div>\';'
+    '  }'
+    '  if(!alerts.length){'
+    '    el.innerHTML=pdfHtml+\'<div class="empty">No ransomware alerts</div>\';'
+    '    return;'
+    '  }'
+    '  el.innerHTML=pdfHtml+alerts.slice(0,20).map(function(a){'
+    '    var k=a.kind==="extension"?"Ransomware Extension Detected":"Burst File Activity";'
+    '    return \'<div class="alert-row">\''
+    '      +\'<span class="alert-time">\'+new Date(a.timestamp*1000).toLocaleTimeString()+\'</span>\''
+    '      +\'<div><div style="color:var(--red);font-weight:600">&#9888; \'+k+\'</div>\''
+    '      +\'<div style="color:var(--dim);font-size:.78rem">\'+esc(a.detail||"")+\'</div></div></div>\';'
+    '  }).join("");'
+    '}'
+    'function updateOverallBadge(){'
+    '  var susp=parseInt(document.getElementById("kSusp").textContent)||0;'
+    '  var badge=document.getElementById("overallBadge");'
+    '  if(susp>0||_alertTotal>0){'
+    '    badge.innerHTML="&#9888; Threats Detected";'
+    '    badge.style.background="rgba(248,81,73,.15)";'
+    '    badge.style.color="var(--red)";'
+    '  } else if(document.getElementById("kProcs").textContent!=="&#8212;"){'
+    '    badge.innerHTML="&#10003; All Clear";'
+    '    badge.style.background="rgba(63,185,80,.15)";'
+    '    badge.style.color="var(--green)";'
+    '  }'
+    '}'
+    'document.getElementById("btnScan").addEventListener("click",runScan);'
+    'document.getElementById("btnMon").addEventListener("click",toggleMonitor);'
+    'loadStatus();'
+    'setInterval(loadStatus,3000);'
+    '</script></body></html>'
+)
+
+
+# ---------------------------------------------------------------------------
 # Data serialisation helpers
 # ---------------------------------------------------------------------------
 
@@ -187,12 +437,18 @@ class Dashboard:
         }
         self._ai_monitor_task: asyncio.Task | None = None
 
+        # Threat detection module state
+        self._ransomware_monitor: Any = None   # RansomwareReActAgent when started
+        self._malware_react_agent: Any = None   # MalwareReActAgent singleton
+        self._last_malware_scan: dict = {}
+
         # Subscribe to key events for the live feed
         for topic in ("audit.finding", "monitor.anomaly", "ai.anomaly_detected",
                        "explorer.discovery_complete", "automator.task_complete",
                        "ips.block", "ips.unblock", "ips.rate_limit",
                        "ips.quarantine", "ips.quarantine_release", "ips.started",
-                       "ids.alert", "ids.started", "ids.correlation"):
+                       "ids.alert", "ids.started", "ids.correlation",
+                       "ransomware.alert"):
             engine.event_bus.subscribe(topic, self._capture_event)
 
     def _capture_event(self, event: Event) -> None:
@@ -391,6 +647,10 @@ class Dashboard:
                 return
             else:
                 response = self._route(path)
+            # Handle binary PDF responses
+            if isinstance(response, str) and response.startswith("__PDF__"):
+                await self._api_serve_pdf(response[len("__PDF__"):], writer)
+                return
             writer.write(response.encode())
             await writer.drain()
             logger.debug("Request from %s: %s %s", client_ip, method, path)
@@ -444,7 +704,14 @@ class Dashboard:
             "/api/fleet/threats": self._api_fleet_threats,
             "/api/fleet/reports": self._api_fleet_all_reports,
             "/api/wolfpak/clients": self._api_wolfpak_clients,
+            "/security": self._page_security,
+            "/api/malware/results": self._api_malware_results,
+            "/api/ransomware/status": self._api_ransomware_status,
         }
+
+        # PDF download (dynamic path)
+        if path.startswith("/api/reports/pdf/"):
+            return "__PDF__" + path   # sentinel — handled in _handle_client
 
         # Dynamic fleet routes
         if path.startswith("/api/fleet/agent/") and "/diagnostics" in path:
@@ -767,6 +1034,9 @@ class Dashboard:
             "/api/control/cloaking/activate": self._ctrl_cloaking_activate,
             "/api/control/explorer/discover": self._ctrl_explorer_discover,
             "/api/control/auditor/audit": self._ctrl_auditor_audit,
+            "/api/control/malware/scan": self._ctrl_malware_scan,
+            "/api/control/ransomware/start": self._ctrl_ransomware_start,
+            "/api/control/ransomware/stop": self._ctrl_ransomware_stop,
         }
         handler = handlers.get(path)
         if handler is None:
@@ -863,14 +1133,32 @@ class Dashboard:
 
     # -- Page renderers (with control injection) --------------------------
 
+    @staticmethod
+    def _inject_security_nav(html: str) -> str:
+        """Inject the Threats nav link into any page with the standard nav bar."""
+        _lnk = '<a href="/security">&#128737; Threats</a>'
+        return (
+            html
+            .replace('<a href="/incidents">Incidents</a></div>',
+                     f'<a href="/incidents">Incidents</a>{_lnk}</div>')
+            .replace('<a href="/incidents" class="active">Incidents</a></div>',
+                     f'<a href="/incidents" class="active">Incidents</a>{_lnk}</div>')
+            .replace('<a href="/ai" class="active">AI Engine</a></div>',
+                     f'<a href="/ai" class="active">AI Engine</a>{_lnk}</div>')
+            .replace('<a href="/reports" class="active">Reports</a></div>',
+                     f'<a href="/reports" class="active">Reports</a>{_lnk}</div>')
+        )
+
     def _page_with_controls(self, tmpl: str, path: str) -> str:
         nonce = Dashboard._csp_nonce
         body = inject_controls(tmpl.replace("{{NONCE}}", nonce), path, nonce)
+        body = Dashboard._inject_security_nav(body)
         return self._http_response(200, "text/html", body)
 
     def _page_index(self) -> str:
-        return self._http_response(200, "text/html",
+        body = Dashboard._inject_security_nav(
             _TMPL_INDEX.replace("{{NONCE}}", Dashboard._csp_nonce))
+        return self._http_response(200, "text/html", body)
 
     def _page_ids(self) -> str:
         return self._page_with_controls(_TMPL_IDS, "/ids")
@@ -894,8 +1182,8 @@ class Dashboard:
         return self._page_with_controls(_TMPL_AI, "/ai")
 
     def _page_fleet(self) -> str:
-        return self._http_response(200, "text/html",
-            get_fleet_page(Dashboard._csp_nonce))
+        html = Dashboard._inject_security_nav(get_fleet_page(Dashboard._csp_nonce))
+        return self._http_response(200, "text/html", html)
 
     # -- Fleet API (agent-facing, HMAC authenticated) -------------------
 
@@ -1253,6 +1541,7 @@ class Dashboard:
             'load();setInterval(load,30000);'
             '</script></body></html>'
         )
+        html = Dashboard._inject_security_nav(html)
         return self._http_response(200, "text/html", html)
 
     def _page_incidents(self) -> str:
@@ -1390,6 +1679,7 @@ class Dashboard:
             'load();setInterval(load,30000);'
             '</script></body></html>'
         )
+        html = Dashboard._inject_security_nav(html)
         return self._http_response(200, "text/html", html)
 
     def _page_login(self) -> str:
@@ -1851,6 +2141,135 @@ class Dashboard:
             self._recent_events = self._recent_events[-200:]
 
     # -- Server lifecycle -----------------------------------------------
+
+    def _page_security(self) -> str:
+        return self._http_response(200, "text/html",
+            _TMPL_SECURITY.replace("{{NONCE}}", Dashboard._csp_nonce),
+            extra_headers="Cache-Control: no-store, no-cache, must-revalidate\r\nPragma: no-cache\r\n")
+
+    def _api_malware_results(self) -> str:
+        return self._json_response(self._last_malware_scan)
+
+    def _api_ransomware_status(self) -> str:
+        mon = self._ransomware_monitor
+        if mon is None:
+            return self._json_response({
+                "running": False,
+                "watch_folder": None,
+                "alert_count": 0,
+                "recent_alerts": [],
+                "last_pdf": None,
+            })
+        alerts = [
+            {"kind": a.kind, "path": a.path, "detail": a.detail, "timestamp": a.timestamp}
+            for a in mon.alerts[-20:]
+        ]
+        last_pdf = None
+        if hasattr(mon, "last_report") and mon.last_report and mon.last_report.pdf_path:
+            import os as _os
+            last_pdf = _os.path.basename(mon.last_report.pdf_path)
+        return self._json_response({
+            "running": mon.is_running,
+            "watch_folder": mon.watch_folder,
+            "alert_count": len(mon.alerts),
+            "recent_alerts": list(reversed(alerts)),
+            "last_pdf": last_pdf,
+        })
+
+    async def _api_serve_pdf(self, path: str, writer: asyncio.StreamWriter) -> None:
+        """Serve a PDF from the pdf_reports directory as a binary download."""
+        import os as _os
+        from pathlib import Path as _Path
+        filename = _os.path.basename(path.split("/api/reports/pdf/")[-1])
+        # Validate filename — only allow safe characters
+        import re as _re
+        if not _re.match(r'^[\w\-\.]+\.pdf$', filename, _re.IGNORECASE):
+            writer.write(self._http_response(400, _CONTENT_TEXT, "Bad filename").encode())
+            await writer.drain()
+            return
+        candidates = [
+            _Path.home() / ".network_guardian" / "pdf_reports" / filename,
+            _Path("pdf_reports") / filename,
+        ]
+        pdf_bytes: bytes | None = None
+        for p in candidates:
+            if p.exists():
+                try:
+                    pdf_bytes = p.read_bytes()
+                except OSError:
+                    pass
+                break
+        if pdf_bytes is None:
+            writer.write(self._http_response(404, _CONTENT_TEXT, "PDF not found").encode())
+            await writer.drain()
+            return
+        header = (
+            f"HTTP/1.1 200 OK\r\n"
+            f"Content-Type: application/pdf\r\n"
+            f"Content-Length: {len(pdf_bytes)}\r\n"
+            f"Content-Disposition: attachment; filename=\"{filename}\"\r\n"
+            f"Cache-Control: no-store\r\n"
+            f"\r\n"
+        )
+        writer.write(header.encode() + pdf_bytes)
+        await writer.drain()
+
+    async def _ctrl_malware_scan(self, data: dict) -> str:
+        from network_guardian.agent.malware_react_agent import MalwareReActAgent
+        if self._malware_react_agent is None:
+            self._malware_react_agent = MalwareReActAgent(
+                auto_kill=False,
+                generate_pdf="on_threat",
+                event_bus=self.engine.event_bus,
+            )
+        report = await self._malware_react_agent.run_cycle()
+        findings = [
+            {"pid": t["pid"], "name": t["name"], "exe": t.get("exe"),
+             "matched_reason": t.get("detail", ""), "severity": t.get("severity", "medium")}
+            for t in report.threats
+        ]
+        pdf_filename = None
+        if report.pdf_path:
+            import os as _os
+            pdf_filename = _os.path.basename(report.pdf_path)
+        payload: dict = {
+            "ok": True,
+            "scanned": report.scanned,
+            "findings": findings,
+            "errors": 0,
+            "clean": len(findings) == 0,
+            "risk_level": report.risk_level,
+            "threat_score": report.threat_score,
+            "react_steps": len(report.react_steps),
+            "pdf_file": pdf_filename,
+        }
+        self._last_malware_scan = payload
+        return self._json_response(payload)
+
+    async def _ctrl_ransomware_start(self, data: dict) -> str:
+        if self._ransomware_monitor is None:
+            from network_guardian.agent.ransomware_react_agent import RansomwareReActAgent
+            self._ransomware_monitor = RansomwareReActAgent(
+                auto_quarantine=False,
+                generate_pdf="on_threat",
+                event_bus=self.engine.event_bus,
+            )
+        if self._ransomware_monitor.is_running:
+            return self._json_response({"ok": True, "message": "ReAct monitor already running"})
+        self._ransomware_monitor.start()
+        return self._json_response({
+            "ok": True,
+            "message": (
+                f"Ransomware ReAct monitor started — "
+                f"watching {self._ransomware_monitor.watch_folder}"
+            ),
+        })
+
+    async def _ctrl_ransomware_stop(self, data: dict) -> str:
+        if self._ransomware_monitor is None or not self._ransomware_monitor.is_running:
+            return self._json_response({"ok": True, "message": "Monitor not running"})
+        self._ransomware_monitor.stop()
+        return self._json_response({"ok": True, "message": "Ransomware ReAct monitor stopped"})
 
     async def start(self) -> None:
         self._server = await asyncio.start_server(

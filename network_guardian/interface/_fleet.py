@@ -412,7 +412,7 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
   <div class="nav">
     <a href="/">Dashboard</a><a href="/ids">IDS</a><a href="/ips">IPS</a><a href="/wifi">WiFi</a>
     <a href="/cloaking">Cloaking</a><a href="/explorer">Explorer</a><a href="/auditor">Auditor</a>
-    <a href="/ai">AI Engine</a><a href="/fleet" class="active">Fleet</a>
+    <a href="/ai">AI Engine</a><a href="/fleet" class="active">Fleet</a><a href="/security">&#128737; Threats</a>
   </div>
 
   <!-- Fleet Threat Intelligence -->
