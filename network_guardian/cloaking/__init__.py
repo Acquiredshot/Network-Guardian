@@ -590,17 +590,11 @@ class WiFiScanner:
 
     def __init__(self) -> None:
         self._os = platform.system().lower()
-        self._last_scan: list[WiFiNetwork] = []
-        self._last_connected: WiFiNetwork | None = None
 
     async def scan_networks(self) -> list[WiFiNetwork]:
         """Scan for nearby WiFi networks."""
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, self._scan_sync)
-        self._last_scan = results
-        # Also refresh connected network info alongside scan
-        self._last_connected = await loop.run_in_executor(None, self._connected_sync)
-        return results
+        return await loop.run_in_executor(None, self._scan_sync)
 
     def _scan_sync(self) -> list[WiFiNetwork]:
         """Synchronous scan using OS commands."""
@@ -646,13 +640,14 @@ class WiFiScanner:
                 return []
 
     def _scan_macos(self) -> list[WiFiNetwork]:
-        """Scan using system_profiler on macOS (airport removed in macOS Sonoma+)."""
+        """Scan using airport on macOS."""
+        airport = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
         try:
             result = subprocess.run(
-                ["system_profiler", "SPAirPortDataType", "-json"],
-                capture_output=True, text=True, timeout=20,
+                [airport, "-s"],
+                capture_output=True, text=True, timeout=15,
             )
-            return self._parse_system_profiler_output(result.stdout)
+            return self._parse_airport_output(result.stdout)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             logger.warning("WiFi scan failed: %s", exc)
             return []
@@ -751,7 +746,7 @@ class WiFiScanner:
         return networks
 
     def _parse_airport_output(self, output: str) -> list[WiFiNetwork]:
-        """Parse macOS airport -s output (legacy, kept for compatibility)."""
+        """Parse macOS airport -s output."""
         networks: list[WiFiNetwork] = []
         lines = output.strip().splitlines()
         if len(lines) < 2:
@@ -769,39 +764,6 @@ class WiFiScanner:
                 ))
         return networks
 
-    def _parse_system_profiler_output(self, output: str) -> list[WiFiNetwork]:
-        """Parse macOS system_profiler SPAirPortDataType -json output."""
-        import json as _json
-        networks: list[WiFiNetwork] = []
-        try:
-            data = _json.loads(output)
-            interfaces = (
-                data.get("SPAirPortDataType", [{}])[0]
-                    .get("spairport_airport_interfaces", [])
-            )
-            for iface in interfaces:
-                other_networks = iface.get("spairport_airport_other_local_wireless_networks", [])
-                current = iface.get("spairport_current_network_information", {})
-                all_nets = ([current] if current else []) + other_networks
-                for net in all_nets:
-                    ssid = net.get("_name", "")
-                    bssid = net.get("spairport_network_bssid", "")
-                    channel_str = str(net.get("spairport_network_channel", ""))
-                    ch_match = re.search(r"(\d+)", channel_str)
-                    channel = int(ch_match.group(1)) if ch_match else 0
-                    rssi_raw = net.get("spairport_network_signal_noise", "")
-                    rssi = rssi_raw.split("/")[0].strip() if rssi_raw else ""
-                    signal = int(rssi) if rssi.lstrip("-").isdigit() else 0
-                    security = net.get("spairport_security_mode", "Unknown")
-                    networks.append(WiFiNetwork(
-                        ssid=ssid, bssid=bssid, signal=signal,
-                        channel=channel, security=security,
-                        hidden=ssid == "",
-                    ))
-        except (ValueError, KeyError, IndexError) as exc:
-            logger.warning("Failed to parse system_profiler output: %s", exc)
-        return networks
-
     def _dict_to_wifi(self, d: dict[str, Any]) -> WiFiNetwork:
         return WiFiNetwork(
             ssid=d.get("ssid", ""),
@@ -816,8 +778,7 @@ class WiFiScanner:
     async def get_connected_network(self) -> WiFiNetwork | None:
         """Get the currently connected WiFi network."""
         loop = asyncio.get_event_loop()
-        self._last_connected = await loop.run_in_executor(None, self._connected_sync)
-        return self._last_connected
+        return await loop.run_in_executor(None, self._connected_sync)
 
     def _connected_sync(self) -> WiFiNetwork | None:
         if self._os == "windows":
@@ -885,46 +846,29 @@ class WiFiScanner:
             return None
 
     def _connected_macos(self) -> WiFiNetwork | None:
-        """Get connected WiFi using system_profiler (airport removed in macOS Sonoma+)."""
+        airport = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
         try:
             result = subprocess.run(
-                ["system_profiler", "SPAirPortDataType", "-json"],
-                capture_output=True, text=True, timeout=15,
+                [airport, "-I"],
+                capture_output=True, text=True, timeout=10,
             )
-            import json as _json
-            data = _json.loads(result.stdout)
-            interfaces = (
-                data.get("SPAirPortDataType", [{}])[0]
-                    .get("spairport_airport_interfaces", [])
-            )
-            for iface in interfaces:
-                current = iface.get("spairport_current_network_information", {})
-                if not current or not current.get("_name"):
-                    continue
-                ssid = current.get("_name", "")
-                bssid = current.get("spairport_network_bssid", "")
-                channel_str = current.get("spairport_network_channel", "")
-                channel = int(re.search(r"(\d+)", str(channel_str)).group(1)) if channel_str else 0
-                # Signal: try both key variants
-                sig_str = (current.get("spairport_signal_noise", "")
-                           or current.get("spairport_network_signal_noise", ""))
-                rssi_match = re.search(r"(-?\d+)\s*dBm", sig_str)
-                signal = int(rssi_match.group(1)) if rssi_match else 0
-                # Clean up security mode string
-                raw_sec = current.get("spairport_security_mode", "Unknown")
-                sec_map = {"wpa3": "WPA3", "wpa2_personal": "WPA2 Personal",
-                           "wpa2_enterprise": "WPA2 Enterprise", "wpa_personal": "WPA Personal",
-                           "wpa_enterprise": "WPA Enterprise", "wep": "WEP", "none": "Open"}
-                security = raw_sec
-                for key, label in sec_map.items():
-                    if key in raw_sec.lower():
-                        security = label
-                        break
-                return WiFiNetwork(ssid=ssid, bssid=bssid, signal=signal,
-                                   channel=channel, security=security)
+            info: dict[str, Any] = {}
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("SSID:"):
+                    info["ssid"] = line.split(":", 1)[1].strip()
+                elif line.startswith("BSSID:"):
+                    info["bssid"] = line.split(":", 1)[1].strip()
+                elif line.startswith("agrCtlRSSI:"):
+                    val = line.split(":", 1)[1].strip()
+                    info["signal"] = int(val) if val.lstrip("-").isdigit() else 0
+                elif line.startswith("channel:"):
+                    val = line.split(":", 1)[1].strip()
+                    info["channel"] = int(val.split(",")[0]) if val else 0
+            if "ssid" in info:
+                return self._dict_to_wifi(info)
             return None
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError,
-                KeyError, IndexError):
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
 
 

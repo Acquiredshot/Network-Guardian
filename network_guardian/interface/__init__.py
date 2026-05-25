@@ -39,8 +39,6 @@ class InteractiveCLI:
         "cloak":     "IP Cloaking (usage: cloak mode|mask|identity|decoys|status)",
         "wifi":      "WiFi Stealth (usage: wifi scan|status|hide|show|verify|router)",
         "remote":    "Remote access (usage: remote status|channels|users|pipeline|start|stop)",
-        "malware":   "Scan running processes for malware indicators",
-        "ransomware": "Real-time ransomware monitor (usage: ransomware start|stop|status)",
         "status":    "Show engine status",
         "quit":      "Exit Network Guardian",
     }
@@ -66,10 +64,7 @@ class InteractiveCLI:
             "cloak": self._handle_cloak,
             "wifi": self._handle_wifi,
             "remote": self._handle_remote,
-            "malware": self._handle_malware,
-            "ransomware": self._handle_ransomware,
         }
-        self._ransomware_monitor: Any = None
 
     async def run(self) -> None:
         """Main interactive loop."""
@@ -232,7 +227,7 @@ class InteractiveCLI:
         else:
             await self.engine.dashboard.stop()
 
-    async def _handle_train(self, args: list[str]) -> None:
+    def _handle_train(self, args: list[str]) -> None:
         if not args:
             print("Usage: train anomaly|forecast [method]")
             return
@@ -268,7 +263,7 @@ class InteractiveCLI:
         else:
             print("Usage: nodes start|stop|status|topology")
 
-    async def _handle_datasets(self, args: list[str]) -> None:
+    def _handle_datasets(self, args: list[str]) -> None:
         if not args:
             print("Usage: datasets generate|stats")
             return
@@ -563,58 +558,3 @@ class InteractiveCLI:
             print("  Remote access stopped.")
         else:
             print("Usage: remote status|channels|users|pipeline <name>|start|stop")
-
-    # -- Ransomware monitor -------------------------------------------------
-
-    def _handle_ransomware(self, args: list[str]) -> None:
-        from network_guardian.agent.ransomware_monitor import RansomwareMonitor
-        sub = args[0] if args else "status"
-
-        if sub == "start":
-            if self._ransomware_monitor is None:
-                self._ransomware_monitor = RansomwareMonitor(
-                    event_bus=self.engine.event_bus,
-                )
-            if self._ransomware_monitor.is_running:
-                print("  Ransomware monitor is already running.")
-            else:
-                self._ransomware_monitor.start()
-                if self._ransomware_monitor.is_running:
-                    print(f"  Ransomware monitor started — watching: "
-                          f"{self._ransomware_monitor.watch_folder}")
-                else:
-                    print("  Failed to start monitor. Is 'watchdog' installed? "
-                          "Run: pip install watchdog")
-
-        elif sub == "stop":
-            if self._ransomware_monitor and self._ransomware_monitor.is_running:
-                self._ransomware_monitor.stop()
-                print("  Ransomware monitor stopped.")
-            else:
-                print("  Ransomware monitor is not running.")
-
-        elif sub == "status":
-            if self._ransomware_monitor and self._ransomware_monitor.is_running:
-                m = self._ransomware_monitor
-                print(f"  Status        : RUNNING")
-                print(f"  Watch folder  : {m.watch_folder}")
-                print(f"  Threshold     : {m.threshold} events / {m.window_secs:.0f}s")
-                print(f"  Alerts fired  : {len(m.alerts)}")
-                if m.alerts:
-                    for a in m.alerts[-5:]:
-                        print(f"    [{a.kind.upper()}] {a.detail}")
-            else:
-                print("  Status        : STOPPED")
-
-        else:
-            print("Usage: ransomware start|stop|status")
-
-    # -- Malware process scanner -------------------------------------------
-
-    async def _handle_malware(self, _args: list[str]) -> None:
-        from network_guardian.agent.malware_scanner import scan_processes
-        print("Scanning processes for malware indicators...")
-        result = await asyncio.to_thread(scan_processes)
-        print(result.summary())
-        if not result.clean:
-            print(f"\n  Errors (access denied / no such process): {result.errors}")
