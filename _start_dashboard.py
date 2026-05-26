@@ -27,7 +27,10 @@ async def main() -> None:
     await engine.ids.start()
     await engine.ips.start()
 
-    print(f"Dashboard: http://127.0.0.1:8080  (login: admin / <password>)", flush=True)
+    print(
+        f"Dashboard: http://127.0.0.1:{dash.port}  (login: admin / <password>)",
+        flush=True,
+    )
     print("Press Ctrl+C to stop.", flush=True)
 
     stop_event = asyncio.Event()
@@ -37,7 +40,11 @@ async def main() -> None:
 
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _sig)
+        try:
+            loop.add_signal_handler(sig, _sig)
+        except NotImplementedError:
+            # Windows event loops do not support add_signal_handler.
+            signal.signal(sig, lambda *_: stop_event.set())
 
     await stop_event.wait()
     await engine.stop()
