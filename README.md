@@ -248,6 +248,26 @@ The dashboard uses a nonce-based CSP policy (`script-src 'nonce-...'`). The nonc
 
 ---
 
+## Patch Notes
+
+### v20 — May 2026 (Windows Compatibility + Dependency Hardening)
+
+**Bug fixes:**
+
+| Fix | Detail |
+|---|---|
+| **Windows signal handler crash** | `loop.add_signal_handler()` raises `NotImplementedError` on Windows asyncio. `_start_dashboard.py` now falls back to `signal.signal()` via try/except so the server starts cleanly on all platforms. |
+| **Dynamic startup URL** | `_start_dashboard.py` now prints the correct port in the startup banner (e.g. `http://127.0.0.1:8081`) regardless of the `PORT` environment variable. |
+| **Dashboard rich UI restored** | All 12 dashboard pages (`/`, `/ids`, `/ips`, `/wifi`, `/cloaking`, `/explorer`, `/auditor`, `/ai`, `/fleet`, `/reports`, `/incidents`, `/security`) restored to full rich HTML templates with live charts, KPI bars, and interactive controls. |
+| **Missing runtime dependencies** | `psutil` (malware scanner), `watchdog` (ransomware monitor), and `reportlab` (PDF reports) were not installed in the virtual environment. All three are now pinned in `requirements.txt` and verified importable. |
+
+**Verified after patch:**
+
+- `pytest tests/ -v` → **388 / 388 passed**, 0 failures
+- Live endpoint scan → **40 / 40 HTTP 200** (all pages + all API routes, authenticated)
+
+---
+
 ## Testing
 
 ```bash
