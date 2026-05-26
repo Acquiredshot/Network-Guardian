@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+# Proprietary and confidential. Unauthorized use, reproduction,
+# or distribution is strictly prohibited. See LICENSE for terms.
 """Wolfpak admin mini-programs — CLI tools for the wolfpak admin team.
 
 Each tool auto-generates a unique device tag (UUID + hostname) stored in

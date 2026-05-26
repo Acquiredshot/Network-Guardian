@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+# Proprietary and confidential. Unauthorized use, reproduction,
+# or distribution is strictly prohibited. See LICENSE for terms.
 """
 Network Guardian — MacBook Live Network Scan
 =============================================

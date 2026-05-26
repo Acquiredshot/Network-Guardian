@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "network-guardian"
 version = "0.1.0"
 description = "Autonomous network auditing and system monitoring assistant"
+authors = [{name = "Wolf-Pak Innovations LLC", email = "legal@wolfpakinnovations.com"}]
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
 classifiers = [
@@ -15,7 +16,11 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
 ]
+keywords = ["network", "security", "monitoring", "IDS", "IPS", "threat-detection", "wolf-pak"]
 dependencies = [
     "pyyaml>=6.0,<7",
 ]

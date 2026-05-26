@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+# Proprietary and confidential. Unauthorized use, reproduction,
+# or distribution is strictly prohibited. See LICENSE for terms.
 """Logging configuration for Network Guardian."""
 
 from __future__ import annotations

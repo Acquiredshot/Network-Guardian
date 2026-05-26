@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+# Proprietary and confidential. Unauthorized use, reproduction,
+# or distribution is strictly prohibited. See LICENSE for terms.
 """Wolfpak Admin Client Store — server-side tracking of admin devices.
 
 The base station tracks every wolfpak admin CLI tool connection by reading

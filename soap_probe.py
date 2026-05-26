@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
+# Proprietary and confidential. Unauthorized use, reproduction,
+# or distribution is strictly prohibited. See LICENSE for terms.
 #!/usr/bin/env python3
 """SOAP probe - try every possible auth path to get WLAN access."""
 import urllib3, requests
