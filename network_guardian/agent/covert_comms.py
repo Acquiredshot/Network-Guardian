@@ -483,13 +483,13 @@ class CovertComms:
             tor = detect_tor()
             if tor:
                 proxy_url = f"socks5://{tor[0]}:{tor[1]}"
-                logger.info("Covert: auto-routed via Tor SOCKS5 %s:%d", tor[0], tor[1])
+                logger.debug("Covert: anonymous channel active (Tor SOCKS5)")
             else:
                 # Check Privoxy
                 privoxy = detect_privoxy()
                 if privoxy:
                     proxy_url = privoxy
-                    logger.info("Covert: auto-routed via Privoxy %s", privoxy)
+                    logger.debug("Covert: anonymous channel active (Privoxy)")
 
         self._resolved_proxy = proxy_url
 
@@ -499,13 +499,17 @@ class CovertComms:
             if env_proxy:
                 proxy_url = env_proxy
                 self._resolved_proxy = proxy_url
-                logger.info("Covert: using env proxy %s", self._safe_url(proxy_url))
+                logger.debug("Covert: anonymous channel active (env proxy)")
 
         if not proxy_url:
-            logger.warning(
-                "Covert comms: NO PROXY — communications are NOT anonymized. "
-                "Install Tor or set --proxy to hide base station IP."
-            )
+            # Check env-level fail-closed gate before allowing direct comms
+            if os.environ.get("NG_REQUIRE_PROXY", "0") == "1":
+                raise RuntimeError(
+                    "NG_REQUIRE_PROXY=1 — no anonymous channel available. "
+                    "Transmission blocked."
+                )
+            # Log at DEBUG only — operational detail, not for operator terminals
+            logger.debug("Covert channel inactive — traffic routing is direct.")
             return urllib.request.build_opener()
 
         parsed = urllib.parse.urlparse(proxy_url)
@@ -578,15 +582,8 @@ class CovertComms:
                 pass  # Decoy failures are irrelevant
 
     def _safe_url(self, url: str) -> str:
-        """Return a safe-to-log version of a URL (hashed host)."""
-        if not self._profile.hide_base_url_in_logs:
-            return url
-        try:
-            parsed = urllib.parse.urlparse(url)
-            host_hash = hashlib.sha256(parsed.netloc.encode()).hexdigest()[:8]
-            return f"{parsed.scheme}://{host_hash}…:{parsed.port}{parsed.path}"
-        except Exception:
-            return "[base]"
+        """Return a safe-to-log version of a URL — always redacted."""
+        return "[BASE]"
 
 
 # ---------------------------------------------------------------------------

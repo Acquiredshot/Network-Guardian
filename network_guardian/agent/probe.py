@@ -164,8 +164,8 @@ def authenticate_agent(base_url: str, fleet_key: str,
             sys.exit(1)
         print(f"\n  Authentication failed: HTTP {e.code}")
         sys.exit(1)
-    except Exception as e:
-        print(f"\n  Cannot reach base station: {e}")
+    except Exception:
+        print("\n  Cannot reach base station.")
         sys.exit(1)
 
     if not body.get("ok"):
@@ -937,9 +937,9 @@ def phone_home(base_url: str, agent_key: str, report: AgentReport,
                 except Exception as _pe:
                     logger.warning("Failed to apply patch config: %s", _pe)
             return True
-        logger.warning("Base station rejected report: %s", body.get("message"))
+        logger.warning("Report rejected by base: %s", body.get("message"))
         return False
-    logger.warning("Report delivery FAILED — base station unreachable (network change?)")
+    logger.warning("Report delivery FAILED — base unreachable")
     return False
 
 
@@ -966,8 +966,8 @@ def register_with_base(base_url: str, agent_key: str, identity: AgentIdentity) -
                 return True
             logger.warning("Registration rejected: %s", body.get("message"))
             return False
-    except Exception as e:
-        logger.error("Registration failed: %s", e)
+    except Exception:
+        logger.error("Registration failed — base unreachable")
         return False
 
 
@@ -1232,9 +1232,9 @@ def main():
         description="Network Guardian Field Agent — scans networks and reports to base station",
     )
     parser.add_argument("--base", required=False,
-                        help="Base station URL (e.g. http://192.168.1.100:8080)")
+                        help="Base station URL — prefer NG_BASE env var to keep URL out of process list")
     parser.add_argument("--key", required=False,
-                        help="Agent authentication key (from base station)")
+                        help="Agent authentication key — prefer NG_KEY env var")
     parser.add_argument("--interval", type=int, default=60,
                         help="Report interval in seconds (default: 60)")
     parser.add_argument("--no-discovery", action="store_true",
@@ -1275,6 +1275,18 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    # Resolve base URL and key — prefer env vars so they never appear in ps/top output.
+    # NG_BASE and NG_KEY take priority over CLI flags.
+    base_url: str = os.environ.get("NG_BASE", "").strip() or (args.base or "")
+    agent_key: str = os.environ.get("NG_KEY", "").strip() or (args.key or "")
+
+    # Scrub the base URL and key from sys.argv so they don't appear in process listings.
+    for _flag in ("--base", "--key"):
+        if _flag in sys.argv:
+            _idx = sys.argv.index(_flag)
+            if _idx + 1 < len(sys.argv):
+                sys.argv[_idx + 1] = "[REDACTED]"
+
     # Handle deauth
     if args.deauth:
         deauth_agent()
@@ -1282,31 +1294,33 @@ def main():
 
     # Handle install/uninstall service
     if args.install:
-        if not args.base or not args.key:
-            print("ERROR: --base and --key required for --install")
+        if not base_url or not agent_key:
+            print("ERROR: --base and --key (or NG_BASE / NG_KEY env vars) required for --install")
             sys.exit(1)
-        install_service(args.base, args.key, args.interval)
+        install_service(base_url, agent_key, args.interval)
         return
     if args.uninstall:
         uninstall_service()
         return
 
-    if not args.base or not args.key:
-        parser.error("--base and --key are required")
+    if not base_url or not agent_key:
+        parser.error("--base and --key (or NG_BASE / NG_KEY env vars) are required")
 
     # Build covert communications channel
     comms = build_comms(
-        proxy=args.proxy or "",
-        use_tor=args.tor,
+        proxy=args.proxy or os.environ.get("NG_PROXY", ""),
+        use_tor=args.tor or os.environ.get("NG_TOR", "0") == "1",
         jitter=not args.no_jitter,
-        stealth=args.stealth,
+        stealth=args.stealth or os.environ.get("NG_STEALTH", "0") == "1",
     )
     cs = comms.status()
-    logger.info("Covert channel: proxy=%s, jitter=%s, decoys=%d",
-                cs["proxy"], cs["jitter"], cs["decoys"])
+    # Log channel status without revealing proxy addresses or base coordinates
+    _channel = "anonymous" if cs["proxy"] != "none" else "direct"
+    logger.info("Covert channel: %s | jitter=%s | decoys=%d",
+                _channel, cs["jitter"], cs["decoys"])
 
     # Wolfpak authentication gate
-    auth_info = authenticate_agent(args.base, args.key,
+    auth_info = authenticate_agent(base_url, agent_key,
                                     username=args.username,
                                     password=args.password)
     logger.info("Operator: %s | Role: %s", auth_info.get("operator"), auth_info.get("role"))
@@ -1315,17 +1329,17 @@ def main():
         async def run_once():
             data_dir = Path.home() / ".ng_agent"
             identity = AgentIdentity.collect(data_dir)
-            register_with_base(args.base, args.key, identity)
+            register_with_base(base_url, agent_key, identity)
             report = await build_report(identity,
                                         do_discovery=not args.no_discovery,
                                         do_port_scan=args.port_scan)
-            phone_home(args.base, args.key, report, comms=comms)
+            phone_home(base_url, agent_key, report, comms=comms)
             print(json.dumps(report.to_dict(), indent=2))
         asyncio.run(run_once())
     else:
         asyncio.run(agent_loop(
-            base_url=args.base,
-            agent_key=args.key,
+            base_url=base_url,
+            agent_key=agent_key,
             interval=args.interval,
             discovery=not args.no_discovery,
             port_scan=args.port_scan,
