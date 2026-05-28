@@ -83,7 +83,7 @@ class EngineThread(QThread):
         await self._engine.start()
         self.ready.emit()
         try:
-            await asyncio.get_event_loop().run_in_executor(None, self._stop_flag.wait)
+            await asyncio.get_running_loop().run_in_executor(None, self._stop_flag.wait)
         finally:
             await self._engine.stop()
 

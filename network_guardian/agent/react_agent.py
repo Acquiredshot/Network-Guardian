@@ -893,30 +893,44 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
         """Read the ARP table."""
         entries: list[ARPEntry] = []
         try:
+            os_name = platform.system().lower()
             r = subprocess.run(
                 ["arp", "-a"],
                 capture_output=True, text=True, timeout=5,
             )
             gateway = self._get_gateway()
             for line in r.stdout.splitlines():
-                m = re.search(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-fA-F:]+)', line)
-                if m:
-                    ip, mac = m.group(1), m.group(2)
-                    iface = ""
-                    im = re.search(r'on\s+(\S+)', line)
-                    if im:
-                        iface = im.group(1)
-                    entries.append(ARPEntry(
-                        ip=ip, mac=mac, interface=iface,
-                        is_gateway=(ip == gateway),
-                    ))
+                if os_name == "windows":
+                    # Windows: '  192.168.1.1           00-50-56-c0-00-08     dynamic'
+                    parts = line.split()
+                    if len(parts) >= 2 and re.match(r'\d+\.\d+\.\d+\.\d+', parts[0]):
+                        ip = parts[0]
+                        mac = parts[1].replace("-", ":")
+                        entries.append(ARPEntry(
+                            ip=ip, mac=mac, interface="",
+                            is_gateway=(ip == gateway),
+                        ))
+                else:
+                    # macOS/Linux: '? (192.168.1.1) at 00:11:22:33:44:55 on en0'
+                    m = re.search(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-fA-F:]+)', line)
+                    if m:
+                        ip, mac = m.group(1), m.group(2)
+                        iface = ""
+                        im = re.search(r'on\s+(\S+)', line)
+                        if im:
+                            iface = im.group(1)
+                        entries.append(ARPEntry(
+                            ip=ip, mac=mac, interface=iface,
+                            is_gateway=(ip == gateway),
+                        ))
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
         return entries
 
     def _get_gateway(self) -> str:
         try:
-            if platform.system().lower() == "darwin":
+            os_name = platform.system().lower()
+            if os_name == "darwin":
                 r = subprocess.run(
                     ["route", "-n", "get", "default"],
                     capture_output=True, text=True, timeout=5,
@@ -924,7 +938,7 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                 for line in r.stdout.splitlines():
                     if "gateway:" in line.lower():
                         return line.split(":")[1].strip()
-            elif platform.system().lower() == "linux":
+            elif os_name == "linux":
                 r = subprocess.run(
                     ["ip", "route", "show", "default"],
                     capture_output=True, text=True, timeout=5,
@@ -932,6 +946,19 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                 parts = r.stdout.split()
                 if "via" in parts:
                     return parts[parts.index("via") + 1]
+            elif os_name == "windows":
+                r = subprocess.run(
+                    ["route", "print", "0.0.0.0"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in r.stdout.splitlines():
+                    parts = line.split()
+                    # Active Routes table row: 0.0.0.0  0.0.0.0  <gateway>  <iface>  <metric>
+                    if (len(parts) >= 5
+                            and parts[0] == "0.0.0.0"
+                            and parts[1] == "0.0.0.0"
+                            and re.match(r'\d+\.\d+\.\d+\.\d+', parts[2])):
+                        return parts[2]
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         return ""
@@ -949,7 +976,8 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
     def _get_dns_servers(self) -> list[str]:
         servers = []
         try:
-            if platform.system().lower() == "darwin":
+            os_name = platform.system().lower()
+            if os_name == "darwin":
                 r = subprocess.run(
                     ["scutil", "--dns"],
                     capture_output=True, text=True, timeout=5,
@@ -959,7 +987,7 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                         m = re.search(r'[\d.]+', line)
                         if m and m.group() not in servers:
                             servers.append(m.group())
-            elif platform.system().lower() == "linux":
+            elif os_name == "linux":
                 try:
                     with open("/etc/resolv.conf") as f:
                         for line in f:
@@ -969,6 +997,21 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                                     servers.append(ip)
                 except FileNotFoundError:
                     pass
+            elif os_name == "windows":
+                r = subprocess.run(
+                    ["ipconfig", "/all"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in r.stdout.splitlines():
+                    if "dns server" in line.lower():
+                        # 'DNS Servers . . . . . . . . . . . : 8.8.8.8'
+                        if ":" in line:
+                            suffix = line.split(":", 1)[1].strip()
+                        else:
+                            suffix = line
+                        m = re.search(r'[\d.]{7,15}', suffix)
+                        if m and m.group() not in servers:
+                            servers.append(m.group())
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         return servers[:5]
