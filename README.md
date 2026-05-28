@@ -29,7 +29,7 @@
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
-| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 8-type detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF), escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
+| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), WAF-bypass normalisation (7 decode variants), IP reputation scoring, management API, escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
 
 ---
 
@@ -222,10 +222,25 @@ Lives at `network_guardian/agent/smart_firewall_agent.py`.
 
 ```
 OBSERVE  → subscribe to ids.alert events (INJECTION category) AND accept direct scan_payload() calls
-REASON   → classify injection type, compute threat score, determine escalation tier per source IP
+REASON   → normalise payload (7 decode variants), run 36 rules, compute threat score, reputation
 ACT      → call ips.block_ip() immediately; publish firewall.injection.blocked event; optional PDF
 LEARN    → persist per-IP offense history to ~/.network_guardian/smart_firewall/injection_history.json
 ```
+
+### WAF-bypass detection
+
+Before matching, each payload is decoded into **7 variants** to catch obfuscated attacks:
+
+| Variant | Bypass technique targeted |
+|---|---|
+| Original | Unencoded payloads |
+| URL-decoded (1×) | `%27 OR 1=1` |
+| URL-decoded (2×) | `%2527 OR 1=1` (double encoding) |
+| HTML entity decoded | `&#39; OR 1=1` |
+| Unicode NFKC normalised | Homoglyph substitution |
+| SQL comment stripped | `UN/**/ION SE/**/LECT` |
+| Null-byte removed | `payload\x00.txt` |
+| Base64 decoded | Encoded payload bodies |
 
 ### Injection types detected
 
@@ -239,6 +254,36 @@ LEARN    → persist per-IP offense history to ~/.network_guardian/smart_firewal
 | **SSTI** | 4 rules | `{{7*7}}`, `${7*7}`, `<%= 7*7 %>`, `#{expr}` |
 | **Path Traversal** | 4 rules | `../../etc/passwd`, `%2e%2e%2f`, double-encoded, null-byte variants |
 | **Header Injection** | 2 rules | `%0d%0aSet-Cookie:`, `\r\nLocation:` |
+| **NoSQL Injection** | 4 rules | `$where`, `$ne`, `$gt` operator abuse, JS injection in MongoDB queries |
+| **GraphQL Injection** | 3 rules | `__schema` introspection, batching abuse, deep nesting DoS |
+
+Total: **36 detection rules** across **10 injection types**.
+
+### IP Reputation Scoring
+
+Each detection accumulates a per-IP threat score (0–100):
+
+| Severity | Score delta (× confidence) |
+|---|---|
+| Critical | +30 |
+| High | +15 |
+| Medium | +5 |
+
+Query with `agent.reputation_score("1.2.3.4")`. Score persists in memory for the agent's lifetime.
+
+### Management API
+
+```python
+agent.get_stats()                          # live statistics dict
+agent.dashboard_summary()                  # JSON-safe subset for /api/smart_firewall
+agent.reputation_score(ip)                 # float 0.0–100.0
+agent.record_request(ip)                   # True if rate threshold exceeded
+agent.mark_false_positive(detection_id)    # remove from history
+agent.add_rule(InjectionRule(...))         # add custom rule
+agent.enable_rule("NoSQL MongoDB Operator") # enable by name
+agent.disable_rule("GraphQL Batch Attack") # disable by name
+agent.set_confidence_threshold(0.80)       # tune sensitivity
+```
 
 ### Escalating blocks
 

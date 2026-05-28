@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v24] — 2026-05-27
+
+### Added
+
+#### Smart Firewall Agent — Bypass Detection, NoSQL/GraphQL Rules, Reputation Scoring, Management API
+
+**WAF-bypass payload normalisation** (`_normalize_payload`)
+- Before running any detection rule the payload is decoded into up to **7 variants**: original, URL-decoded (×1), URL-decoded (×2, double-encoding bypass), HTML entity decoded, Unicode NFKC normalised (homoglyph bypass), SQL inline-comment stripped (`UN/**/ION`), null-byte removed, and base64 decoded. Rules are tested against all variants so encoded attacks can no longer slip through.
+
+**Two new injection categories** (10 types total, 36 rules total):
+- **NoSQL Injection** — 4 rules covering MongoDB `$where`/`$ne`/`$gt` operator injection, `$where` JavaScript execution, array-operator bypass, and JSON key injection.
+- **GraphQL Injection** — 3 rules covering `__schema`/`__type` introspection probes, aliased-query batch amplification attacks, and deeply nested query DoS.
+
+**IP reputation scoring** (`reputation_score`, `_update_reputation`)
+- Each detected injection accumulates a floating-point threat score per source IP (0–100). Delta is `sev_delta × confidence` where `sev_delta` is 30 (critical), 15 (high), or 5 (medium). Score persists in memory for the agent's lifetime and is accessible via `agent.reputation_score(ip)`.
+
+**Per-agent rule management**
+- `self._rules` is a per-instance shallow copy of the module-level rules list so `enable_rule`/`disable_rule` calls on one agent never affect another.
+- `add_rule(InjectionRule)` — add a custom rule at runtime.
+- `enable_rule(name) -> bool` — re-enable a previously disabled rule.
+- `disable_rule(name) -> bool` — disable a rule without removing it.
+
+**Confidence threshold** (`set_confidence_threshold`, `_confidence_threshold`)
+- Detections whose combined confidence is below the threshold (default 0.70) are silently dropped, preventing low-signal rules from triggering blocks on ambiguous payloads.
+
+**Rate-tracking** (`record_request`, `_request_tracker`)
+- Sliding-window request counter per IP (default: 200 req/60 s). Returns `True` when the threshold is exceeded — a signal of automated scanning even without an injection match.
+
+**Statistics & dashboard API**
+- `get_stats() -> dict` — live snapshot: total scanned, total blocked, blocks last hour, top attacking IPs, injection type breakdown, false-positive count, rule metadata.
+- `dashboard_summary() -> dict` — JSON-serialisable subset for the `/api/smart_firewall` dashboard endpoint.
+
+**False-positive tracking** (`mark_false_positive`)
+- `mark_false_positive(detection_id)` removes a detection from per-IP history and registers the ID in `_fp_ids` so it is excluded from stats.
+
+**CLI extended** (`_cli_main`)
+- New commands: `stats`, `rules`, `enable <rule>`, `disable <rule>`, `reputation <ip>`, `fp <detection_id>`, `threshold <float>`.
+
+**Recommendation catalogue**
+- Added remediation guidance for `NOSQL` and `GRAPHQL` injection types.
+
+---
+
 ## [v23] — 2026-05-27
 
 ### Added

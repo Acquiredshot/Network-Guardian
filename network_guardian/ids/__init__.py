@@ -119,6 +119,7 @@ class Alert:
             "destination_port": self.destination_port,
             "method": self.method.value,
             "description": self.description,
+            "raw_data": self.raw_data,
             "timestamp": self.timestamp.isoformat(),
         }
 

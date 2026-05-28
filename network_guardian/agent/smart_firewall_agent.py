@@ -40,23 +40,108 @@ Injection types detected
 from __future__ import annotations
 
 import asyncio
+import base64
+import html
 import json
 import logging
 import re
 import time
+import unicodedata
+import urllib.parse
 import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
+
+from network_guardian.core.events import Event
 
 if TYPE_CHECKING:
     from network_guardian.core.events import EventBus
     from network_guardian.ips import IntrusionPreventionSystem
 
+
+# ---------------------------------------------------------------------------
+# Payload normalisation — decode common WAF-bypass encodings before matching
+# ---------------------------------------------------------------------------
+
+
+def _normalize_payload(payload: str) -> list[str]:
+    """Return a list of decoded/normalised payload variants.
+
+    Applies URL-decode (once + twice), HTML entity decode, Unicode NFKC
+    normalisation, SQL inline-comment stripping, null-byte removal, and
+    base64 decode so the detection rules fire even when an attacker encodes
+    the payload to slip past a naive string filter.
+    """
+    variants: list[str] = [payload]
+
+    # URL-decode once
+    try:
+        v1 = urllib.parse.unquote(payload)
+        if v1 not in variants:
+            variants.append(v1)
+        # URL-decode twice (double-encoding bypass)
+        v2 = urllib.parse.unquote(v1)
+        if v2 not in variants:
+            variants.append(v2)
+    except Exception:
+        pass
+
+    # HTML entity decode
+    try:
+        v = html.unescape(payload)
+        if v not in variants:
+            variants.append(v)
+    except Exception:
+        pass
+
+    # Unicode NFKC normalisation (homoglyph bypass)
+    try:
+        v = unicodedata.normalize("NFKC", payload)
+        if v not in variants:
+            variants.append(v)
+    except Exception:
+        pass
+
+    # Strip SQL inline comments /*…*/ (e.g. UN/**/ION)
+    v = re.sub(r"/\*[^*]*\*/", " ", payload)
+    if v not in variants:
+        variants.append(v)
+
+    # Remove null bytes (%00 and literal \x00)
+    v = payload.replace("\x00", "").replace("%00", "")
+    if v not in variants:
+        variants.append(v)
+
+    # Base64 decode attempt
+    try:
+        padding = 4 - len(payload) % 4
+        decoded = base64.b64decode(payload + "=" * (padding % 4)).decode("utf-8", errors="ignore")
+        if decoded and len(decoded) > 3 and decoded not in variants:
+            variants.append(decoded)
+    except Exception:
+        pass
+
+    return variants
+
+
+# ---------------------------------------------------------------------------
+# Helper — parse ISO timestamp from stored history entries
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_dt(ts: str) -> "datetime | None":
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        return None
+
+
 logger = logging.getLogger("network_guardian.agent.smart_firewall")
+
 
 # ---------------------------------------------------------------------------
 # Injection classification
@@ -72,6 +157,8 @@ class InjectionType(Enum):
     SSTI           = "ssti"
     PATH_TRAVERSAL = "path_traversal"
     HEADER         = "header_injection"
+    NOSQL          = "nosql_injection"
+    GRAPHQL        = "graphql_injection"
     UNKNOWN        = "unknown"
 
 
@@ -87,6 +174,7 @@ class InjectionRule:
     severity: str   # "critical" | "high" | "medium"
     confidence: float  # base confidence contribution 0.0–1.0
     description: str
+    enabled: bool = True
     _compiled: re.Pattern | None = field(default=None, repr=False)
 
     @property
@@ -279,6 +367,50 @@ _INJECTION_RULES: list[InjectionRule] = [
         injection_type=InjectionType.HEADER, severity="high", confidence=0.88,
         description="HTTP response splitting via injected newline characters.",
     ),
+    # -- NoSQL Injection -----------------------------------------------------
+    InjectionRule(
+        name="NoSQL MongoDB Operator",
+        pattern=r"\$(?:where|ne|gt|gte|lt|lte|in|nin|regex|exists|or|and|not|nor|elemMatch)\b",
+        injection_type=InjectionType.NOSQL, severity="critical", confidence=0.88,
+        description="MongoDB operator injection — $where/$ne/$gt/etc. used to manipulate queries.",
+    ),
+    InjectionRule(
+        name="NoSQL JavaScript Injection",
+        pattern=r"\$where\s*:\s*['\"].*(?:function|return|this\.|require\()",
+        injection_type=InjectionType.NOSQL, severity="critical", confidence=0.93,
+        description="NoSQL $where JavaScript injection — arbitrary JS execution inside MongoDB.",
+    ),
+    InjectionRule(
+        name="NoSQL Array Operator Bypass",
+        pattern=r"(?:\[\s*\$|\{\s*\$(?:gt|lt|ne|in)\s*:)",
+        injection_type=InjectionType.NOSQL, severity="high", confidence=0.82,
+        description="NoSQL array/object operator abuse to bypass authentication filters.",
+    ),
+    InjectionRule(
+        name="NoSQL JSON Key Injection",
+        pattern=r"['\"]\s*:\s*\{\s*\$",
+        injection_type=InjectionType.NOSQL, severity="high", confidence=0.80,
+        description="JSON key-value pair with $ operator — classic NoSQL auth bypass.",
+    ),
+    # -- GraphQL Injection ---------------------------------------------------
+    InjectionRule(
+        name="GraphQL Introspection Probe",
+        pattern=r"__(?:schema|type|typename|fields|inputFields|enumValues|possibleTypes)\b",
+        injection_type=InjectionType.GRAPHQL, severity="medium", confidence=0.80,
+        description="GraphQL introspection — enumerates schema types and fields.",
+    ),
+    InjectionRule(
+        name="GraphQL Batch Attack",
+        pattern=r"(?:\balias\w*\s*:\s*\w+\s*\([^)]*\)\s*\{.*?\}\s*){3,}",
+        injection_type=InjectionType.GRAPHQL, severity="high", confidence=0.85,
+        description="GraphQL batching abuse — multiple aliased queries to amplify requests.",
+    ),
+    InjectionRule(
+        name="GraphQL Deep Nesting",
+        pattern=r"(?:\{\s*\w+\s*\{){6,}",
+        injection_type=InjectionType.GRAPHQL, severity="high", confidence=0.82,
+        description="GraphQL deeply nested query — potential resolver DoS via excessive depth.",
+    ),
 ]
 
 
@@ -419,6 +551,30 @@ class SmartFirewallAgent:
         self._cycle = 0
         self._last_report: SmartFirewallReport | None = None
 
+        # Per-agent rule set — copy of module-level list so add/enable/disable
+        # only affect this instance
+        self._rules: list[InjectionRule] = list(_INJECTION_RULES)
+
+        # Confidence threshold — detections below this value are dropped
+        self._confidence_threshold: float = 0.70
+
+        # Rate tracking for request-flood / scanner detection
+        self._request_tracker: dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=10_000)
+        )
+        self._rate_window_secs: float = 60.0
+        self._rate_block_threshold: int = 200  # requests per window
+
+        # Per-IP reputation score (0.0 = clean, 100.0 = confirmed high-risk)
+        self._reputation: dict[str, float] = {}
+
+        # False-positive tracking — detection IDs manually cleared by operator
+        self._fp_ids: set[str] = set()
+
+        # Lifetime counters
+        self._total_scanned: int = 0
+        self._total_blocked: int = 0
+
         # Subscribe to IDS alerts from the event bus
         if self._event_bus:
             self._event_bus.subscribe("ids.alert", self._on_ids_alert)
@@ -442,9 +598,12 @@ class SmartFirewallAgent:
         This is the primary integration point for the desktop app and
         any HTTP middleware that wants real-time request inspection.
         """
+        self._total_scanned += 1
         detections = self._detect(payload, source_ip)
         for d in detections:
             await self._act_on_detection(d)
+        if detections:
+            self._save_detections_to_history(detections)
         return detections
 
     async def run_cycle(self) -> SmartFirewallReport:
@@ -559,16 +718,16 @@ class SmartFirewallAgent:
                     })
 
             if self._event_bus:
-                await self._event_bus.publish({
-                    "topic": "firewall.injection.cycle",
-                    "data": {
+                await self._event_bus.publish(Event(
+                    topic="firewall.injection.cycle",
+                    data={
                         "cycle": cycle,
                         "risk_level": risk_level,
                         "threat_score": threat_score,
                         "ips_blocked": list(set(blocked_ips)),
                         "injections": len(threats),
                     },
-                })
+                ))
         else:
             _step("act", "No injections in this cycle — no action required")
 
@@ -690,34 +849,207 @@ class SmartFirewallAgent:
             self._ip_history.clear()
         self._persist_history()
 
-    # ------------------------------------------------------------------
-    # Internal: detection
-    # ------------------------------------------------------------------
+    def record_request(self, source_ip: str) -> bool:
+        """Record any inbound request from *source_ip* (injection or clean).
+
+        Returns ``True`` when the source IP's request rate exceeds
+        ``_rate_block_threshold`` within the sliding window — a signal of
+        automated scanning or fuzzing regardless of injection content.
+        """
+        if source_ip in self._allowlist:
+            return False
+        now = time.monotonic()
+        q = self._request_tracker[source_ip]
+        q.append(now)
+        cutoff = now - self._rate_window_secs
+        recent = sum(1 for t in q if t >= cutoff)
+        return recent >= self._rate_block_threshold
+
+    def get_stats(self) -> dict:
+        """Return a live snapshot of agent statistics."""
+        all_offenses = [
+            (ip, len(hist)) for ip, hist in self._ip_history.items() if hist
+        ]
+        top_attackers = sorted(all_offenses, key=lambda x: x[1], reverse=True)[:5]
+
+        type_counts: dict[str, int] = {}
+        for hist in self._ip_history.values():
+            for entry in hist:
+                t = entry.get("injection_type", "unknown")
+                type_counts[t] = type_counts.get(t, 0) + 1
+        top_type = max(type_counts, key=lambda k: type_counts[k]) if type_counts else None
+
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        blocks_last_hour = 0
+        for hist in self._ip_history.values():
+            for entry in hist:
+                if entry.get("action_taken") == "blocked":
+                    dt = _parse_iso_dt(entry.get("timestamp", ""))
+                    if dt and dt > one_hour_ago:
+                        blocks_last_hour += 1
+
+        return {
+            "running":               self.is_running,
+            "cycle":                 self._cycle,
+            "total_scanned":         self._total_scanned,
+            "total_blocked":         self._total_blocked,
+            "blocks_last_hour":      blocks_last_hour,
+            "unique_attackers":      len(self._ip_history),
+            "top_attacking_ips":     [{"ip": ip, "offenses": n} for ip, n in top_attackers],
+            "most_common_type":      top_type,
+            "injection_type_counts": type_counts,
+            "false_positives":       len(self._fp_ids),
+            "rules_total":           len(self._rules),
+            "rules_enabled":         sum(1 for r in self._rules if r.enabled),
+            "confidence_threshold":  self._confidence_threshold,
+            "auto_block":            self.auto_block,
+            "last_report_at":        (
+                self._last_report.generated_at if self._last_report else None
+            ),
+        }
+
+    def dashboard_summary(self) -> dict:
+        """JSON-serialisable summary for the ``/api/smart_firewall`` endpoint."""
+        stats = self.get_stats()
+        last = self._last_report
+        return {
+            "status":           "running" if self.is_running else "stopped",
+            "cycle":            stats["cycle"],
+            "total_scanned":    stats["total_scanned"],
+            "total_blocked":    stats["total_blocked"],
+            "blocks_last_hour": stats["blocks_last_hour"],
+            "unique_attackers": stats["unique_attackers"],
+            "top_attackers":    stats["top_attacking_ips"],
+            "most_common_type": stats["most_common_type"],
+            "injection_types":  stats["injection_type_counts"],
+            "auto_block":       stats["auto_block"],
+            "last_report": {
+                "report_id":    last.report_id      if last else None,
+                "risk_level":   last.risk_level     if last else None,
+                "threat_score": last.threat_score   if last else 0.0,
+                "generated_at": last.generated_at   if last else None,
+                "ips_blocked":  last.ips_blocked     if last else [],
+            },
+        }
+
+    def reputation_score(self, ip: str) -> float:
+        """Return the accumulated threat reputation for *ip* (0.0–100.0)."""
+        return round(self._reputation.get(ip, 0.0), 2)
+
+    def mark_false_positive(self, detection_id: str) -> bool:
+        """Mark a detection as a false positive.
+
+        Removes all history entries with this detection ID and adds it to the
+        false-positive set so it is excluded from future stats.  Returns
+        ``True`` if the ID was found in history.
+        """
+        found = False
+        for ip, hist in list(self._ip_history.items()):
+            updated = [e for e in hist if e.get("detection_id") != detection_id]
+            if len(updated) < len(hist):
+                found = True
+                self._fp_ids.add(detection_id)
+                if updated:
+                    self._ip_history[ip] = updated
+                else:
+                    del self._ip_history[ip]
+        if found:
+            self._persist_history()
+        return found
+
+    def add_rule(self, rule: InjectionRule) -> None:
+        """Add a custom detection rule to this agent instance."""
+        self._rules.append(rule)
+        logger.info("[SmartFirewall] Custom rule added: %s", rule.name)
+
+    def enable_rule(self, name: str) -> bool:
+        """Enable a rule by exact name. Returns ``True`` if found."""
+        for r in self._rules:
+            if r.name == name:
+                r.enabled = True
+                return True
+        return False
+
+    def disable_rule(self, name: str) -> bool:
+        """Disable a rule by exact name. Returns ``True`` if found."""
+        for r in self._rules:
+            if r.name == name:
+                r.enabled = False
+                return True
+        return False
+
+    def set_confidence_threshold(self, threshold: float) -> None:
+        """Set the minimum combined confidence required to raise a detection.
+
+        *threshold* is clamped to [0.0, 1.0].  Lower values increase
+        sensitivity (more detections); higher values reduce false positives.
+        Default is 0.70.
+        """
+        self._confidence_threshold = max(0.0, min(1.0, threshold))
+        logger.info(
+            "[SmartFirewall] Confidence threshold updated to %.2f",
+            self._confidence_threshold,
+        )
+
+    _SEVERITY_ORDER = {"medium": 1, "high": 2, "critical": 3}
 
     def _detect(self, payload: str, source_ip: str) -> list[InjectionDetection]:
-        """Run all injection rules against *payload*. Returns detections."""
-        detections: list[InjectionDetection] = []
-        seen_types: set[InjectionType] = set()
+        """Run all injection rules against *payload* and its decoded variants.
 
-        for rule in _INJECTION_RULES:
-            if rule.compiled.search(payload):
-                # Deduplicate: one detection per injection type per payload
-                if rule.injection_type in seen_types:
-                    continue
-                seen_types.add(rule.injection_type)
-                detections.append(InjectionDetection(
-                    detection_id=uuid.uuid4().hex[:10],
-                    source_ip=source_ip,
-                    payload_snippet=payload[:300],
-                    injection_type=rule.injection_type,
-                    rule_name=rule.name,
-                    severity=rule.severity,
-                    confidence=rule.confidence,
-                ))
-                logger.warning(
-                    "[SmartFirewall] %s detected from %s — rule='%s' severity=%s",
-                    rule.injection_type.value, source_ip, rule.name, rule.severity,
-                )
+        Normalises the payload (URL-decode x2, HTML-decode, Unicode NFKC,
+        SQL comment stripping, null-byte removal, base64) to catch WAF bypass
+        techniques.  Returns one ``InjectionDetection`` per injection type,
+        with confidence aggregated as 1 − ∏(1 − cᵢ) across matching rules.
+        Detections below ``_confidence_threshold`` are silently dropped.
+        """
+        variants = _normalize_payload(payload)
+        hits_by_type: dict[InjectionType, list[InjectionRule]] = defaultdict(list)
+
+        for rule in self._rules:
+            if not rule.enabled:
+                continue
+            for variant in variants:
+                if rule.compiled.search(variant):
+                    hits_by_type[rule.injection_type].append(rule)
+                    break  # matched — no need to test remaining variants
+
+        detections: list[InjectionDetection] = []
+        for inj_type, rules in hits_by_type.items():
+            # Deduplicate rules that matched across different variants
+            seen_names: set[str] = set()
+            unique_rules: list[InjectionRule] = []
+            for r in rules:
+                if r.name not in seen_names:
+                    seen_names.add(r.name)
+                    unique_rules.append(r)
+
+            # Combined confidence: 1 − ∏(1 − cᵢ)
+            inverse = 1.0
+            for r in unique_rules:
+                inverse *= (1.0 - r.confidence)
+            combined_confidence = round(1.0 - inverse, 4)
+
+            # Drop detections below the configured confidence threshold
+            if combined_confidence < self._confidence_threshold:
+                continue
+
+            worst = max(unique_rules, key=lambda r: self._SEVERITY_ORDER.get(r.severity, 0))
+            rule_label = worst.name if len(unique_rules) == 1 else (
+                worst.name + f" (+{len(unique_rules) - 1} more)"
+            )
+            detections.append(InjectionDetection(
+                detection_id=uuid.uuid4().hex[:10],
+                source_ip=source_ip,
+                payload_snippet=payload[:300],
+                injection_type=inj_type,
+                rule_name=rule_label,
+                severity=worst.severity,
+                confidence=combined_confidence,
+            ))
+            logger.warning(
+                "[SmartFirewall] %s detected from %s — rules=%d severity=%s confidence=%.2f",
+                inj_type.value, source_ip, len(unique_rules), worst.severity, combined_confidence,
+            )
         return detections
 
     # ------------------------------------------------------------------
@@ -732,6 +1064,7 @@ class SmartFirewallAgent:
 
         if not self.auto_block or self._ips is None:
             det.action_taken = "logged"
+            self._update_reputation(det.source_ip, det)
             await self._publish_detection_event(det)
             return False
 
@@ -761,6 +1094,7 @@ class SmartFirewallAgent:
 
         det.action_taken = "blocked"
         det.block_duration = duration
+        self._total_blocked += 1
 
         offense = self.offense_count(det.source_ip)  # before saving
         logger.warning(
@@ -769,6 +1103,7 @@ class SmartFirewallAgent:
             "permanent" if duration is None else f"{duration}s",
         )
 
+        self._update_reputation(det.source_ip, det)
         await self._publish_detection_event(det)
         return True
 
@@ -776,7 +1111,6 @@ class SmartFirewallAgent:
         if self._event_bus is None:
             return
         try:
-            from network_guardian.core.events import Event
             await self._event_bus.publish(Event(
                 topic="firewall.injection.blocked",
                 data=det.to_dict(),
@@ -866,6 +1200,17 @@ class SmartFirewallAgent:
         if detections:
             self._persist_history()
 
+    def _update_reputation(self, ip: str, det: InjectionDetection) -> None:
+        """Accumulate per-IP reputation threat score (0.0–100.0).
+
+        Score increases by ``sev_delta × confidence`` so high-confidence
+        critical hits have the largest impact.  Score is capped at 100.
+        """
+        sev_delta = {"critical": 30.0, "high": 15.0, "medium": 5.0}
+        current = self._reputation.get(ip, 0.0)
+        delta = sev_delta.get(det.severity, 5.0) * det.confidence
+        self._reputation[ip] = round(min(100.0, current + delta), 2)
+
 
 # ---------------------------------------------------------------------------
 # Recommendation catalogue
@@ -905,6 +1250,16 @@ def _recommendation(inj_type: InjectionType) -> str:
             "Strip \\r and \\n from all header values before forwarding or "
             "rendering HTTP responses."
         ),
+        InjectionType.NOSQL: (
+            "Use MongoDB/NoSQL driver parameterised query builders. Never "
+            "construct queries from unsanitised user input. Reject or strip "
+            "$-prefixed keys at the application boundary."
+        ),
+        InjectionType.GRAPHQL: (
+            "Disable introspection in production. Implement query depth "
+            "limiting and cost analysis (persisted queries) to prevent "
+            "batching abuse and resolver-level DoS."
+        ),
         InjectionType.UNKNOWN: (
             "Investigate the flagged payload manually and harden the relevant "
             "input handling code."
@@ -923,7 +1278,8 @@ async def _cli_main() -> None:
 
     print("Network Guardian — Smart Firewall Agent")
     print("Detection-only mode (no live IPS in CLI). Type a payload to scan.")
-    print("Commands: quit, history <ip>, clear <ip>, help\n")
+    print("Commands: quit, history <ip>, clear <ip>, stats, rules, enable <rule>,")
+    print("          disable <rule>, reputation <ip>, help\n")
 
     agent = SmartFirewallAgent(ips=None, event_bus=None, auto_block=False)
 
@@ -957,11 +1313,53 @@ async def _cli_main() -> None:
             ip = rest.strip() or None
             agent.clear_history(ip)
             print(f"  Cleared {'all' if ip is None else ip}")
+        elif cmd == "stats":
+            stats = agent.get_stats()
+            for k, v in stats.items():
+                if isinstance(v, list):
+                    print(f"  {k}:")
+                    for item in v:
+                        print(f"    {item}")
+                else:
+                    print(f"  {k}: {v}")
+        elif cmd == "rules":
+            for r in agent._rules:
+                state = "\u2713" if r.enabled else "\u2717"
+                print(f"  [{state}] {r.name} ({r.injection_type.value}) "
+                      f"sev={r.severity} conf={r.confidence:.0%}")
+        elif cmd == "enable":
+            found = agent.enable_rule(rest.strip())
+            print(f"  {'Enabled' if found else 'Rule not found'}: {rest.strip()!r}")
+        elif cmd == "disable":
+            found = agent.disable_rule(rest.strip())
+            print(f"  {'Disabled' if found else 'Rule not found'}: {rest.strip()!r}")
+        elif cmd == "reputation":
+            ip = rest.strip()
+            score = agent.reputation_score(ip)
+            offenses = agent.offense_count(ip)
+            print(f"  {ip}: reputation={score}/100, offenses={offenses}")
+        elif cmd == "fp":
+            det_id = rest.strip()
+            found = agent.mark_false_positive(det_id)
+            print(f"  {'Marked as false positive' if found else 'Detection ID not found'}: {det_id!r}")
+        elif cmd == "threshold":
+            try:
+                agent.set_confidence_threshold(float(rest.strip()))
+                print(f"  Threshold set to {agent._confidence_threshold:.2f}")
+            except ValueError:
+                print("  Usage: threshold <0.0–1.0>")
         elif cmd == "help":
-            print("  <payload>      Scan a raw payload string")
-            print("  history <ip>   Show last 5 detections for an IP")
-            print("  clear [<ip>]   Clear history for one or all IPs")
-            print("  quit           Exit")
+            print("  <payload>             Scan a raw payload string")
+            print("  history <ip>          Show last 5 detections for an IP")
+            print("  clear [<ip>]          Clear history for one or all IPs")
+            print("  stats                 Show agent statistics")
+            print("  rules                 List all detection rules with state")
+            print("  enable <rule>         Enable a rule by exact name")
+            print("  disable <rule>        Disable a rule by exact name")
+            print("  reputation <ip>       Show reputation score for an IP")
+            print("  fp <detection_id>     Mark a detection as a false positive")
+            print("  threshold <0.0–1.0>   Set minimum confidence threshold")
+            print("  quit                  Exit")
         else:
             # Treat the whole line as a payload
             src = input("source IP (blank=unknown)> ").strip() or "unknown"
