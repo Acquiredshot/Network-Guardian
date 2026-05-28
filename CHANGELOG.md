@@ -4,6 +4,55 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v23] — 2026-05-27
+
+### Added
+
+#### Smart Firewall ReAct Agent (`network_guardian/agent/smart_firewall_agent.py`)
+- New autonomous injection-detection and active-blocking agent following the standard **Observe → Reason → Act → Learn** cycle:
+  - **OBSERVE** — drains a queue populated by `ids.alert` event-bus subscriptions (reactive) and accepts direct `scan_payload()` calls (proactive)
+  - **REASON** — classifies each injection by type, computes per-IP escalation tier, derives risk level (low / medium / high / critical) and 0–100 threat score
+  - **ACT** — calls `ips.block_ip()` immediately; publishes `firewall.injection.blocked` event; generates PDF report on high/critical cycles
+  - **LEARN** — persists per-IP offense history to `~/.network_guardian/smart_firewall/injection_history.json`; caps at 500 entries per IP
+
+- **29 injection detection rules** across 8 attack categories:
+
+  | Category | Rules | Coverage |
+  |---|---|---|
+  | SQL Injection | 6 | UNION SELECT, tautology, stacked queries, blind time-based, comment stripping, error-based |
+  | XSS | 5 | `<script>`, event handlers, `javascript:`, SVG/IMG payloads, HTML entity obfuscation |
+  | Command Injection | 4 | Pipe/semicolon/backtick/$(), file redirection, `\|\|` operator, URL-encoded shell chars |
+  | LDAP Injection | 2 | Filter escape, AND/OR operator bypass |
+  | XXE | 2 | SYSTEM entity declaration, parameter entity exfiltration |
+  | SSTI | 4 | Jinja2/Twig `{{ }}`, FreeMarker/Spring EL `${}`, ERB `<%= %>`, Thymeleaf `#{}` |
+  | Path Traversal | 4 | `../../`, URL-encoded `%2e%2e%2f`, double-encoded `%252e`, null-byte variant |
+  | Header Injection | 2 | CRLF `%0d%0a`, HTTP response splitting |
+
+- **Escalating block durations**: 1st offense → 1 hour; 2nd offense → 6 hours; 3rd+ → permanent
+- `InjectionDetection` dataclass — captures detection ID, source IP, payload snippet, injection type, rule name, severity, confidence, action taken, and block duration
+- `SmartFirewallReport` dataclass — full cycle summary (risk level, threat score, IPs blocked, ReAct steps, threats, actions, recommendations)
+- `InjectionRule` dataclass with lazy-compiled regex patterns (`re.IGNORECASE | re.DOTALL`)
+- `offense_count(ip)` — returns number of confirmed injection offenses for a source IP
+- `clear_history(ip=None)` — clears offense history for one or all IPs
+- `scan_payload(payload, source_ip)` — immediately analyse a single payload and (if `auto_block=True`) block the attacker
+- `start()` / `stop()` / `run()` — standard async lifecycle interface matching other ReAct agents
+- `generate_pdf` support — integrates with `pdf_reporter.build_report_pdf()` for PDF incident reports
+- Per-injection-type recommendations catalogued in `_recommendation(InjectionType)`
+- Interactive CLI: `python -m network_guardian.agent.smart_firewall_agent`
+
+#### Engine integration (`network_guardian/core/engine.py`)
+- `Engine.smart_firewall` lazy property — instantiates `SmartFirewallAgent` wired to the live `IPS` and `EventBus`
+- `Engine.start()` — automatically calls `self.smart_firewall.start()` so the agent is always active
+- `Engine.stop()` — calls `self._smart_firewall.stop()` for clean shutdown
+
+#### Desktop App update (`network_guardian/interface/desktop.py`)
+- **Analyze** button now routes payloads through `engine.smart_firewall.scan_payload()` first (injection detection + auto-block), then through `engine.ids.analyse_payload()` (full IDS scan)
+
+### Changed
+- `README.md` — new **Smart Firewall Agent** section (architecture, injection type table, escalation table, programmatic usage, event bus topics); Capabilities table row added; Quick Start command added
+
+---
+
 ## [v22] — 2026-05-27
 
 ### Added

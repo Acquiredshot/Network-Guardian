@@ -19,6 +19,7 @@ from network_guardian.core.events import EventBus
 from network_guardian.core.plugins import PluginRegistry
 
 if TYPE_CHECKING:
+    from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
     from network_guardian.ai import AIEngine
     from network_guardian.ai.nlp import NLPEngine
     from network_guardian.ai.nodes import NodeGraph
@@ -57,6 +58,7 @@ class Engine:
         self._training: TrainingPipeline | None = None
         self._ids: IntrusionDetectionSystem | None = None
         self._ips: IntrusionPreventionSystem | None = None
+        self._smart_firewall: SmartFirewallAgent | None = None
         self._cloaking: IPCloakingSystem | None = None
         self._wifi_stealth: WiFiStealthSystem | None = None
         self._remote: RemoteAccessManager | None = None
@@ -159,6 +161,17 @@ class Engine:
         return self._ips
 
     @property
+    def smart_firewall(self) -> "SmartFirewallAgent":
+        """Autonomous injection-detection and active-blocking agent."""
+        if self._smart_firewall is None:
+            from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
+            self._smart_firewall = SmartFirewallAgent(
+                ips=self.ips,
+                event_bus=self.event_bus,
+            )
+        return self._smart_firewall
+
+    @property
     def cloaking(self) -> IPCloakingSystem:
         """IP Cloaking and privacy system."""
         if self._cloaking is None:
@@ -191,6 +204,8 @@ class Engine:
         await self.plugins.start_all()
         if self._node_graph is not None:
             await self._node_graph.start_all()
+        # Auto-start the Smart Firewall injection agent
+        self.smart_firewall.start()
         self._running = True
         logger.info("Engine started. Data directory: %s", self.config.data_dir)
 
@@ -198,6 +213,8 @@ class Engine:
         """Gracefully stop all subsystems."""
         logger.info("Engine shutting down...")
         self._running = False
+        if self._smart_firewall is not None:
+            self._smart_firewall.stop()
         if self._node_graph is not None:
             await self._node_graph.stop_all()
         if self._dashboard is not None:

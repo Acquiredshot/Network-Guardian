@@ -231,6 +231,12 @@ class SmartFirewall(QWidget):
         if not payload:
             return
         engine = self._engine_thread.engine
+        # Route through Smart Firewall agent for injection detection + auto-block,
+        # then also pass to IDS for full signature analysis.
+        asyncio.run_coroutine_threadsafe(
+            engine.smart_firewall.scan_payload(payload, source_ip="desktop"),
+            self._engine_thread.loop,
+        )
         asyncio.run_coroutine_threadsafe(
             engine.ids.analyse_payload(payload, source_ip="desktop"),
             self._engine_thread.loop,

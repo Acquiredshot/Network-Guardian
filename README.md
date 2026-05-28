@@ -29,6 +29,7 @@
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
+| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 8-type detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF), escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
 
 ---
 
@@ -61,6 +62,7 @@ python -m network_guardian --desktop               # PyQt5 desktop firewall cons
 python password_manager.py                         # credential vault + team user management CLI
 python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
 python -m network_guardian.agent.email_react_agent # autonomous email ReAct agent CLI
+python -m network_guardian.agent.smart_firewall_agent  # standalone injection scanner CLI
 ```
 
 ---
@@ -207,6 +209,86 @@ agent.stop()
 - **PDF reports** — `~/.network_guardian/email_react/pdf_reports/` and `./pdf_reports/`
 - **Scan history** — `~/.network_guardian/email_react/scan_history.json`
 - **Event bus topic** — `email.react.threat_detected`
+
+---
+
+## Smart Firewall Agent
+
+An autonomous **Observe → Reason → Act → Learn** agent that detects and immediately blocks injection attacks without any manual intervention. Starts automatically with the Engine (web dashboard, desktop app, CLI).
+
+Lives at `network_guardian/agent/smart_firewall_agent.py`.
+
+### How it works
+
+```
+OBSERVE  → subscribe to ids.alert events (INJECTION category) AND accept direct scan_payload() calls
+REASON   → classify injection type, compute threat score, determine escalation tier per source IP
+ACT      → call ips.block_ip() immediately; publish firewall.injection.blocked event; optional PDF
+LEARN    → persist per-IP offense history to ~/.network_guardian/smart_firewall/injection_history.json
+```
+
+### Injection types detected
+
+| Type | Rules | Example payloads caught |
+|---|---|---|
+| **SQL Injection** | 6 rules | `UNION SELECT`, `OR 1=1`, `; DROP TABLE`, `SLEEP(5)`, `EXTRACTVALUE()` |
+| **XSS** | 5 rules | `<script>`, `onerror=`, `javascript:`, SVG/IMG event handlers, `&#x3C;script` |
+| **Command Injection** | 4 rules | `; cat /etc/passwd`, `\| bash`, `$(whoami)`, URL-encoded shell chars |
+| **LDAP Injection** | 2 rules | `)(cn=*`, `\|(&`, filter escape sequences |
+| **XXE** | 2 rules | `<!ENTITY ... SYSTEM "file://"`, parameter entity exfiltration |
+| **SSTI** | 4 rules | `{{7*7}}`, `${7*7}`, `<%= 7*7 %>`, `#{expr}` |
+| **Path Traversal** | 4 rules | `../../etc/passwd`, `%2e%2e%2f`, double-encoded, null-byte variants |
+| **Header Injection** | 2 rules | `%0d%0aSet-Cookie:`, `\r\nLocation:` |
+
+### Escalating blocks
+
+| Offense | Block duration |
+|---|---|
+| 1st | 1 hour |
+| 2nd | 6 hours |
+| 3rd+ | Permanent |
+
+### Integration
+
+The agent wires directly into the `Engine` and starts with it automatically:
+
+```python
+# Engine.start() calls this:
+self.smart_firewall.start()   # subscribes to ids.alert, spins up async loop
+```
+
+The desktop app's **Analyze** button now routes payloads through the Smart Firewall agent first (injection detection + block), then through the IDS (full signature scan).
+
+### Programmatic usage
+
+```python
+import asyncio
+from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
+
+# Standalone (no live IPS — detection only)
+agent = SmartFirewallAgent(ips=None, event_bus=None, auto_block=False)
+detections = asyncio.run(agent.scan_payload(
+    "' UNION SELECT username, password FROM users--",
+    source_ip="10.0.0.99",
+))
+for d in detections:
+    print(d.injection_type.value, d.rule_name, d.severity)
+
+# Integrated with Engine (auto-blocking enabled)
+from network_guardian.core.engine import Engine
+engine = Engine()
+asyncio.run(engine.start())   # SmartFirewallAgent starts here automatically
+
+# Later: check offense history
+count = engine.smart_firewall.offense_count("10.0.0.99")
+```
+
+### Event bus topics
+
+| Topic | When |
+|---|---|
+| `firewall.injection.blocked` | A source IP was blocked for an injection attempt |
+| `firewall.injection.cycle` | Emitted after each ReAct cycle with risk level, threat score, IPs blocked |
 
 ---
 
