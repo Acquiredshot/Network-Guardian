@@ -27,6 +27,80 @@ logger = logging.getLogger("ng-probe.threat-analyzer")
 # Persistent SSID→BSSID memory so we can detect BSSID changes (evil-twin)
 _KNOWN_BSSID_CACHE = Path.home() / ".ng_agent" / "known_bssids.json"
 
+# ISP / carrier shared-hotspot SSIDs that legitimately broadcast from many
+# BSSIDs as subscribers roam — not evil-twin candidates.
+_ISP_SHARED_SSIDS: frozenset[str] = frozenset({
+    "spectrum mobile",
+    "spectrumwifi",
+    "spectrumwifi plus",
+    "xfinitywifi",
+    "xfinity mobile",
+    "twc wifi",
+    "cablevision wifi",
+    "optimum wifi",
+    "att wifi",
+    "at&t wifi",
+    "at&t wi-fi",
+    "boingo hotspot",
+    "boingo wireless",
+    "tmobile",
+    "t-mobile",
+    "tmobile hotspot",
+    "verizon wifi",
+    "_the cloud",
+    "bt wi-fi",
+    "bt openzone",
+    "sky wifi",
+})
+
+
+def _is_virtual_bssid(new_mac: str, known_macs: list[str]) -> bool:
+    """Return True if new_mac looks like a virtual radio interface derived from
+    any MAC in known_macs — same hardware, different logical BSSID.
+
+    Router firmware typically derives virtual-interface BSSIDs from the primary
+    MAC by:
+      • Setting the locally-administered bit in octet 0  (b0:fc:88 → 02:fc:88)
+      • Incrementing the last octet by a small amount (±8) per radio/band/SSID
+
+    Detection logic:
+      1. The *new* BSSID must have the locally-administered (LA) bit set —
+         indicating it is a virtual/derived address, not a real hardware OUI.
+      2. Octets 1–4 must be identical to a known BSSID — same physical hardware.
+      3. Octet 5 (last) must differ by ≤ 8 — typical virtual-radio offset.
+
+    A MAC that passes all three checks is almost certainly the same physical
+    device operating a second SSID rather than an attacker spoofing the network.
+    """
+    try:
+        new_octs = [int(x, 16) for x in new_mac.split(":")]
+        if len(new_octs) != 6:
+            return False
+    except ValueError:
+        return False
+
+    # Gate 1: only locally-administered MACs can be virtual interfaces
+    if (new_octs[0] & 0x02) == 0:
+        return False
+
+    for known in known_macs:
+        try:
+            k_octs = [int(x, 16) for x in known.split(":")]
+            if len(k_octs) != 6:
+                continue
+        except ValueError:
+            continue
+
+        # Gate 2: middle 4 octets must be identical (hardware fingerprint)
+        if new_octs[1:5] != k_octs[1:5]:
+            continue
+
+        # Gate 3: last octet may differ by at most 8 (virtual radio offset)
+        if abs(new_octs[5] - k_octs[5]) <= 8:
+            return True
+
+    return False
+
 
 @dataclass
 class ThreatAlert:
@@ -140,21 +214,48 @@ class ProbeThrottleAnalyzer:
 
         # Detect evil-twin / rogue AP: same SSID with a BSSID never seen before
         known_cache = self._load_bssid_cache()
+        # Flatten all known BSSIDs across ALL SSIDs for virtual-interface checks
+        all_known_bssids: list[str] = [b for blist in known_cache.values() for b in blist]
+
         for ssid, bssids in ssid_bssid_map.items():
             known = known_cache.get(ssid, [])
+            ssid_lower = ssid.lower()
+
             for b in bssids:
                 if known and b not in known:
-                    evil_twins.append(f"{ssid} — new BSSID: {b} (known: {', '.join(known[:3])})")
-            # Merge new BSSIDs into cache
+                    # Skip ISP shared-hotspot SSIDs — they legitimately roam BSSIDs
+                    if ssid_lower in _ISP_SHARED_SSIDS:
+                        logger.debug(
+                            "Skipping evil-twin check for ISP shared hotspot SSID '%s'", ssid
+                        )
+                        continue
+
+                    # Skip if the new BSSID is a virtual interface derived from
+                    # any known-good BSSID on this network (same hardware, new SSID).
+                    if _is_virtual_bssid(b, all_known_bssids):
+                        logger.debug(
+                            "Skipping virtual-interface BSSID %s for SSID '%s' "
+                            "(derived from known hardware)",
+                            b, ssid,
+                        )
+                        continue
+
+                    evil_twins.append(
+                        f"{ssid} — new BSSID: {b} (known: {', '.join(known[:3])})"
+                    )
+
+            # Merge new BSSIDs into cache regardless of alert status
             for b in bssids:
                 if b not in known:
                     known.append(b)
             known_cache[ssid] = known[-20:]  # keep last 20 per SSID
+
         self._save_bssid_cache(known_cache)
 
         # Duplicate SSID alert: same SSID broadcasting from 3+ different BSSIDs
+        # (exclude ISP shared-hotspot SSIDs — they're designed to have many BSSIDs)
         for ssid, bssids in ssid_bssid_map.items():
-            if len(bssids) >= 3:
+            if len(bssids) >= 3 and ssid.lower() not in _ISP_SHARED_SSIDS:
                 evil_twins.append(f"{ssid} broadcasting from {len(bssids)} BSSIDs simultaneously")
 
         # Security level check
