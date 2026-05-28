@@ -279,42 +279,126 @@ _LOGIN_PAGE = '''<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Login — Network Guardian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style nonce="{{NONCE}}">
-:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;
-  --dim:#8b949e;--blue:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+:root{
+  --bg:#000810;--bg2:#010d1a;--card:rgba(0,18,36,0.92);
+  --border:rgba(0,200,255,0.15);--text:#cce8ff;--dim:#3d7a9a;
+  --blue:#0094d4;--green:#00ff88;--yellow:#ffcc00;--orange:#ff8c00;
+  --red:#ff2244;--purple:#aa44ff;--cyan:#00d4ff;--pink:#ff00aa}
+@keyframes pulse-ring{0%{transform:scale(0.8);opacity:0.8}100%{transform:scale(2);opacity:0}}
+@keyframes scan-h{0%{left:-100%;opacity:0}50%{opacity:1}100%{left:100%;opacity:0}}
+@keyframes pulse-glow{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes hud-boot{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
-  display:flex;align-items:center;justify-content:center;min-height:100vh}
-.login-box{background:var(--card);border:1px solid var(--border);border-radius:16px;
-  padding:40px;max-width:420px;width:90%;text-align:center}
-.logo{font-size:2.5rem;margin-bottom:8px}
-.title{font-size:1.3rem;font-weight:700;margin-bottom:4px}
-.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:24px}
-.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.65rem;
-  font-weight:700;letter-spacing:1px;background:rgba(88,166,255,.15);color:var(--blue);
-  text-transform:uppercase;margin-bottom:16px}
+body{
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(0,212,255,.04) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 20%,rgba(0,100,255,.05) 0%,transparent 50%),
+    linear-gradient(rgba(0,200,255,.015) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,200,255,.015) 1px,transparent 1px);
+  background-size:auto,auto,50px 50px,50px 50px;
+  color:var(--text);
+  font-family:'Rajdhani','Segoe UI',sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;
+  overflow:hidden;position:relative}
+.pulse-ring{
+  position:fixed;border-radius:50%;border:1px solid rgba(0,212,255,0.25);
+  pointer-events:none;top:50%;left:50%;transform:translate(-50%,-50%)}
+.pulse-ring-1{width:300px;height:300px;animation:pulse-ring 4s ease-out infinite}
+.pulse-ring-2{width:300px;height:300px;animation:pulse-ring 4s ease-out infinite 2s}
+.login-box{
+  position:relative;z-index:10;
+  background:linear-gradient(135deg,rgba(0,22,44,.9),rgba(0,8,22,.95));
+  border:1px solid rgba(0,200,255,.2);border-radius:4px;
+  padding:40px;max-width:420px;width:90%;text-align:center;
+  box-shadow:0 0 40px rgba(0,212,255,.06),inset 0 1px 0 rgba(0,212,255,.08);
+  animation:hud-boot .6s ease both}
+.login-box::before{
+  content:'';position:absolute;top:-1px;left:-1px;
+  width:18px;height:18px;
+  border-top:2px solid var(--cyan);border-left:2px solid var(--cyan);
+  box-shadow:-2px -2px 8px rgba(0,212,255,.3)}
+.login-box::after{
+  content:'';position:absolute;bottom:-1px;right:-1px;
+  width:18px;height:18px;
+  border-bottom:2px solid var(--cyan);border-right:2px solid var(--cyan);
+  box-shadow:2px 2px 8px rgba(0,212,255,.3)}
+.logo{
+  width:60px;height:60px;margin:0 auto 14px;
+  border:2px solid var(--cyan);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 30px rgba(0,212,255,.4),inset 0 0 20px rgba(0,212,255,.05);
+  font-size:1.6rem;
+  animation:pulse-glow 3s ease-in-out infinite}
+.title{
+  font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;
+  letter-spacing:4px;text-transform:uppercase;
+  color:var(--cyan);text-shadow:0 0 20px rgba(0,212,255,.5);
+  margin-bottom:6px}
+.badge{
+  display:inline-block;padding:3px 12px;font-size:.65rem;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;
+  font-family:'Share Tech Mono',monospace;
+  clip-path:polygon(6px 0%,100% 0%,calc(100% - 6px) 100%,0% 100%);
+  background:rgba(0,212,255,.1);color:var(--cyan);
+  border-top:1px solid rgba(0,212,255,.3)}
+.subtitle{
+  color:var(--dim);font-size:.78rem;margin-bottom:24px;
+  font-family:'Share Tech Mono',monospace;letter-spacing:.5px}
 .input-group{margin-bottom:16px;text-align:left}
-.input-group label{display:block;font-size:.75rem;color:var(--dim);
-  text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.input-group input{width:100%;padding:10px 14px;border-radius:8px;
-  border:1px solid var(--border);background:var(--bg);color:var(--text);
-  font-size:.9rem;outline:none;transition:.2s}
-.input-group input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
-.btn{width:100%;padding:11px;border-radius:8px;border:none;
-  background:var(--blue);color:#fff;font-size:.9rem;font-weight:600;
-  cursor:pointer;transition:.2s;margin-top:8px}
-.btn:hover{opacity:.9}.btn:disabled{opacity:.4;cursor:not-allowed}
-.error{color:var(--red);font-size:.82rem;margin-top:12px;display:none}
-.warn{color:var(--yellow);font-size:.82rem;margin-top:12px;display:none}
-.footer{color:var(--dim);font-size:.7rem;margin-top:20px;letter-spacing:.5px}
-.pw-box{display:none;margin-top:16px;text-align:left;padding:16px;
-  border:1px solid var(--border);border-radius:10px;background:rgba(13,17,23,.5)}
-.pw-box h4{font-size:.85rem;margin-bottom:10px;color:var(--yellow)}
+.input-group label{
+  display:block;font-size:.65rem;color:var(--cyan);
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;
+  font-family:'Share Tech Mono',monospace}
+.input-group input{
+  width:100%;padding:10px 14px;border-radius:2px;
+  border:1px solid rgba(0,200,255,.2);
+  background:rgba(0,10,25,.8);color:#cce8ff;
+  font-size:.88rem;font-family:'Share Tech Mono',monospace;
+  outline:none;transition:.2s;position:relative}
+.input-group input:focus{
+  border-color:var(--cyan);
+  box-shadow:0 0 15px rgba(0,212,255,.2),inset 0 0 8px rgba(0,212,255,.04)}
+.input-group input::placeholder{color:rgba(61,122,154,.6)}
+.btn{
+  width:100%;padding:12px;border:1px solid var(--cyan);
+  background:rgba(0,212,255,.15);color:var(--cyan);
+  font-family:'Orbitron',sans-serif;font-size:.78rem;font-weight:600;
+  letter-spacing:2px;text-transform:uppercase;
+  clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+  border-radius:0;cursor:pointer;transition:.2s;margin-top:8px;
+  box-shadow:0 0 20px rgba(0,212,255,.2)}
+.btn:hover{
+  background:rgba(0,212,255,.25);
+  box-shadow:0 0 30px rgba(0,212,255,.4);color:#fff}
+.btn:disabled{opacity:.3;cursor:not-allowed;box-shadow:none}
+.error{
+  color:var(--red);font-size:.78rem;margin-top:12px;display:none;
+  font-family:'Share Tech Mono',monospace;letter-spacing:.5px}
+.warn{
+  color:var(--yellow);font-size:.78rem;margin-top:12px;display:none;
+  font-family:'Share Tech Mono',monospace;letter-spacing:.5px}
+.footer{
+  color:var(--dim);font-size:.65rem;margin-top:22px;letter-spacing:3px;
+  font-family:'Share Tech Mono',monospace;text-transform:uppercase}
+.pw-box{
+  display:none;margin-top:16px;text-align:left;padding:16px;
+  border:1px solid rgba(0,200,255,.15);border-radius:2px;
+  background:rgba(0,8,20,.6)}
+.pw-box h4{
+  font-size:.78rem;margin-bottom:12px;color:var(--yellow);
+  font-family:'Share Tech Mono',monospace;letter-spacing:1px;text-transform:uppercase}
 </style></head><body>
+<div class="pulse-ring pulse-ring-1"></div>
+<div class="pulse-ring pulse-ring-2"></div>
 <div class="login-box">
   <div class="logo">&#128737;</div>
-  <div class="title">Network Guardian</div>
+  <div class="title">Wolfpak Systems</div>
   <div class="badge">Wolfpak Exclusive</div>
   <div class="subtitle">Authorised personnel only.</div>
   <form id="loginForm" autocomplete="off">
@@ -338,10 +422,10 @@ body{background:var(--bg);color:var(--text);
     <div class="input-group"><label>Confirm Password</label>
       <input type="password" id="newPw2" placeholder="Confirm password">
     </div>
-    <button class="btn" id="pwBtn" style="background:var(--yellow);color:#000">Update Password</button>
+    <button class="btn" id="pwBtn" style="border-color:var(--yellow);background:rgba(255,204,0,.12);color:var(--yellow);box-shadow:0 0 15px rgba(255,204,0,.2)">Update Password</button>
     <div class="error" id="pwErr" style="display:none"></div>
   </div>
-  <div class="footer">&#128274; WOLFPAK SECURITY &mdash; ALL ACCESS LOGGED</div>
+  <div class="footer">&#128274; Wolfpak Security &mdash; All Access Logged</div>
 </div>
 <script nonce="{{NONCE}}">
 (function(){
