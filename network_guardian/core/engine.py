@@ -180,9 +180,10 @@ class Engine:
             self._smart_firewall = SmartFirewallAgent(
                 ips=self.ips,
                 event_bus=self.event_bus,
-                probe_bridge=self.probe_bridge,
+                probe_bridge=None,
                 correlator=self.attack_correlator,
             )
+            self._smart_firewall.set_probe_bridge(self.probe_bridge)
         return self._smart_firewall
 
     @property
@@ -203,8 +204,9 @@ class Engine:
             from network_guardian.agent.probe_firewall_bridge import ProbeFirewallBridge
             self._probe_bridge = ProbeFirewallBridge(
                 event_bus=self.event_bus,
-                smart_firewall=self.smart_firewall,
+                smart_firewall=None,
             )
+            self._probe_bridge.set_smart_firewall(self.smart_firewall)
         return self._probe_bridge
 
     @property

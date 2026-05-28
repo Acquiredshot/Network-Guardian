@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Optional
 
 from network_guardian.core.events import Event
 
@@ -40,9 +40,9 @@ class DiscoveredService:
     port: int
     service_type: str  # "http", "https", "smtp", "ftp", "sql", "soap", "ssh", etc.
     protocol: str  # "tcp" | "udp"
-    version: str | None = None
+    version: Optional[str] = None
     credentials_weak: bool = False
-    auth_method: str | None = None
+    auth_method: Optional[str] = None
     vulnerability_indicators: list[str] = field(default_factory=list)
     discovered_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -53,7 +53,7 @@ class ServiceProfile:
     service_type: str
     enabled_rules: set[str] = field(default_factory=set)
     confidence_multiplier: float = 1.0
-    rate_limit_threshold: int | None = None
+    rate_limit_threshold: Optional[int] = None
     enhanced_logging: bool = False
     last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -70,8 +70,8 @@ class ProbeFirewallBridge:
     def __init__(
         self,
         event_bus: EventBus,
-        smart_firewall: SmartFirewallAgent | None = None,
-        data_dir: Path | None = None,
+        smart_firewall: Optional["SmartFirewallAgent"] = None,
+        data_dir: Optional[Path] = None,
     ):
         self._event_bus = event_bus
         self._firewall = smart_firewall
@@ -85,6 +85,10 @@ class ProbeFirewallBridge:
         self._load_service_profiles()
         self._load_discoveries()
         self._register_handlers()
+
+    def set_smart_firewall(self, smart_firewall: "SmartFirewallAgent") -> None:
+        """Wire smart firewall reference (used to break circular dependencies)."""
+        self._firewall = smart_firewall
 
     def _register_handlers(self) -> None:
         """Subscribe to probe events."""
@@ -227,7 +231,7 @@ class ProbeFirewallBridge:
         port: int,
         service_type: str,
         protocol: str = "tcp",
-        version: str | None = None,
+        version: Optional[str] = None,
     ) -> None:
         """Register a discovered service."""
         key = f"{ip}:{port}"
@@ -244,7 +248,7 @@ class ProbeFirewallBridge:
         """Get all discovered services."""
         return list(self._discovered_services.values())
 
-    def get_service_by_ip_port(self, ip: str, port: int) -> DiscoveredService | None:
+    def get_service_by_ip_port(self, ip: str, port: int) -> Optional[DiscoveredService]:
         """Look up service by IP and port."""
         key = f"{ip}:{port}"
         return self._discovered_services.get(key)
