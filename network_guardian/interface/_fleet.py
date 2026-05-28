@@ -235,6 +235,26 @@ class FleetStore:
         all_reports.sort(key=lambda r: r.get("generated_at", ""), reverse=True)
         return all_reports[:200]
 
+    def set_patch_config(self, agent_id: str, config: dict) -> bool:
+        """Queue a patch config to be delivered to a specific agent on next phone-home."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if not agent:
+            return False
+        agent["pending_patch_config"] = config
+        self._save()
+        logger.info("Patch config queued for agent %s: %s", agent_id, config)
+        return True
+
+    def pop_patch_config(self, agent_id: str) -> dict | None:
+        """Return and clear any pending patch config for this agent."""
+        agent = self._data.get("agents", {}).get(agent_id)
+        if not agent:
+            return None
+        cfg = agent.pop("pending_patch_config", None)
+        if cfg is not None:
+            self._save()
+        return cfg
+
     def get_agent_sentinel(self, agent_id: str) -> dict | None:
         """Return sentinel bot intelligence for an agent."""
         agent = self._data.get("agents", {}).get(agent_id)

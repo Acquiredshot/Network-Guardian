@@ -1255,7 +1255,12 @@ class Dashboard:
                 except Exception as e:
                     logger.warning("Failed to process bot threat alert: %s", e)
         
-        return self._json_response({"ok": True, "agent_id": agent_id})
+        ack: dict = {"ok": True, "agent_id": agent_id}
+        patch_cfg = self._fleet.pop_patch_config(agent_id)
+        if patch_cfg:
+            ack["patch_config"] = patch_cfg
+            logger.info("Delivering patch config to agent %s: %s", agent_id, patch_cfg)
+        return self._json_response(ack)
 
     def _fleet_auth(self, body: bytes, headers: dict[str, str]) -> str:
         """Authenticate a Wolfpak member for agent use. HMAC-signed request."""

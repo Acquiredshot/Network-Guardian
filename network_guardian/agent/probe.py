@@ -927,6 +927,15 @@ def phone_home(base_url: str, agent_key: str, report: AgentReport,
     if ok:
         if body.get("ok"):
             logger.info("Report accepted by base station ✓")
+            # Apply any patch config pushed from base
+            patch_cfg = body.get("patch_config")
+            if patch_cfg and isinstance(patch_cfg, dict):
+                try:
+                    react = _get_react_agent()
+                    react.apply_patch_config(patch_cfg)
+                    logger.info("Patch config received and applied from base: %s", patch_cfg)
+                except Exception as _pe:
+                    logger.warning("Failed to apply patch config: %s", _pe)
             return True
         logger.warning("Base station rejected report: %s", body.get("message"))
         return False

@@ -178,7 +178,7 @@ _THREAT_EXPLANATIONS: dict[str, dict[str, str]] = {
             "Multiple simultaneous connections are used to maximise transfer speed and evade "
             "per-connection bandwidth alerts."
         ),
-        "why_triggered": "Active external TCP connections exceeded the threshold of 50 simultaneous sessions.",
+        "why_triggered": "Active external TCP connections exceeded the configured simultaneous session threshold.",
         "cvss_base": "7.2 (High)",
         "mitre": "T1041 — Exfiltration Over C2 Channel",
     },
@@ -284,6 +284,32 @@ _SUSPICIOUS_PROCS = {
     "wifite", "kismet", "reaver", "pixiewps",
 }
 
+# macOS system daemons that legitimately spike CPU during normal operation
+# (Siri intelligence, Spotlight indexing, FaceTime, biometric sync, etc.)
+# These are exempt from the high-CPU anomaly heuristic.
+_TRUSTED_MACOS_SYSTEM_PROCS: frozenset[str] = frozenset({
+    "duetexpertd",       # Siri intelligence / Duet ML framework
+    "corespotlightd",    # Spotlight indexer — routinely >100% during index
+    "mdworker_shared",   # Spotlight metadata worker
+    "biomesyncd",        # Apple Biome data sync daemon
+    "biomed",            # Apple Biome daemon
+    "avconferenced",     # FaceTime/AV conferencing daemon
+    "facetime",          # FaceTime app process
+    "contactsd",         # Contacts sync daemon
+    "windowserver",      # macOS display compositor
+    "com.apple.webkit.webcontent",  # Safari WebContent
+    "com.apple.geod",    # Geolocation daemon
+    "knowledge-agent",   # Siri knowledge base agent
+    "trustd",            # Certificate trust daemon
+    "syspolicyd",        # System policy daemon
+    "accountsd",         # iCloud Accounts daemon
+    "cloudd",            # iCloud daemon
+    "bird",              # iCloud Drive daemon
+    "backupd",           # Time Machine backup daemon
+    "photoanalysisd",    # Photos ML analysis daemon
+    "akd",               # Apple Keychain daemon
+})
+
 # Ports that shouldn't be open on a typical workstation
 _SUSPICIOUS_LISTEN_PORTS = {
     4444, 5555, 6666, 7777,  # Common reverse shell ports
@@ -312,6 +338,10 @@ class ProbeReActAgent:
     def __init__(self, data_dir: Path | None = None) -> None:
         self._data_dir = data_dir or (Path.home() / ".ng_agent")
         self._data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Remote patch config — pushed from base station via phone-home ACK
+        self._patch_config_path = self._data_dir / "patch_config.json"
+        self._patch_config: dict = self._load_patch_config()
 
         # State
         self._react_log: list[ReActStep] = []
@@ -351,6 +381,25 @@ class ProbeReActAgent:
             self._baselines_path.write_text(json.dumps(self._baselines, indent=2))
         except OSError as e:
             logger.warning("Failed to save baselines: %s", e)
+
+    def _load_patch_config(self) -> dict:
+        if self._patch_config_path.exists():
+            try:
+                cfg = json.loads(self._patch_config_path.read_text())
+                logger.info("Loaded patch config from base: %s", cfg)
+                return cfg
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {}
+
+    def apply_patch_config(self, config: dict) -> None:
+        """Apply and persist a patch config pushed from the base station."""
+        self._patch_config = config
+        try:
+            self._patch_config_path.write_text(json.dumps(config, indent=2))
+            logger.info("Patch config applied and saved: %s", config)
+        except OSError as e:
+            logger.warning("Failed to save patch config: %s", e)
 
     def _load_threat_history(self) -> list[dict]:
         if self._threat_history_path.exists():
@@ -1045,21 +1094,27 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                     title=f"Suspicious process: {pname}",
                     detail=f"PID {ppid}, CPU {pcpu}%, MEM {pmem}%, cmd: {pcmd[:100]}",
                 ))
-            # High CPU hog (potential cryptominer)
-            elif pcpu > 80:
-                threats.append(ThreatEvent(
-                    timestamp=now, severity="medium",
-                    category="anomaly",
-                    title=f"High CPU process: {pname} ({pcpu}%)",
-                    detail=f"PID {ppid}, could indicate cryptominer or runaway process",
-                ))
-                issues.append({
-                    "type": "high_cpu",
-                    "process": pname,
-                    "pid": ppid,
-                    "cpu_pct": pcpu,
-                    "recommendation": f"Investigate {pname} (PID {ppid}) — sustained {pcpu}% CPU",
-                })
+            # High CPU hog (potential cryptominer) — skip trusted macOS system daemons
+            # which legitimately spike during indexing, sync, and ML inference.
+            elif pcpu > self._patch_config.get("cpu_threshold", 80):
+                _is_trusted_macos = (
+                    platform.system().lower() == "darwin"
+                    and proc_name_lower in _TRUSTED_MACOS_SYSTEM_PROCS
+                )
+                if not _is_trusted_macos:
+                    threats.append(ThreatEvent(
+                        timestamp=now, severity="medium",
+                        category="anomaly",
+                        title=f"High CPU process: {pname} ({pcpu}%)",
+                        detail=f"PID {ppid}, could indicate cryptominer or runaway process",
+                    ))
+                    issues.append({
+                        "type": "high_cpu",
+                        "process": pname,
+                        "pid": ppid,
+                        "cpu_pct": pcpu,
+                        "recommendation": f"Investigate {pname} (PID {ppid}) — sustained {pcpu}% CPU",
+                    })
 
         # 2. Check for suspicious listening ports
         for conn in obs.get("listening_ports", []):
@@ -1123,8 +1178,11 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                     )
 
         # 4. Detect potential data exfiltration (many outbound connections)
+        # macOS default is higher (100) — iCloud/Apple services maintain many connections.
+        _default_exfil = 100 if platform.system().lower() == "darwin" else 50
+        _exfil_threshold = self._patch_config.get("exfil_threshold", _default_exfil)
         external = obs.get("external_connections", [])
-        if len(external) > 50:
+        if len(external) > _exfil_threshold:
             threats.append(ThreatEvent(
                 timestamp=now, severity="medium",
                 category="data_exfil",
