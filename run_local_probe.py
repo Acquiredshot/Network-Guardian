@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-Local Probe Simulator — Keeps MacBook online on fleet map
+Local Probe — Keeps machine online on fleet map (Cross-Platform)
 
-Registers with dashboard and sends periodic heartbeats to keep online status.
+Works on: Windows, macOS, Linux
 """
 
-import asyncio
-import json
-import logging
-import platform
-import socket
 import subprocess
-from datetime import datetime, timezone
+import sys
+import time
+import logging
 from pathlib import Path
-from uuid import uuid4
+import os
+import json
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,119 +20,72 @@ logging.basicConfig(
 logger = logging.getLogger("local_probe")
 
 
-class LocalProbeSimulator:
-    """Simulates a probe running on your local machine."""
+def run_local_probe():
+    """Run probe with local configuration, restarting if it crashes."""
+    base_url = "http://127.0.0.1:8080"
+    interval = 30  # Report every 30 seconds
 
-    def __init__(self):
-        self.agent_id = str(uuid4())[:8].upper()
-        self.hostname = socket.gethostname()
-        self.platform = platform.system()
-        self.running = False
-
-    def get_system_info(self) -> dict:
-        """Get current system information."""
+    # Load the actual fleet key from fleet.json (required for signature verification)
+    fleet_file = Path.home() / ".network_guardian" / "fleet.json"
+    fleet_key = ""
+    if fleet_file.exists():
         try:
-            # Get CPU usage
-            result = subprocess.run(
-                ["ps", "aux"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            cpu_lines = len([line for line in result.stdout.split('\n') if line.strip()])
-
-            # Get memory
-            result = subprocess.run(
-                ["vm_stat"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            mem_data = result.stdout
-
-            return {
-                "agent_id": self.agent_id,
-                "hostname": self.hostname,
-                "platform": self.platform,
-                "processes": cpu_lines,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "status": "online",
-                "network": {
-                    "discovered_hosts": 0,
-                    "open_ports": 0,
-                },
-            }
+            with open(fleet_file) as f:
+                data = json.load(f)
+                fleet_key = data.get("fleet_key", "")
         except Exception as e:
-            logger.error(f"Error getting system info: {e}")
-            return {
-                "agent_id": self.agent_id,
-                "hostname": self.hostname,
-                "platform": self.platform,
-                "status": "online",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            logger.error(f"Could not load fleet key: {e}")
+            logger.error("Cannot start probe without valid fleet key")
+            return
 
-    async def run(self):
-        """Run the probe simulator."""
-        logger.info("=" * 80)
-        logger.info("  Network Guardian — Local Probe Simulator")
-        logger.info("=" * 80)
-        logger.info(f"[*] Agent ID: {self.agent_id}")
-        logger.info(f"[*] Hostname: {self.hostname}")
-        logger.info(f"[*] Platform: {self.platform}")
-        logger.info("[*] Reporting to dashboard every 30 seconds")
-        logger.info("[*] Press Ctrl+C to stop")
-        logger.info("=" * 80)
+    if not fleet_key:
+        logger.error("Fleet key not found in ~/.network_guardian/fleet.json")
+        return
 
-        self.running = True
-        cycle = 0
+    # Set up environment - use relative path from current script
+    probe_dir = Path(__file__).parent
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(probe_dir)
+
+    logger.info("=" * 80)
+    logger.info("  Network Guardian — Local Probe for Machine")
+    logger.info("=" * 80)
+    logger.info(f"[*] Base URL: {base_url}")
+    logger.info(f"[*] Report Interval: {interval}s")
+    logger.info("[*] Probe will stay online and report continuously")
+    logger.info("[*] Press Ctrl+C to stop")
+    logger.info("=" * 80)
+
+    attempt = 0
+    while True:
+        attempt += 1
+        logger.info(f"\n[Attempt {attempt}] Starting probe...")
+
+        cmd = [
+            sys.executable,
+            "-m", "network_guardian.agent.probe",
+            "--base", base_url,
+            "--key", fleet_key,  # Use the actual fleet key for signature verification
+            "--interval", str(interval),
+            "--username", "admin",
+            "--password", "<password>",
+        ]
 
         try:
-            while self.running:
-                cycle += 1
-
-                # Get system info
-                info = self.get_system_info()
-
-                # Log probe status
-                logger.info(
-                    f"[Cycle {cycle:03d}] Status: {info['status']} | "
-                    f"Hostname: {info['hostname']} | "
-                    f"Platform: {info['platform']}"
-                )
-
-                # Simulate discovering services
-                if cycle % 6 == 0:  # Every 3 minutes
-                    logger.info(f"[Cycle {cycle:03d}] Scanning network for services...")
-                    logger.info(f"    ✓ Discovered 0 new hosts")
-                    logger.info(f"    ✓ Discovered 0 open ports")
-
-                # Simulate collecting metrics
-                if cycle % 12 == 0:  # Every 6 minutes
-                    logger.info(f"[Cycle {cycle:03d}] Collecting system metrics...")
-                    logger.info(f"    ✓ CPU usage: {cycle % 80}%")
-                    logger.info(f"    ✓ Memory: {50 + (cycle % 30)}%")
-                    logger.info(f"    ✓ Disk: {45}%")
-
-                # Wait before next cycle (30 seconds)
-                await asyncio.sleep(30)
-
+            subprocess.run(cmd, cwd=str(probe_dir), env=env)
         except KeyboardInterrupt:
-            logger.info("\n[*] Probe stopped by user")
-            self.running = False
+            logger.info("[*] Probe stopped by user")
+            break
         except Exception as e:
-            logger.error(f"Probe error: {e}", exc_info=True)
-            self.running = False
-
-
-async def main():
-    """Main entry point."""
-    probe = LocalProbeSimulator()
-    await probe.run()
+            logger.error(f"[!] Probe error: {e}")
+            logger.info("[*] Restarting in 5 seconds...")
+            time.sleep(5)
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        run_local_probe()
     except KeyboardInterrupt:
         print("\n[*] Local probe shutdown")
+
+

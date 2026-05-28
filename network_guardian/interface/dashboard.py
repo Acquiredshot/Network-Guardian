@@ -356,7 +356,7 @@ class Dashboard:
     REQUEST_TIMEOUT = 10.0
     # Security: rate-limit window (seconds) and max requests per IP
     RATE_LIMIT_WINDOW = 60.0
-    RATE_LIMIT_MAX = 600
+    RATE_LIMIT_MAX = 10000
 
     # CSP nonce is regenerated each startup
     _csp_nonce: str = ""
