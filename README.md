@@ -30,6 +30,7 @@
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
 | **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), WAF-bypass normalisation (7 decode variants), IP reputation scoring, management API, escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
+| **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration |
 
 ---
 
@@ -337,6 +338,73 @@ count = engine.smart_firewall.offense_count("10.0.0.99")
 
 ---
 
+## Safe Web Browsing Agent
+
+An autonomous URL safety evaluation agent that checks whether a URL is safe before allowing access. Lives at `network_guardian/agent/web_browsing_agent.py`.
+
+### How it works
+
+```
+OBSERVE  → receive a URL (direct check_url() call or event)
+REASON   → check allowlist/blocklist → SSRF guard → fetch page → score 17 threat signals
+ACT      → return UrlVerdict; publish web.url.verdict event; auto-block MALICIOUS domains via IPS
+LEARN    → persist domain lists; accumulate verdict history and statistics
+```
+
+### Threat signals detected
+
+| Category | Signals |
+|---|---|
+| **Phishing** | Account/identity verify requests, billing update prompts, account suspension threats, CTA click lures |
+| **Malware** | Malware/spyware/ransomware keywords, drive-by download language |
+| **JS Obfuscation** | `eval(unescape())`, `eval(atob())`, `document.write(unescape())` |
+| **Hidden iframes** | `display:none` / `visibility:hidden` iframes |
+| **Cryptominers** | CoinHive, CryptoNight, CoinImp, Worker blob injection patterns |
+| **Exploit kits** | Shellcode/heap spray language, named EKs (BlackHole, Angler, Nuclear, RIG…) |
+| **Credential harvesting** | Login/harvest forms detected by action URL patterns |
+| **Scam / warez** | Prize/free-iPhone scams, keygen/warez/nulled content |
+
+### Programmatic usage
+
+```python
+from network_guardian.agent.web_browsing_agent import SafeWebBrowsingAgent
+
+agent = SafeWebBrowsingAgent(fetch_content=True, auto_block=False)
+
+verdict = agent.check_url("https://example.com/page")
+print(verdict.category.value, verdict.threat_score)  # e.g. "safe" 0.0
+
+# Domain list management
+agent.add_to_blocklist("evil.com")          # blocks evil.com and *.evil.com
+agent.add_to_allowlist("trusted-corp.com")
+
+# Stats
+print(agent.get_stats())
+```
+
+### Integrated with Engine
+
+```python
+engine = Engine()
+# engine.web_browsing available as lazy property
+verdict = engine.web_browsing.check_url("https://suspect.example.com")
+```
+
+### Event bus topics
+
+| Topic | When |
+|---|---|
+| `web.url.verdict` | Emitted for every evaluated URL with category, threat score, action taken |
+
+### CLI
+
+```bash
+python -m network_guardian.agent.web_browsing_agent
+# Commands: check <url>, block <domain>, allow <domain>, stats, history, help
+```
+
+---
+
 ## Desktop App
 
 A native **PyQt5 firewall console** that runs the same `Engine` as the web dashboard — same IDS rules, same IPS blocklist, same event bus. Useful when you want a local desktop window instead of a browser tab.
@@ -350,7 +418,7 @@ python -m network_guardian --desktop
 python -m network_guardian --desktop --config config.yaml
 ```
 
-> **macOS / Linux only for real-time blocking** — the IPS block/unblock calls use `iptables` under the hood. The UI itself runs on any platform.
+> **Cross-platform** — the UI and engine run on macOS, Linux, and Windows. Real-time IPS blocking uses the software-managed IPS blocklist (no OS firewall dependencies).
 
 ### Features
 

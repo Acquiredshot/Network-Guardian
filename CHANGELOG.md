@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v26] — 2026-05-28
+
+### Fixed — Windows Compatibility
+
+#### `network_guardian/agent/react_agent.py`
+- `_get_arp_table()` — added Windows branch to parse `arp -a` output (column-format with dash-separated MACs `00-50-56-c0-00-08`); macOS/Linux regex-based parser retained for those platforms.
+- `_get_gateway()` — added Windows branch using `route print 0.0.0.0`; parses the Active Routes table (`0.0.0.0  0.0.0.0  <gateway>  <iface>  <metric>`).
+- `_get_dns_servers()` — added Windows branch using `ipconfig /all`; parses `DNS Servers` lines, extracts dot-notation IPs.
+
+#### `network_guardian/interface/desktop.py`
+- Replaced deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()`. `get_event_loop()` was deprecated in Python 3.10 and removed in 3.12; this fix is required for all Python 3.12+ environments on any platform.
+
+---
+
+## [v25] — 2026-05-28
+
+### Added
+
+#### Safe Web Browsing Agent (`network_guardian/agent/web_browsing_agent.py`)
+- New autonomous URL safety evaluation agent following the **Observe → Reason → Act → Learn** cycle.
+- **`UrlCategory` enum**: `TRUSTED` / `BLOCKED` / `SAFE` / `SUSPICIOUS` / `MALICIOUS` / `ERROR` / `SKIPPED`
+- **`ThreatSignal`** and **`UrlVerdict`** dataclasses for structured per-URL results.
+- **17 content threat signals** across six categories:
+  - Phishing: account verification, billing update, account suspension, CTA click
+  - Malware: keywords, drive-by download, `eval(unescape())`, `eval(atob())`, `document.write(unescape())`
+  - Hidden iframes (display:none / visibility:hidden)
+  - Cryptominer injection: CoinHive, CryptoNight, Worker blob patterns
+  - Exploit kit language and named EK detection (BlackHole, Angler, Nuclear, etc.)
+  - Credential harvesting forms and scam/prize content
+- **SSRF guard**: private, loopback, and link-local addresses are refused before any HTTP connection is attempted.
+- **WAF-safe domain matching**: hostname extracted via `urllib.parse.urlparse` + wildcard subdomain support (`*.evil.com`) — no regex on user-supplied input strings.
+- **HTTP fetch hardening**: `timeout=(5, 15)`, 512 KB content cap (streaming), max 5 redirects, SSL certificate verification enforced, `lxml` parser with `html.parser` fallback.
+- **Persistent allowlist/blocklist**: saved to `~/.network_guardian/web_browsing/domain_lists.json`.
+- **Management API**: `add_to_blocklist()`, `remove_from_blocklist()`, `add_to_allowlist()`, `remove_from_allowlist()`, `get_stats()`, `dashboard_summary()`.
+- **Verdict history**: capped at 1,000 entries in memory.
+- **Event bus integration**: publishes `web.url.verdict` events.
+- **IPS integration**: `MALICIOUS` verdicts trigger automatic `ips.block_ip()` (1h, when `auto_block=True`).
+- **Engine property**: `engine.web_browsing` lazy property wired into `Engine`; stop lifecycle logs stats summary.
+- **CLI**: `check`, `block`, `allow`, `unblock`, `unallow`, `blocklist`, `allowlist`, `stats`, `history`, `help`, `quit`.
+- **Dependencies**: `requests>=2.32`, `beautifulsoup4>=4.12`, `lxml>=5.0` added to `requirements.txt` and `pyproject.toml`.
+
+---
+
 ## [v24] — 2026-05-27
 
 ### Added
