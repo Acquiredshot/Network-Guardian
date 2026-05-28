@@ -651,23 +651,22 @@ class SafeWebBrowsingAgent:
         """Publish a ``web.url.verdict`` event on the event bus if wired."""
         if self._event_bus is None:
             return
+        payload = {
+            "verdict_id":   verdict.verdict_id,
+            "url":          verdict.url,
+            "hostname":     verdict.hostname,
+            "category":     verdict.category.value,
+            "threat_score": verdict.threat_score,
+            "action_taken": verdict.action_taken,
+            "source_ip":    source_ip,
+            "timestamp":    verdict.timestamp,
+        }
         try:
-            from network_guardian.core.events import Event
-            self._event_bus.publish(
-                Event(
-                    type="web.url.verdict",
-                    data={
-                        "verdict_id":   verdict.verdict_id,
-                        "url":          verdict.url,
-                        "hostname":     verdict.hostname,
-                        "category":     verdict.category.value,
-                        "threat_score": verdict.threat_score,
-                        "action_taken": verdict.action_taken,
-                        "source_ip":    source_ip,
-                        "timestamp":    verdict.timestamp,
-                    },
-                )
-            )
+            from network_guardian.core.events import Event as _Event
+            self._event_bus.publish(_Event(topic="web.url.verdict", data=payload))
+        except ImportError:
+            # Fallback: bus may accept a plain dict or a simple object
+            self._event_bus.publish(type("Event", (), {"type": "web.url.verdict", "data": payload})())
         except Exception as exc:  # noqa: BLE001
             logger.debug("[WebBrowsing] Event publish failed: %s", exc)
 
