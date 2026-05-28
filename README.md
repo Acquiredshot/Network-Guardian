@@ -29,8 +29,10 @@
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
-| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), WAF-bypass normalisation (7 decode variants), IP reputation scoring, management API, escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
-| **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration. 73-test suite included. Interactive TUI test monitor (`run_web_browsing_tests.py`) |
+| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), confidence aggregation across overlapping rules, IP escalation (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking. v29: raw_data flow fixed, history persists across all entry points |
+| **Email Protection** | IMAP email scanner — **v2 now includes OpenRouter AI (gpt-oss-120b)** for per-email threat classification (phishing / CEO fraud / invoice scam / malware / spam / clean) + confidence scoring, **SQLite logging** for persistent result archival, **triple-layer defense** (SpamAssassin spam scoring + ClamAV malware + AI behaviour analysis) |
+| **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management, real-time block/unblock; runs the same Engine as the web dashboard. v29: blocked-IPs panel + auto-respond toggle + live ips.block/ips.unblock event sync |
+| **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration. 73-test suite included. Interactive TUI test monitor (`run_web_browsing_tests.py`)
 
 ---
 
@@ -70,14 +72,42 @@ python run_web_browsing_tests.py                       # interactive TUI test mo
 
 ---
 
-## Email Protection
+## Email Protection — v2 with AI-Powered Threat Analysis
 
-Scans incoming email for spam, phishing, and malware — and can **actively protect** the mailbox by moving spam to Junk or deleting malware, all over standard IMAP. Lives at `network_guardian/agent/email_scanner.py`.
+Scans incoming email for spam, phishing, and malware using a **triple-layer defense**: SpamAssassin + ClamAV + OpenRouter AI. All results persisted to SQLite for historical analysis. Lives at `network_guardian/agent/email_scanner.py`.
+
+### AI Threat Classification (NEW in v2)
+
+Uses **gpt-oss-120b** via OpenRouter API to classify each email:
+
+| Classification | Confidence | Risk Level | Recommended Action |
+|---|---|---|---|
+| `phishing` | 0.0–1.0 | low / medium / high / critical | allow / quarantine / delete / review |
+| `ceo_fraud` | 0.0–1.0 | low / medium / high / critical | allow / quarantine / delete / review |
+| `invoice_scam` | 0.0–1.0 | low / medium / high / critical | allow / quarantine / delete / review |
+| `malware` | 0.0–1.0 | low / medium / high / critical | allow / quarantine / delete / review |
+| `newsletter_spam` | 0.0–1.0 | low / medium / high / critical | allow / quarantine / delete / review |
+| `clean` | 0.0–1.0 | low | allow |
+
+### SQLite Logging (NEW in v2)
+
+All scan results logged to `network_guardian.db` with:
+- IMAP metadata (uid, message-id, subject, sender, timestamp)
+- Spam/malware scores and verdicts
+- AI classification + confidence
+- Action taken (none / moved / deleted)
+- Scan timestamp
+
+**Dashboard data functions**:
+- `get_stats()` — today's totals (scanned, flagged, spam, malware)
+- `get_recent(limit=20)` — most recent scans
+- `get_weekly_volume()` — 7-day flagged vs. clean breakdown
 
 ### Dependencies
 
 | Tool | Purpose | Install |
 |---|---|---|
+| **OpenRouter API Key** | AI threat analysis | Get free tier at openrouter.ai; set env var or edit code |
 | `spamc` (SpamAssassin) | Spam / phishing scoring | `brew install spamassassin` or `apt install spamassassin` |
 | `clamscan` (ClamAV) | Malware / virus detection | `brew install clamav` or `apt install clamav` |
 | Python `imaplib` / `email` | IMAP connection & message parsing | Standard library — no install needed |

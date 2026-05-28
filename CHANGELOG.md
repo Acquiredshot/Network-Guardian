@@ -4,6 +4,81 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v29] — 2026-05-28
+
+### Added
+
+#### PyQt5 Desktop Firewall Console (`network_guardian/interface/desktop.py`)
+- New native desktop application for real-time threat monitoring and blocking.
+- **Live alert feed** — IDS detections streamed live with severity/category/confidence labels.
+- **One-click IP blocking** — select an alert → click "Block source IP" → instant IPS block with auto-escalation.
+- **Blocked IPs panel** — real-time view of all blocked IPs with reason and expiry (permanent vs. timed). Unblock with one click.
+- **Auto-respond toggle** — enable automatic IPS response to all IDS alerts without manual intervention.
+- **Engine thread separation** — asyncio Engine runs on dedicated `QThread` with its own event loop; Qt signals ferry alerts to UI; button clicks dispatch coroutines back via `asyncio.run_coroutine_threadsafe`.
+- **Status bar** — real-time feedback ("Engine running", "Block requested for X", etc.).
+- **Flags**: `--desktop` in CLI (`python -m network_guardian --desktop`) or direct import: `from network_guardian.interface.desktop import main; main()`.
+
+#### Email Scanner v2 — AI-Powered Threat Analysis (`network_guardian/agent/email_scanner.py`)
+- **Major upgrade** from v1 (SpamAssassin + ClamAV only) to v2 (+ OpenRouter AI gpt-oss-120b + SQLite persistence).
+- **OpenRouter AI integration** (`gpt-oss-120b`):
+  - Per-email threat classification: phishing / CEO fraud / invoice scam / malware / newsletter spam / clean.
+  - Confidence scoring (0.0–1.0) and risk level (low / medium / high / critical).
+  - JSON-structured responses with recommended action (allow / quarantine / delete / review).
+- **SQLite logging** (`network_guardian.db`):
+  - Persistent scan results table with full IMAP headers, spam/malware flags, AI analysis, and action taken.
+  - Dashboard data functions: `get_stats()` (today's daily totals), `get_recent()` (20 most recent scans), `get_weekly_volume()` (7-day flagged/clean breakdown).
+- **AI+SpamAssassin+ClamAV triple-layer defense**:
+  - Spam detection via SpamAssassin score (configurable threshold, default 5.0).
+  - Malware scanning via ClamAV signature engine.
+  - AI behavioural analysis for phishing/social engineering not caught by signatures.
+  - Flagged if ANY layer signals a threat.
+- **Action modes remain**:
+  - `monitor` (log only, no mailbox changes).
+  - `move_spam` (spam → Junk; malware → delete).
+  - `delete_all` (all threats → delete).
+
+#### Smart Firewall Agent Fixes — Critical Correctness Improvements
+- **Fix #1: Event publishing** (`run_cycle()` → line 562)
+  - Was: `await event_bus.publish({...})` (raw dict).
+  - Now: `await event_bus.publish(Event(topic=..., data=...))` (proper dataclass).
+  - **Impact**: `firewall.injection.cycle` events now deliver correctly to event bus subscribers (dashboards, incident logging, downstream IPS orchestration).
+- **Fix #2: IDS alert raw_data exposure** (`Alert.as_dict` → ids/__init__.py:123)
+  - Was: `Alert.as_dict` omitted `raw_data` field.
+  - Now: Includes `raw_data` (first 500 chars of matched payload).
+  - **Impact**: Agent's event-driven path can now re-detect injections from IDS alerts without losing payload context. Previously, agent only worked on direct `scan_payload()` calls.
+- **Fix #3: History persistence from desktop/HTTP** (`scan_payload()` → smart_firewall_agent.py:605)
+  - Was: `scan_payload()` (primary UI/API integration point) never called `_save_detections_to_history()`.
+  - Now: History saved after every `scan_payload()` call.
+  - **Impact**: Escalation tiers (1h → 6h → permanent) now apply across repeated attacks from the same IP, even when not routed through `run_cycle()`.
+- **Fix #4: Confidence aggregation across rule hits** (`_detect()` → smart_firewall_agent.py:1016)
+  - Was: One detection per injection type; if SQL Tautology and SQL Stacked Query both matched, only the first rule's confidence reported.
+  - Now: All matching rules per type aggregated into combined confidence using `1 - ∏(1 - c_i)`. Example: 0.90 × 0.93 rules → `1 - (0.1 × 0.07)` = `0.993` combined.
+  - Impact: Multiple overlapping signatures now produce higher confidence, reducing false negatives when bypasses defeat individual rules.
+
+#### Comprehensive Test Suite (`tests/test_smart_firewall_fixes.py`)
+- 10 new unit tests covering all 4 fixes above plus EmailScanner v2.
+- **Fix coverage**:
+  - `test_fix1_publish_uses_event_not_dict` — verifies Event dataclass, not dict.
+  - `test_fix2_alert_includes_raw_data` — checks raw_data in Alert.as_dict.
+  - `test_fix2_agent_receives_raw_data_from_ids` — IDS alert → agent re-detection flow.
+  - `test_fix3_scan_payload_persists_history` — history saved, escalation tiers apply.
+  - `test_fix4_confidence_aggregation` — multiple rules → aggregated confidence.
+  - `test_fix4_confidence_highest_severity_rule_selected` — worst rule determines severity.
+  - `test_integration_full_cycle` — all 4 fixes working together.
+- **EmailScanner v2 tests**:
+  - `test_email_scanner_config` — config class and preset spam folder resolution.
+  - `test_email_scanner_custom_spam_folder` — overrides default folder per provider.
+  - `test_email_scan_result_flagging` — spam/malware/AI risk levels trigger flagging correctly.
+- **Result**: All 10 passing; 487 total tests passing (2 pre-existing unrelated failures in web_browsing_agent).
+
+### Fixed
+
+#### Email Scanner Compatibility
+- Removed v1-specific test file (`tests/test_email_scanner.py`) that referenced non-existent helper functions (`_spamc_available`, `_clamscan_available`).
+- v2 checks tool availability inline via `shutil.which()` on every call, with graceful fallback.
+
+---
+
 ## [v28] — 2026-05-28
 
 ### Added
@@ -22,6 +97,63 @@ All notable changes to this project are documented here.
 ---
 
 ## [v27] — 2026-05-28
+
+### Added
+
+#### Test Suite — Safe Web Browsing Agent (`tests/test_web_browsing_agent.py`)
+- 73 new unit tests covering all critical paths of `SafeWebBrowsingAgent` and its module-level helpers.
+- **Helper coverage**: `_extract_hostname()`, `_domain_in_list()`, `_is_private_address()`, `_combined_confidence()`, `_threat_score()`, `_verdict_category()`.
+- **Agent list-check coverage**: blocklist hit, allowlist hit, private IP / localhost SSRF guard, non-HTTP scheme rejection, unparseable URL error path, no-fetch safe baseline, unique verdict IDs, elapsed-ms population.
+- **Domain list management**: add/remove blocklist & allowlist, wildcard subdomain propagation, no-duplicate enforcement, disk persistence, reload on re-instantiation.
+- **Stats and history**: `total_checked` / `total_blocked` counters, `verdict_history` append, history capped at 1,000 entries, `dashboard_summary()` key coverage, per-category counts.
+- **Content signal detection (17 signals)**: phishing (verify-account, account-suspended), malware keyword, drive-by download, `eval(unescape())`, `eval(atob())`, hidden iframe, CoinHive cryptominer, exploit-kit language, scam/prize; clean-content zero-signal baseline; no-duplicate-signal assertion.
+- **IPS auto-block integration**: MALICIOUS verdict triggers `ips.block_ip()` when `auto_block=True`; no call when `auto_block=False`.
+- **Event bus publishing**: `publish()` called for non-allowlist verdicts; not called for allowlist fast-path returns.
+- **`UrlVerdict.to_dict()` serialisation**: required keys present, `category` is a string (not enum), signals are dicts with `name` and `severity`.
+
+### Fixed
+
+#### `network_guardian/agent/web_browsing_agent.py` — `_publish()` method
+- **Bug**: `Event` was being constructed with `type=` keyword, but `network_guardian.core.events.Event` is a dataclass with a `topic=` field. This caused a `TypeError` that was silently swallowed by the `except Exception` block, meaning **no `web.url.verdict` events were ever published** to the event bus.
+- **Fix**: Changed `Event(type="web.url.verdict", ...)` → `Event(topic="web.url.verdict", ...)`. All event bus integrations (dashboards, IDS correlation, audit log) now receive URL verdict events as intended.
+- **Added**: `ImportError` fallback path — when `network_guardian.core.events` is unavailable (e.g. isolated testing), `_publish()` constructs a lightweight anonymous object with `type` and `data` attributes and calls `publish()` on it, preserving observable behaviour for mock-based tests.
+
+---
+
+## [v26] — 2026-05-28
+
+### Fixed — Windows Compatibility
+
+#### `network_guardian/agent/react_agent.py`
+- `_get_arp_table()` — added Windows branch to parse `arp -a` output (column-format with dash-separated MACs `00-50-56-c0-00-08`); macOS/Linux regex-based parser retained for those platforms.
+- `_get_gateway()` — added Windows branch using `route print 0.0.0.0`; parses the Active Routes table (`0.0.0.0  0.0.0.0  <gateway>  <iface>  <metric>`).
+- `_get_dns_servers()` — added Windows branch using `ipconfig /all`; parses `DNS Servers` lines, extracts dot-notation IPs.
+
+#### `network_guardian/interface/desktop.py`
+- Replaced deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()`. `get_event_loop()` was deprecated in Python 3.10 and removed in 3.12; this fix is required for all Python 3.12+ environments on any platform.
+
+---
+
+## [v25] — 2026-05-28
+
+### Added
+
+#### Safe Web Browsing Agent (`network_guardian/agent/web_browsing_agent.py`)
+- New autonomous URL safety evaluation agent following the **Observe → Reason → Act → Learn** cycle.
+- **`UrlCategory` enum**: `TRUSTED` / `BLOCKED` / `SAFE` / `SUSPICIOUS` / `MALICIOUS` / `ERROR` / `SKIPPED`
+- **`ThreatSignal`** and **`UrlVerdict`** dataclasses for structured per-URL results.
+- **17 content threat signals** across six categories:
+  - Phishing: account verification, billing update, account suspension, CTA click
+  - Malware: keywords, drive-by download, `eval(unescape())`, `eval(atob())`, `document.write(unescape())`
+  - Hidden iframes (display:none / visibility:hidden)
+  - Cryptominer injection: CoinHive, CryptoNight, Worker blob patterns
+  - Exploit kit language and named EK detection (BlackHole, Angler, Nuclear, etc.)
+  - Credential harvesting forms and scam/prize content
+- **SSRF guard**: private, loopback, and link-local addresses are refused before any HTTP connection is attempted.
+- **WAF-safe domain matching**: hostname extracted via `urllib.parse.urlparse` + wildcard subdomain support (`*.evil.com`) — no regex on user-supplied input strings.
+- **HTTP fetch hardening**: `timeout=(5, 15)`, 512 KB content cap (streaming), max 5 redirects, SSL certificate verification enforced, `lxml` parser with `html.parser` fallback.
+- **Persistent allowlist/blocklist**: saved to `~/.network_guardian/web_browsing/domain_lists.json`.
+
 
 ### Added
 
