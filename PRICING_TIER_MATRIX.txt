@@ -172,5 +172,23 @@ REVENUE MODEL NOTES
   Default contract term         : annual prepaid
   Production use requires commercial agreement execution
   Use outside licensed scope triggers true-up and potential termination
-  Email protection modes (move_spam / delete_all) require written acknowledgment
-    from customer that IMAP write access has been authorized on their mailbox
+
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║  LEGAL NOTICE — ACTIVE EMAIL PROTECTION                                 ║
+  ║                                                                          ║
+  ║  The "move_spam" and "delete_all" protection modes perform IMAP write   ║
+  ║  operations that PERMANENTLY MODIFY OR DELETE messages in the           ║
+  ║  customer's mailbox. Before enabling either mode, Wolf-Pak Innovations  ║
+  ║  LLC requires:                                                           ║
+  ║                                                                          ║
+  ║    1. Written acknowledgment from the customer confirming they have     ║
+  ║       full authorization to enable IMAP write access on the mailbox.   ║
+  ║    2. Confirmation that the customer accepts sole responsibility for    ║
+  ║       any messages moved or deleted by the agent.                       ║
+  ║    3. Signature on the applicable commercial agreement prior to         ║
+  ║       enabling active protection modes in any production environment.  ║
+  ║                                                                          ║
+  ║  Enabling active modes without this authorization may violate           ║
+  ║  applicable data protection laws (GDPR, CCPA, etc.) and the terms of   ║
+  ║  the customer's email provider.                                          ║
+  ╚══════════════════════════════════════════════════════════════════════════╝
