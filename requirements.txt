@@ -4,6 +4,9 @@ watchdog>=4.0,<7
 reportlab>=4.0,<5
 setuptools>=68.0,<76
 wheel
+requests>=2.32,<3
+beautifulsoup4>=4.12,<5
+lxml>=5.0
 
 # desktop UI (optional; only needed for --desktop)
 PyQt5>=5.15,<6

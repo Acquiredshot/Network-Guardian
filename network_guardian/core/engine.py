@@ -20,6 +20,7 @@ from network_guardian.core.plugins import PluginRegistry
 
 if TYPE_CHECKING:
     from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
+    from network_guardian.agent.web_browsing_agent import SafeWebBrowsingAgent
     from network_guardian.ai import AIEngine
     from network_guardian.ai.nlp import NLPEngine
     from network_guardian.ai.nodes import NodeGraph
@@ -59,6 +60,7 @@ class Engine:
         self._ids: IntrusionDetectionSystem | None = None
         self._ips: IntrusionPreventionSystem | None = None
         self._smart_firewall: SmartFirewallAgent | None = None
+        self._web_browsing: SafeWebBrowsingAgent | None = None
         self._cloaking: IPCloakingSystem | None = None
         self._wifi_stealth: WiFiStealthSystem | None = None
         self._remote: RemoteAccessManager | None = None
@@ -172,7 +174,18 @@ class Engine:
         return self._smart_firewall
 
     @property
-    def cloaking(self) -> IPCloakingSystem:
+    def web_browsing(self) -> "SafeWebBrowsingAgent":
+        """Autonomous safe-browsing evaluation agent."""
+        if self._web_browsing is None:
+            from network_guardian.agent.web_browsing_agent import SafeWebBrowsingAgent
+            self._web_browsing = SafeWebBrowsingAgent(
+                event_bus=self.event_bus,
+                ips=self.ips,
+            )
+        return self._web_browsing
+
+    @property
+    def cloaking(self) -> "IPCloakingSystem":
         """IP Cloaking and privacy system."""
         if self._cloaking is None:
             from network_guardian.cloaking import IPCloakingSystem
@@ -215,6 +228,9 @@ class Engine:
         self._running = False
         if self._smart_firewall is not None:
             self._smart_firewall.stop()
+        if self._web_browsing is not None:
+            logger.info("[Engine] SafeWebBrowsingAgent stopped (stats: %s)",
+                        self._web_browsing.get_stats())
         if self._node_graph is not None:
             await self._node_graph.stop_all()
         if self._dashboard is not None:
