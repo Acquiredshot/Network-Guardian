@@ -342,6 +342,8 @@ count = engine.smart_firewall.offense_count("10.0.0.99")
 
 An autonomous URL safety evaluation agent that checks whether a URL is safe before allowing access. Lives at `network_guardian/agent/web_browsing_agent.py`.
 
+> **v27 patch:** A silent bug caused `web.url.verdict` events to never reach the event bus (wrong constructor keyword `type=` instead of `topic=` on the `Event` dataclass). This has been fixed — dashboards and IDS correlation now receive all URL verdict events correctly.
+
 ### How it works
 
 ```

@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v27] — 2026-05-28
+
+### Added
+
+#### Test Suite — Safe Web Browsing Agent (`tests/test_web_browsing_agent.py`)
+- 73 new unit tests covering all critical paths of `SafeWebBrowsingAgent` and its module-level helpers.
+- **Helper coverage**: `_extract_hostname()`, `_domain_in_list()`, `_is_private_address()`, `_combined_confidence()`, `_threat_score()`, `_verdict_category()`.
+- **Agent list-check coverage**: blocklist hit, allowlist hit, private IP / localhost SSRF guard, non-HTTP scheme rejection, unparseable URL error path, no-fetch safe baseline, unique verdict IDs, elapsed-ms population.
+- **Domain list management**: add/remove blocklist & allowlist, wildcard subdomain propagation, no-duplicate enforcement, disk persistence, reload on re-instantiation.
+- **Stats and history**: `total_checked` / `total_blocked` counters, `verdict_history` append, history capped at 1,000 entries, `dashboard_summary()` key coverage, per-category counts.
+- **Content signal detection (17 signals)**: phishing (verify-account, account-suspended), malware keyword, drive-by download, `eval(unescape())`, `eval(atob())`, hidden iframe, CoinHive cryptominer, exploit-kit language, scam/prize; clean-content zero-signal baseline; no-duplicate-signal assertion.
+- **IPS auto-block integration**: MALICIOUS verdict triggers `ips.block_ip()` when `auto_block=True`; no call when `auto_block=False`.
+- **Event bus publishing**: `publish()` called for non-allowlist verdicts; not called for allowlist fast-path returns.
+- **`UrlVerdict.to_dict()` serialisation**: required keys present, `category` is a string (not enum), signals are dicts with `name` and `severity`.
+
+### Fixed
+
+#### `network_guardian/agent/web_browsing_agent.py` — `_publish()` method
+- **Bug**: `Event` was being constructed with `type=` keyword, but `network_guardian.core.events.Event` is a dataclass with a `topic=` field. This caused a `TypeError` that was silently swallowed by the `except Exception` block, meaning **no `web.url.verdict` events were ever published** to the event bus.
+- **Fix**: Changed `Event(type="web.url.verdict", ...)` → `Event(topic="web.url.verdict", ...)`. All event bus integrations (dashboards, IDS correlation, audit log) now receive URL verdict events as intended.
+- **Added**: `ImportError` fallback path — when `network_guardian.core.events` is unavailable (e.g. isolated testing), `_publish()` constructs a lightweight anonymous object with `type` and `data` attributes and calls `publish()` on it, preserving observable behaviour for mock-based tests.
+
+---
+
 ## [v26] — 2026-05-28
 
 ### Fixed — Windows Compatibility
