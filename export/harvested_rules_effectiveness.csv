@@ -1,0 +1,12 @@
+Rule Name,Type,Severity,Base Confidence,Successful Detections,Failed Detections,Total,Success Rate
+HARVESTED-SQL_INJECTION-1,sql_injection,critical,0.85,0,0,0,0.00%
+HARVESTED-XSS-2,xss,high,0.80,0,0,0,0.00%
+HARVESTED-SQL_INJECTION-3,sql_injection,critical,0.85,0,0,0,0.00%
+HARVESTED-XSS-4,xss,high,0.80,0,0,0,0.00%
+HARVESTED-SQL_INJECTION-5,sql_injection,critical,0.85,0,0,0,0.00%
+HARVESTED-XSS-6,xss,high,0.80,0,0,0,0.00%
+HARVESTED-SQL_INJECTION-7,sql_injection,critical,0.85,0,0,0,0.00%
+HARVESTED-XSS-8,xss,high,0.80,0,0,0,0.00%
+HARVESTED-SQL_INJECTION-9,sql_injection,critical,0.85,0,0,0,0.00%
+HARVESTED-XSS-10,xss,high,0.80,0,0,0,0.00%
+HARVESTED-SQL_INJECTION-11,sql_injection,critical,0.85,0,0,0,0.00%

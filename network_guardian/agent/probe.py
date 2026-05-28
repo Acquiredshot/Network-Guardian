@@ -46,7 +46,14 @@ import urllib.error
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from network_guardian.core.events import EventBus
+    from network_guardian.agent.probe_firewall_bridge import ProbeFirewallBridge
+    from network_guardian.agent.payload_harvester import PayloadHarvester
+    from network_guardian.agent.probe_attack_correlator import ProbeAttackCorrelator
+    from network_guardian.agent.probe_defensive_scanner import ProbeDefensiveScanner
 
 from network_guardian.agent.covert_comms import CovertComms, build_comms
 from network_guardian.agent.threat_analyzer import ProbeThrottleAnalyzer, ThreatAlert

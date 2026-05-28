@@ -1,19 +1,19 @@
 {
-  "timestamp": "2026-05-28T13:09:55.272957",
+  "timestamp": "2026-05-28T13:25:00.814069",
   "firewall": {
-    "total_ips": 4,
-    "total_events": 8
+    "total_ips": 6,
+    "total_events": 21
   },
   "correlations": {
-    "total": 0
+    "total": 24
   },
   "harvested_rules": {
-    "total": 0
+    "total": 11
   },
   "discoveries": {
-    "total": 0
+    "total": 2
   },
   "scans": {
-    "total": 0
+    "total": 7
   }
 }
