@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v28] — 2026-05-28
+
+### Added
+
+#### Interactive TUI Test Monitor (`run_web_browsing_tests.py`)
+- New standalone Textual TUI for running and watching the Safe Web Browsing Agent test suite in real time.
+- **Live progress bar** — ticks forward as each test completes.
+- **Per-test rows** — 73 rows pre-populated with `···` placeholders; each flips to `PASS` (green) or `FAIL` (red) the moment its result arrives from the subprocess stream.
+- **Stat bar** — always-visible Total / Passed / Failed counters updated on every result.
+- **Output pane** — live scrolling log; failure tracebacks stream inline in red when a test fails.
+- **Final summary** — `══ ALL 73 TESTS PASSED ══` banner (green) or failure count (red) on completion.
+- **Keyboard controls**: `R` re-runs the entire suite from scratch; `Q` exits.
+- Built on Textual + `subprocess.Popen` streaming; no extra dependencies beyond what the dev venv already provides.
+- Launch with: `python run_web_browsing_tests.py`
+
+---
+
 ## [v27] — 2026-05-28
 
 ### Added

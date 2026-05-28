@@ -30,7 +30,7 @@
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
 | **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), WAF-bypass normalisation (7 decode variants), IP reputation scoring, management API, escalating blocks (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking |
-| **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration |
+| **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration. 73-test suite included. Interactive TUI test monitor (`run_web_browsing_tests.py`) |
 
 ---
 
@@ -64,6 +64,8 @@ python password_manager.py                         # credential vault + team use
 python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
 python -m network_guardian.agent.email_react_agent # autonomous email ReAct agent CLI
 python -m network_guardian.agent.smart_firewall_agent  # standalone injection scanner CLI
+python -m network_guardian.agent.web_browsing_agent    # Safe Web Browsing Agent CLI
+python run_web_browsing_tests.py                       # interactive TUI test monitor (Textual)
 ```
 
 ---
@@ -343,6 +345,10 @@ count = engine.smart_firewall.offense_count("10.0.0.99")
 An autonomous URL safety evaluation agent that checks whether a URL is safe before allowing access. Lives at `network_guardian/agent/web_browsing_agent.py`.
 
 > **v27 patch:** A silent bug caused `web.url.verdict` events to never reach the event bus (wrong constructor keyword `type=` instead of `topic=` on the `Event` dataclass). This has been fixed — dashboards and IDS correlation now receive all URL verdict events correctly.
+>
+> **v27 also added:** 73-test unit suite (`tests/test_web_browsing_agent.py`) covering all helpers, list checks, SSRF guard, domain management, 17 content signals, IPS integration, event bus, and verdict serialisation. All 73 pass.
+>
+> **v28:** Interactive Textual TUI test monitor (`run_web_browsing_tests.py`) — live progress bar, per-test pass/fail rows updating in real time, failure output stream, re-run with `R`.
 
 ### How it works
 
