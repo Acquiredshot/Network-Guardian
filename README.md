@@ -29,7 +29,7 @@
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
-| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), confidence aggregation across overlapping rules, IP escalation (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking. v29: raw_data flow fixed, history persists across all entry points |
+| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), confidence aggregation across overlapping rules, IP escalation (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking. **v30: NEW** — Integrated with Probe for threat intelligence feedback, payload harvesting, defensive scanning, and attack correlation (see below) |
 | **Email Protection** | IMAP email scanner — **v2 now includes OpenRouter AI (gpt-oss-120b)** for per-email threat classification (phishing / CEO fraud / invoice scam / malware / spam / clean) + confidence scoring, **SQLite logging** for persistent result archival, **triple-layer defense** (SpamAssassin spam scoring + ClamAV malware + AI behaviour analysis) |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management, real-time block/unblock; runs the same Engine as the web dashboard. v29: blocked-IPs panel + auto-respond toggle + live ips.block/ips.unblock event sync |
 | **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration. 73-test suite included. Interactive TUI test monitor (`run_web_browsing_tests.py`)
@@ -383,6 +383,177 @@ count = engine.smart_firewall.offense_count("10.0.0.99")
 |---|---|
 | `firewall.injection.blocked` | A source IP was blocked for an injection attempt |
 | `firewall.injection.cycle` | Emitted after each ReAct cycle with risk level, threat score, IPs blocked |
+
+---
+
+## Smart Firewall ↔ Probe Integration (v30)
+
+**Tightly integrated network probe and smart firewall for intelligent threat correlation, payload learning, and defensive network scanning.**
+
+Combines four complementary security enhancements to harden your internal network:
+
+### 1. Threat Intelligence Feedback (Probe → Firewall)
+
+When your probe discovers vulnerable services on the network, the firewall automatically adapts its detection rules:
+
+- **Probe discovers HTTP endpoint** → Firewall enables XSS + Path Traversal detection for that service
+- **Probe discovers SQL port** → Firewall enables SQL injection rules for that service
+- **Probe finds weak authentication** → Firewall increases monitoring sensitivity on auth endpoints
+- **Probe detects rogue AP / evil twin** → Firewall flags correlated auth bypass attempts
+
+Discovered services are persisted to disk and firewall adapts on agent restart.
+
+**Live component**: `network_guardian/agent/probe_firewall_bridge.py`
+
+### 2. Payload Harvesting (Exploited Payloads → Dynamic Rules)
+
+When your probe successfully exploits a vulnerability, the system learns and auto-detects similar attacks:
+
+- **Probe exploits SOAP auth bypass** → Harvester extracts payload pattern → Firewall gets new detection rule
+- **Probe exploits SQL injection** → Harvester converts payload to regex → Firewall blocks similar SQL attacks immediately
+- **Probe exploits XSS vulnerability** → Pattern extracted → New XSS rule added to dynamic ruleset
+
+Harvested rules persist to disk. The firewall tracks detection success/failure and auto-increases confidence scores for rules that prove effective.
+
+**Confidence scores assigned by exploitation type**:
+- SOAP auth bypass: 0.88
+- SQL injection: 0.85
+- XXE: 0.92
+- Command injection: 0.90
+- Path traversal: 0.82
+- XSS: 0.80
+
+**Live component**: `network_guardian/agent/payload_harvester.py`
+
+### 3. Defensive Scanning (Probe Tests Network w/ Firewall Rules)
+
+The probe uses the firewall's own detection rules to scan your internal network for vulnerabilities:
+
+- Synthesizes test payloads from firewall's 31+ injection detection rules
+- Tests internal endpoints against those rules to find exploitable injection points
+- Validates findings using firewall's own detection engine (eliminates false positives)
+- Reports vulnerable endpoints for operator remediation
+
+**Service-specific payloads synthesized for**:
+- HTTP: XSS, Path Traversal, Command Injection
+- SQL: UNION SELECT, Time-based blind, Error-based
+- SOAP: XXE, Entity injection, CRLF injection
+- LDAP: Filter escape, AND/OR bypass
+- Custom payloads for all 10 injection types
+
+Scan results persisted to disk for vulnerability trend tracking.
+
+**Live component**: `network_guardian/agent/probe_defensive_scanner.py`
+
+### 4. Attack Correlation (Discoveries + Firewall Blocks = High-Confidence Threats)
+
+Correlates probe discoveries with firewall-detected attacks to distinguish reconnaissance from blind attacks:
+
+- **Probe discovers SQL endpoint on 192.168.1.100:3306**
+  - Stores discovery with timestamp
+- **Attacker attempts SQL injection on same endpoint**
+  - Firewall detects injection
+  - Correlator matches target IP:port
+  - Correlation score: **0.85** (exact match = high confidence)
+  - Threat score boosted +0.15
+  - Event published: "High-confidence correlated attack"
+
+- **Blind attack on unknown endpoint**
+  - Firewall detects injection
+  - Correlator finds no matching discovery
+  - Correlation score: **0.15** (blind attack = low confidence)
+  - Flagged as reconnaissance without prior discovery
+
+**Threat scoring**:
+- 0.0 = clean source IP
+- 0.15–0.40 = blind attackers (low confidence)
+- 0.40–0.70 = repeated attackers (medium confidence)
+- 0.70–1.0 = correlated attackers (high confidence) — performed recon then attacked
+
+**Live component**: `network_guardian/agent/probe_attack_correlator.py`
+
+### Event flow
+
+```
+Probe Discovery Event
+  ↓
+ProbeFirewallBridge adapts rules
+  ↓
+Firewall gains service-specific detection
+
+Probe Exploitation Event
+  ↓
+PayloadHarvester extracts patterns
+  ↓
+New rule added to firewall's dynamic ruleset
+
+Firewall Detection Event
+  ↓
+ProbeAttackCorrelator checks for discovery match
+  ↓
+Threat score escalated if correlated
+  ↓
+High-confidence attack published to event bus
+```
+
+### Persistence
+
+All integration state persists to disk:
+
+| Data | Location |
+|---|---|
+| Discovered services | `~/.network_guardian/probe_firewall_bridge/discoveries.json` |
+| Harvested rules | `~/.network_guardian/payload_harvester/harvested_rules.json` |
+| Discovery cache | `~/.network_guardian/attack_correlator/discoveries.json` |
+| Scan results | `~/.network_guardian/defensive_scanner/scan_results.json` |
+
+### Programmatic usage
+
+```python
+import asyncio
+from network_guardian.core.engine import Engine
+
+engine = Engine()
+asyncio.run(engine.start())
+
+# All components automatically initialized and wired:
+# - engine.probe_bridge
+# - engine.payload_harvester
+# - engine.defensive_scanner
+# - engine.attack_correlator
+# - engine.smart_firewall (with bridge + correlator attached)
+
+# Access integration stats
+print(engine.probe_bridge.get_stats())
+print(engine.payload_harvester.get_stats())
+print(engine.attack_correlator.get_stats())
+print(engine.defensive_scanner.get_stats())
+```
+
+### Test coverage
+
+Comprehensive 66-test suite covering all four integration goals:
+
+- **Probe Bridge** (8 tests): initialization, service registration, rule adaptation, persistence
+- **Payload Harvester** (12 tests): payload-to-rule conversion, pattern generation, duplicate prevention
+- **Attack Correlator** (11 tests): exact-match correlation, blind attack detection, threat scoring
+- **Defensive Scanner** (21 tests): payload synthesis, vulnerability detection, false-positive elimination
+- **Integration Workflows** (14 tests): end-to-end scenarios (discovery → attack → correlation)
+
+All 66 tests passing; full coverage of bug fixes from v30.
+
+### Event bus topics
+
+| Topic | When |
+|---|---|
+| `probe.discovery.open_port` | Probe discovered open service |
+| `probe.discovery.weak_auth` | Probe identified weak credentials |
+| `probe.discovery.rogue_ap` | Probe detected rogue AP / evil twin |
+| `probe.exploitation.success` | Probe successfully exploited vulnerability |
+| `probe.exploitation.failure` | Probe exploitation attempt failed |
+| `bridge.payload_learned` | Bridge feeding payload to harvester |
+| `probe.correlation.attack_on_discovered` | Correlator matched attack to discovery |
+| `firewall.correlation.high_confidence_attack` | High-confidence correlated attack |
 
 ---
 

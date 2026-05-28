@@ -21,6 +21,11 @@ from network_guardian.core.plugins import PluginRegistry
 if TYPE_CHECKING:
     from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
     from network_guardian.agent.web_browsing_agent import SafeWebBrowsingAgent
+    from network_guardian.agent.probe import ProbeAgent
+    from network_guardian.agent.probe_firewall_bridge import ProbeFirewallBridge
+    from network_guardian.agent.payload_harvester import PayloadHarvester
+    from network_guardian.agent.probe_defensive_scanner import ProbeDefensiveScanner
+    from network_guardian.agent.probe_attack_correlator import ProbeAttackCorrelator
     from network_guardian.ai import AIEngine
     from network_guardian.ai.nlp import NLPEngine
     from network_guardian.ai.nodes import NodeGraph
@@ -64,6 +69,11 @@ class Engine:
         self._cloaking: IPCloakingSystem | None = None
         self._wifi_stealth: WiFiStealthSystem | None = None
         self._remote: RemoteAccessManager | None = None
+
+        self._probe_bridge: ProbeFirewallBridge | None = None
+        self._payload_harvester: PayloadHarvester | None = None
+        self._defensive_scanner: ProbeDefensiveScanner | None = None
+        self._attack_correlator: ProbeAttackCorrelator | None = None
 
         self._running = False
 
@@ -170,6 +180,8 @@ class Engine:
             self._smart_firewall = SmartFirewallAgent(
                 ips=self.ips,
                 event_bus=self.event_bus,
+                probe_bridge=self.probe_bridge,
+                correlator=self.attack_correlator,
             )
         return self._smart_firewall
 
@@ -183,6 +195,45 @@ class Engine:
                 ips=self.ips,
             )
         return self._web_browsing
+
+    @property
+    def probe_bridge(self) -> "ProbeFirewallBridge":
+        """Probe-Firewall intelligence bridge."""
+        if self._probe_bridge is None:
+            from network_guardian.agent.probe_firewall_bridge import ProbeFirewallBridge
+            self._probe_bridge = ProbeFirewallBridge(
+                event_bus=self.event_bus,
+                smart_firewall=self.smart_firewall,
+            )
+        return self._probe_bridge
+
+    @property
+    def payload_harvester(self) -> "PayloadHarvester":
+        """Payload harvester for rule learning."""
+        if self._payload_harvester is None:
+            from network_guardian.agent.payload_harvester import PayloadHarvester
+            self._payload_harvester = PayloadHarvester(
+                event_bus=self.event_bus,
+            )
+        return self._payload_harvester
+
+    @property
+    def defensive_scanner(self) -> "ProbeDefensiveScanner":
+        """Defensive scanner for internal vulnerability testing."""
+        if self._defensive_scanner is None:
+            from network_guardian.agent.probe_defensive_scanner import ProbeDefensiveScanner
+            self._defensive_scanner = ProbeDefensiveScanner(
+                smart_firewall=self.smart_firewall,
+            )
+        return self._defensive_scanner
+
+    @property
+    def attack_correlator(self) -> "ProbeAttackCorrelator":
+        """Attack correlator for probe-discovery matching."""
+        if self._attack_correlator is None:
+            from network_guardian.agent.probe_attack_correlator import ProbeAttackCorrelator
+            self._attack_correlator = ProbeAttackCorrelator()
+        return self._attack_correlator
 
     @property
     def cloaking(self) -> "IPCloakingSystem":

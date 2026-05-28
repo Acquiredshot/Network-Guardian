@@ -4,6 +4,126 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v30] — 2026-05-28
+
+### Added
+
+#### Smart Firewall ↔ Probe Integration — Hardened Defensive Capabilities
+
+Tightly integrated the network probe and smart firewall for intelligent threat correlation, payload learning, and defensive network scanning. Four complementary security enhancements:
+
+##### 1. Threat Intelligence Feedback (Probe → Firewall)
+- **`probe_firewall_bridge.py`** — Orchestrates intelligence flow from probe discoveries to firewall rule adaptation.
+- When probe discovers open port running vulnerable service (HTTP, SQL, SOAP, etc.), firewall automatically enables service-specific detection rules.
+- When probe identifies weak authentication, firewall increases monitoring sensitivity on auth endpoints.
+- When probe detects rogue AP / evil twin, firewall flags correlated auth bypass attempts.
+- **Service rule mappings**: HTTP → XSS/Path Traversal, SQL → SQL Injection, SOAP → XXE, LDAP → LDAP Injection, etc.
+- Discovered services persisted to disk; firewall adapts on agent restart.
+
+##### 2. Payload Harvesting (Exploited Payloads → Dynamic Rules)
+- **`payload_harvester.py`** — Converts successfully exploited payloads into firewall detection rules.
+- When probe exploits vulnerability (e.g., SOAP auth bypass, SQL injection), harvester extracts payload pattern.
+- Converts to regex-based detection rule with confidence score based on exploitation context.
+- Adds harvested rule to firewall's dynamic rule set; firewall detects similar attacks immediately.
+- Confidence scores: SOAP auth bypass (0.88), SQL injection (0.85), XXE (0.92), Command injection (0.90).
+- Harvested rules persist to disk; firewall uses them across restarts.
+- Tracks detection success/failure; auto-increases confidence scores for proven rules.
+
+##### 3. Defensive Scanning (Probe Tests Network w/ Firewall Rules)
+- **`probe_defensive_scanner.py`** — Uses firewall's own detection rules to scan internal network for vulnerabilities.
+- Synthesizes test payloads from firewall's 31+ injection detection rules.
+- Tests internal endpoints against firewall rules to identify exploitable injection points.
+- Validates findings using firewall's own detection engine (eliminates false positives).
+- Service-specific payloads: HTTP (XSS, Path Traversal), SQL (UNION, Time-based), SOAP (XXE, Entity injection), LDAP (Filter escape), etc.
+- Reports vulnerable endpoints for operator remediation.
+- Defensive scan results persisted; tracks vulnerability trends over time.
+- Success criteria: <3% false-positive rate, <5 min scan time for /24 subnet.
+
+##### 4. Attack Correlation (Discoveries + Firewall Blocks = High-Confidence Threats)
+- **`probe_attack_correlator.py`** — Correlates probe discoveries with firewall-detected attacks.
+- Maintains persistent cache of discovered hosts/ports/services.
+- When firewall detects injection attack, correlator checks if target matches discovered endpoint.
+- **Exact-match correlation** (discovered IP:port attacked) → confidence +0.85, threat score escalation.
+- **Blind-attack flagging** (unknown endpoint attacked) → confidence +0.15 (low certainty).
+- **Time-delta analysis** — attacks within 1 hour of discovery suggest active reconnaissance.
+- Threat scores per source IP: 0.0 (clean) to 1.0 (confirmed attacker).
+- Distinction: "Attacker did recon then exploited" vs. "Random probe".
+- Discovered services and correlations persist to disk; survives agent restart.
+
+##### Core Modifications
+- **`smart_firewall_agent.py`**:
+  - Added dynamic rule management: `add_dynamic_rule()`, `adapt_rule_confidence()`.
+  - Accepts optional `probe_bridge` and `correlator` parameters.
+  - Three new event handlers: `_on_probe_discovery()`, `_on_probe_exploitation()`, `_on_payload_learned()`.
+  - Subscribes to `probe.discovery.*` and `probe.exploitation.*` events.
+  - `_act_on_detection()` now checks correlator before blocking; confidence +0.15 for correlated attacks.
+
+- **`engine.py`**:
+  - Added properties for all four integration components with lazy loading.
+  - `smart_firewall` property wired with `probe_bridge` and `attack_correlator`.
+  - All components share single `event_bus` for coordinated communication.
+
+#### Comprehensive Test Suite — 66 Tests
+- **`test_probe_bridge.py`** (8 tests): Bridge initialization, service registration, rule adaptation, event handling, persistence.
+- **`test_payload_harvester.py`** (12 tests): Harvester initialization, payload-to-rule conversion, pattern generation for SOAP/SQL/XSS/CMD/Path Traversal, persistence, duplicate prevention, detection tracking.
+- **`test_attack_correlator.py`** (11 tests): Discovery registration, exact-match correlation, blind attack detection, threat score escalation, time-delta calculation, persistence, statistics.
+- **`test_defensive_scanner.py`** (21 tests): Payload synthesis (HTTP/SQL/SOAP/LDAP), vulnerability detection heuristics, false-positive elimination, endpoint testing, persistence, statistics.
+- **`test_probe_firewall_integration.py`** (14 tests): Threat intelligence feedback, payload harvesting flows, defensive scanning, attack correlation workflows, end-to-end integration scenarios.
+- **Total**: 66 tests, 100% passing.
+
+#### Event Bus Extensions
+- New event topics:
+  - `probe.discovery.open_port` — Probe discovered open service.
+  - `probe.discovery.weak_auth` — Probe identified weak credentials.
+  - `probe.discovery.rogue_ap` — Probe detected rogue AP / evil twin.
+  - `probe.exploitation.success` — Probe successfully exploited vulnerability.
+  - `probe.exploitation.failure` — Probe exploitation attempt failed.
+  - `bridge.payload_learned` — Bridge feeding payload to harvester.
+  - `probe.correlation.attack_on_discovered` — Correlator matched attack to discovery.
+  - `firewall.correlation.high_confidence_attack` — High-confidence correlated attack.
+
+### Fixed
+
+#### ProbeFirewallBridge Persistence Bug
+- **Issue**: Bridge persisted discovered services but never loaded them on restart.
+- **Fix**: Added `_load_discoveries()` method and called it in `__init__()`.
+- **Impact**: Discovered service cache now survives agent restarts.
+
+#### PayloadHarvester Vulnerability Type Mapping
+- **Issue**: Vulnerability type `"command_injection"` not recognized; mapped to UNKNOWN instead of CMD.
+- **Root cause**: Substring check `"cmd" in "command_injection"` failed (should be `"com"` not `"cmd"`).
+- **Fix**: Added `"command"` to checks: `if "command" in vuln_lower or "cmd" in vuln_lower`.
+- **Impact**: All command injection payloads now correctly harvested as CMD injection rules.
+
+### Architecture
+
+**Four-Layer Integration**:
+```
+Layer 1: Probe Discovery
+  ↓
+Layer 2: ProbeFirewallBridge (adapts rules for discovered services)
+  ↓
+Layer 3: PayloadHarvester (converts exploits to rules)
+  ↓
+Layer 4: ProbeAttackCorrelator + DefensiveScanner (correlates attacks, tests vulnerabilities)
+  ↓
+SmartFirewall (detects attacks with learned rules + correlation context)
+```
+
+**Intelligence Flow**:
+- Probe discovers endpoint → Bridge adapts firewall rules → Firewall sensitivity increased
+- Probe exploits vulnerability → Harvester extracts payload → New rule added to firewall
+- Firewall detects attack → Correlator checks if target was discovered → Threat score escalated
+- Firewall detects on discovered endpoint → Correlator publishes high-confidence event
+
+**Persistence**:
+- Discovered services: `~/.network_guardian/probe_firewall_bridge/discoveries.json`
+- Harvested rules: `~/.network_guardian/payload_harvester/harvested_rules.json`
+- Discoveries + correlations: `~/.network_guardian/attack_correlator/discoveries.json`
+- Scan results: `~/.network_guardian/defensive_scanner/scan_results.json`
+
+---
+
 ## [v29] — 2026-05-28
 
 ### Added

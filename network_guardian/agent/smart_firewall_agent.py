@@ -61,6 +61,8 @@ from network_guardian.core.events import Event
 if TYPE_CHECKING:
     from network_guardian.core.events import EventBus
     from network_guardian.ips import IntrusionPreventionSystem
+    from network_guardian.agent.probe_firewall_bridge import ProbeFirewallBridge
+    from network_guardian.agent.probe_attack_correlator import ProbeAttackCorrelator
 
 
 # ---------------------------------------------------------------------------
@@ -526,12 +528,16 @@ class SmartFirewallAgent:
         interval_secs: float = 5.0,
         data_dir: Path | None = None,
         allowlist: list[str] | None = None,
+        probe_bridge: "ProbeFirewallBridge | None" = None,
+        correlator: "ProbeAttackCorrelator | None" = None,
     ) -> None:
         self._ips = ips
         self._event_bus = event_bus
         self.auto_block = auto_block
         self.generate_pdf = generate_pdf
         self.interval_secs = interval_secs
+        self._probe_bridge = probe_bridge
+        self._correlator = correlator
 
         self._data_dir = data_dir or (Path.home() / ".network_guardian" / "smart_firewall")
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -554,6 +560,7 @@ class SmartFirewallAgent:
         # Per-agent rule set — copy of module-level list so add/enable/disable
         # only affect this instance
         self._rules: list[InjectionRule] = list(_INJECTION_RULES)
+        self._dynamic_rules: dict[str, InjectionRule] = {}
 
         # Confidence threshold — detections below this value are dropped
         self._confidence_threshold: float = 0.70
@@ -578,6 +585,9 @@ class SmartFirewallAgent:
         # Subscribe to IDS alerts from the event bus
         if self._event_bus:
             self._event_bus.subscribe("ids.alert", self._on_ids_alert)
+            self._event_bus.subscribe("probe.discovery.open_port", self._on_probe_discovery)
+            self._event_bus.subscribe("probe.exploitation.success", self._on_probe_exploitation)
+            self._event_bus.subscribe("bridge.payload_learned", self._on_payload_learned)
 
     # ------------------------------------------------------------------
     # Public API
@@ -837,6 +847,33 @@ class SmartFirewallAgent:
     def last_report(self) -> SmartFirewallReport | None:
         return self._last_report
 
+    def add_dynamic_rule(self, rule: InjectionRule, source: str = "probe") -> None:
+        """Add a dynamic rule harvested from exploitations."""
+        self._dynamic_rules[rule.name] = rule
+        logger.info(f"Added dynamic rule from {source}: {rule.name} ({rule.injection_type.value})")
+
+    def adapt_rule_confidence(self, rule_name: str, multiplier: float) -> None:
+        """Adapt confidence for a rule based on successful detections."""
+        for rule in self._rules:
+            if rule.name == rule_name:
+                rule.confidence = min(rule.confidence * multiplier, 1.0)
+                logger.debug(f"Adapted confidence for {rule_name}: {rule.confidence:.2f}")
+                return
+
+        for rule in self._dynamic_rules.values():
+            if rule.name == rule_name:
+                rule.confidence = min(rule.confidence * multiplier, 1.0)
+                logger.debug(f"Adapted confidence for {rule_name}: {rule.confidence:.2f}")
+                return
+
+    def set_correlator(self, correlator: "ProbeAttackCorrelator") -> None:
+        """Set the attack correlator for intelligence integration."""
+        self._correlator = correlator
+
+    def set_probe_bridge(self, bridge: "ProbeFirewallBridge") -> None:
+        """Set the probe-firewall bridge."""
+        self._probe_bridge = bridge
+
     def offense_count(self, ip: str) -> int:
         """Number of confirmed injection offenses recorded for *ip*."""
         return len(self._ip_history.get(ip, []))
@@ -1068,6 +1105,19 @@ class SmartFirewallAgent:
             await self._publish_detection_event(det)
             return False
 
+        # Check correlation with discovered endpoints (from probe)
+        if self._correlator:
+            was_discovered, correlation_score = self._correlator.correlate_attack(
+                source_ip=det.source_ip,
+                target_ip="",
+                target_port=0,
+                injection_type=det.injection_type.value,
+                detection_time=det.timestamp,
+            )
+            if was_discovered and correlation_score > 0.7:
+                det.confidence = min(det.confidence + 0.15, 1.0)
+                logger.info(f"Attack correlated with discovered endpoint, confidence +0.15")
+
         # Check already blocked
         if self._ips.is_blocked(det.source_ip):
             det.action_taken = "already_blocked"
@@ -1142,6 +1192,62 @@ class SmartFirewallAgent:
 
         except Exception as exc:
             logger.debug("SmartFirewallAgent._on_ids_alert error: %s", exc)
+
+    async def _on_probe_discovery(self, event: Event) -> None:
+        """Handle probe discovery of open port/service."""
+        try:
+            data = event.data
+            if self._probe_bridge:
+                await self._probe_bridge.adapt_rules_for_service(data.get("service", "unknown"))
+        except Exception as exc:
+            logger.debug("SmartFirewallAgent._on_probe_discovery error: %s", exc)
+
+    async def _on_probe_exploitation(self, event: Event) -> None:
+        """Handle successful exploitation by probe."""
+        try:
+            data = event.data
+            payload = data.get("payload", "")
+            vuln_type = data.get("vuln_type", "unknown")
+
+            if payload and self._event_bus:
+                await self._event_bus.publish(Event(
+                    topic="bridge.payload_learned",
+                    data={
+                        "payload": payload[:500],
+                        "vuln_type": vuln_type,
+                        "source_ip": data.get("source_ip"),
+                        "target_ip": data.get("target_ip"),
+                    }
+                ))
+        except Exception as exc:
+            logger.debug("SmartFirewallAgent._on_probe_exploitation error: %s", exc)
+
+    async def _on_payload_learned(self, event: Event) -> None:
+        """Handle payload harvesting for dynamic rule creation."""
+        try:
+            data = event.data
+            payload = data.get("payload", "")
+            vuln_type = data.get("vuln_type", "unknown")
+
+            if not payload:
+                return
+
+            from network_guardian.agent.payload_harvester import PayloadHarvester
+
+            harvester = PayloadHarvester()
+            rule = harvester.harvest_from_exploitation(
+                payload=payload,
+                vuln_type=vuln_type,
+                source_ip=data.get("source_ip"),
+                target_ip=data.get("target_ip", "unknown"),
+            )
+
+            if rule:
+                self.add_dynamic_rule(rule, source="probe_exploitation")
+
+        except Exception as exc:
+            logger.debug("SmartFirewallAgent._on_payload_learned error: %s", exc)
+
 
     # ------------------------------------------------------------------
     # Internal: autonomous loop
