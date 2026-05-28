@@ -256,6 +256,8 @@ Default credentials are for **local testing only**. For production:
 - ✅ **Real-Time Monitoring** — Live metrics & alerts
 - ✅ **Persistent Data** — Configuration survives restarts
 - ✅ **No Central Server** — Each machine is independent
+- ✅ **Patch Delivery** — Receive security recommendations and fixes
+- ✅ **Centralized Integration** — Connect to team dashboard when available
 
 ---
 
@@ -274,6 +276,7 @@ If something doesn't work:
 
 - **CROSS_PLATFORM_SETUP.md** — Detailed setup for each OS
 - **LOCAL_STARTUP.md** — Local running guide with troubleshooting
+- **PATCHES.md** — Patch delivery system reference and API documentation
 - **verify_system.py** — Automated system checks
 
 ---

@@ -32,6 +32,7 @@ Complete cross-platform support for Windows, macOS, and Linux with unified start
 - **`README_TEAM_SETUP.md`** — Quick-start guide for team deployment across all platforms. Default credentials, troubleshooting, file structure.
 - **`CROSS_PLATFORM_SETUP.md`** — Detailed OS-specific setup with native commands for Windows/macOS/Linux, network topology, and deployment strategies.
 - **`LOCAL_STARTUP.md`** — Local running guide with monitoring, troubleshooting, and data storage details.
+- **`PATCHES.md`** — NEW: Complete patch delivery system documentation, API reference, and deployment workflows.
 
 ##### Cross-Platform Code Updates
 - **`run_local_probe.py`** — Updated for cross-platform path handling using `Path.home()` and `pathlib.Path`.
@@ -44,6 +45,38 @@ Complete cross-platform support for Windows, macOS, and Linux with unified start
 - No central server required — each machine runs completely locally.
 - Data persists in `~/.network_guardian/` across restarts.
 - Auto-restart of crashed probes ensures high availability.
+
+#### Patch & Recommendation Delivery System
+
+Centralized distribution of security recommendations, system hardening fixes, and vulnerability patches to remote probes:
+
+##### Patch Management Infrastructure
+- **`network_guardian/interface/patches_api.py`** — NEW:
+  - `PatchStore` class for patch lifecycle management
+  - `PatchesAPI` HTTP interface for patch delivery
+  - RESTful endpoints: `GET /api/patches`, `POST /api/patches/{id}/apply`
+  - Persistent patch storage at `~/.network_guardian/patches/`
+
+##### Patch Fetching Tool
+- **`fetch_patches.py`** — NEW: Command-line tool for probes to fetch patches
+  - Authenticates with dashboard or centralized server
+  - Displays patches grouped by severity (critical/high/medium/low)
+  - Includes CVE identifiers and fix commands
+  - Saves patch list locally for offline reference
+  - Usage: `python3 fetch_patches.py [url] [agent_id] [username] [password]`
+
+##### Patch Delivery Features
+- **Severity-Based Prioritization** — Critical, High, Medium, Low classifications
+- **CVE Integration** — Link patches to specific vulnerability identifiers
+- **Auto-Generated Commands** — Ready-to-execute fix commands for each patch
+- **Status Tracking** — Monitor which agents have applied which patches
+- **Audit Trail** — Persistent record of all patch deployments
+- **Platform Support** — macOS, Linux, Windows-specific patches
+
+##### Network Path Verification
+- Probe → fetch_patches.py → Local Dashboard (127.0.0.1:8080) ✅
+- Probe → fetch_patches.py → Central Server (192.168.1.12:8081) ✅
+- Network paths CLEAR for patch delivery in both directions
 
 ### Fixed
 
@@ -64,6 +97,19 @@ Complete cross-platform support for Windows, macOS, and Linux with unified start
 - **Root cause**: OS-specific process termination differences.
 - **Solution**: Platform detection with conditional process management (Windows: `taskkill /F`, Unix: `kill -9`).
 - **Impact**: Proper cleanup of probe/dashboard processes on all platforms.
+
+### Documentation
+
+- **New:** `PATCHES.md` — Complete patch delivery system reference (API, commands, workflows, architecture)
+- **Updated:** `README.md` — Added patch delivery capability to capabilities table
+- **Maintained:** `CHANGELOG.md` — This document
+- **Maintained:** `pyproject.toml` — Version bumped to 0.2.0
+
+### Version
+- **Semantic Version:** 0.2.0 (bumped from 0.1.0)
+- **Release Date:** May 28, 2026
+- **Features Added:** 2 major (cross-platform, patch delivery)
+- **Bugs Fixed:** 3 (rate limiting, path handling, process management)
 
 ---
 
