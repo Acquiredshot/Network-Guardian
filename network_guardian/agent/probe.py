@@ -80,7 +80,7 @@ def _load_auth_token() -> dict | None:
     if not p.exists():
         return None
     try:
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
         if time.time() - data.get("authenticated_at", 0) > _TOKEN_LIFETIME:
             logger.warning("Auth token expired — re-authentication required")
             p.unlink(missing_ok=True)
@@ -94,7 +94,7 @@ def _save_auth_token(token_data: dict) -> None:
     """Persist auth token to disk (readable only by owner)."""
     p = _auth_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(token_data, indent=2))
+    p.write_text(json.dumps(token_data, indent=2), encoding="utf-8")
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -208,10 +208,10 @@ def _get_or_create_id(data_dir: Path) -> str:
     """Return a persistent agent ID, creating one on first run."""
     path = data_dir / _ID_FILE
     if path.exists():
-        return path.read_text().strip()
+        return path.read_text(encoding="utf-8").strip()
     agent_id = f"NG-{secrets.token_hex(4).upper()}"
     data_dir.mkdir(parents=True, exist_ok=True)
-    path.write_text(agent_id)
+    path.write_text(agent_id, encoding="utf-8")
     return agent_id
 
 

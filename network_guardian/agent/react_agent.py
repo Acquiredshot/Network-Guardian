@@ -369,7 +369,7 @@ class ProbeReActAgent:
     def _load_baselines(self) -> dict[str, Any]:
         if self._baselines_path.exists():
             try:
-                data = json.loads(self._baselines_path.read_text())
+                data = json.loads(self._baselines_path.read_text(encoding="utf-8"))
                 logger.info("Loaded baselines (%d keys)", len(data))
                 return data
             except (json.JSONDecodeError, OSError):
@@ -378,14 +378,14 @@ class ProbeReActAgent:
 
     def _save_baselines(self) -> None:
         try:
-            self._baselines_path.write_text(json.dumps(self._baselines, indent=2))
+            self._baselines_path.write_text(json.dumps(self._baselines, indent=2), encoding="utf-8")
         except OSError as e:
             logger.warning("Failed to save baselines: %s", e)
 
     def _load_patch_config(self) -> dict:
         if self._patch_config_path.exists():
             try:
-                cfg = json.loads(self._patch_config_path.read_text())
+                cfg = json.loads(self._patch_config_path.read_text(encoding="utf-8"))
                 logger.info("Loaded patch config from base: %s", cfg)
                 return cfg
             except (json.JSONDecodeError, OSError):
@@ -396,7 +396,7 @@ class ProbeReActAgent:
         """Apply and persist a patch config pushed from the base station."""
         self._patch_config = config
         try:
-            self._patch_config_path.write_text(json.dumps(config, indent=2))
+            self._patch_config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
             logger.info("Patch config applied and saved: %s", config)
         except OSError as e:
             logger.warning("Failed to save patch config: %s", e)
@@ -404,7 +404,7 @@ class ProbeReActAgent:
     def _load_threat_history(self) -> list[dict]:
         if self._threat_history_path.exists():
             try:
-                data = json.loads(self._threat_history_path.read_text())
+                data = json.loads(self._threat_history_path.read_text(encoding="utf-8"))
                 logger.info("Loaded %d threat history entries", len(data))
                 return data[-500:]  # Keep last 500
             except (json.JSONDecodeError, OSError):
@@ -414,7 +414,7 @@ class ProbeReActAgent:
     def _save_threat_history(self) -> None:
         try:
             self._threat_history_path.write_text(
-                json.dumps(self._threat_history[-500:], indent=2)
+                json.dumps(self._threat_history[-500:], indent=2), encoding="utf-8"
             )
         except OSError as e:
             logger.warning("Failed to save threat history: %s", e)
@@ -422,7 +422,7 @@ class ProbeReActAgent:
     def _load_threat_reports(self) -> list[dict]:
         if self._reports_path.exists():
             try:
-                data = json.loads(self._reports_path.read_text())
+                data = json.loads(self._reports_path.read_text(encoding="utf-8"))
                 return data[-100:]
             except (json.JSONDecodeError, OSError):
                 pass
@@ -431,7 +431,7 @@ class ProbeReActAgent:
     def _save_threat_reports(self) -> None:
         try:
             self._reports_path.write_text(
-                json.dumps(self._threat_reports[-100:], indent=2)
+                json.dumps(self._threat_reports[-100:], indent=2), encoding="utf-8"
             )
         except OSError as e:
             logger.warning("Failed to save threat reports: %s", e)
@@ -636,7 +636,7 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
             ir_dir = self._data_dir / "incident_reports"
             ir_dir.mkdir(parents=True, exist_ok=True)
             path = ir_dir / filename
-            path.write_text(md)
+            path.write_text(md, encoding="utf-8")
             saved = path
             logger.info("[INCIDENT] Report written to %s", path)
         except OSError as e:
@@ -647,7 +647,7 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
             proj_dir = Path("incident_reports")
             proj_dir.mkdir(parents=True, exist_ok=True)
             proj_path = proj_dir / filename
-            proj_path.write_text(md)
+            proj_path.write_text(md, encoding="utf-8")
             logger.info("[INCIDENT] Report also written to %s", proj_path)
         except OSError as e:
             logger.warning("Failed to save incident report to project dir: %s", e)

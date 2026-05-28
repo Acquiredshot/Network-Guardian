@@ -613,7 +613,7 @@ class AdaptiveEngine:
     def _load(self) -> dict[str, Any]:
         if self._state_path.exists():
             try:
-                return json.loads(self._state_path.read_text())
+                return json.loads(self._state_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 pass
         return self._defaults()
@@ -634,7 +634,7 @@ class AdaptiveEngine:
     def save(self) -> None:
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            self._state_path.write_text(json.dumps(self._state, indent=2))
+            self._state_path.write_text(json.dumps(self._state, indent=2), encoding="utf-8")
         except OSError:
             pass
 

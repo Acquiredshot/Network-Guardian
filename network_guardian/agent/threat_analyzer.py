@@ -106,7 +106,7 @@ class ProbeThrottleAnalyzer:
         """Load known SSID→BSSID mappings from disk."""
         if _KNOWN_BSSID_CACHE.exists():
             try:
-                return json.loads(_KNOWN_BSSID_CACHE.read_text())
+                return json.loads(_KNOWN_BSSID_CACHE.read_text(encoding="utf-8"))
             except Exception:
                 pass
         return {}
@@ -115,7 +115,7 @@ class ProbeThrottleAnalyzer:
         """Persist SSID→BSSID mappings."""
         try:
             _KNOWN_BSSID_CACHE.parent.mkdir(parents=True, exist_ok=True)
-            _KNOWN_BSSID_CACHE.write_text(json.dumps(cache, indent=2))
+            _KNOWN_BSSID_CACHE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
         except Exception:
             pass
 

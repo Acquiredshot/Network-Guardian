@@ -469,7 +469,7 @@ class RansomwareReActAgent(RansomwareMonitor):
     def _load_history(self) -> list[dict]:
         if self._history_path.exists():
             try:
-                return json.loads(self._history_path.read_text())[-1000:]
+                return json.loads(self._history_path.read_text(encoding="utf-8"))[-1000:]
             except (json.JSONDecodeError, OSError):
                 pass
         return []
@@ -486,7 +486,7 @@ class RansomwareReActAgent(RansomwareMonitor):
         self._alert_history.append(entry)
         try:
             self._history_path.write_text(
-                json.dumps(self._alert_history[-1000:], indent=2)
+                json.dumps(self._alert_history[-1000:], indent=2), encoding="utf-8"
             )
         except OSError as e:
             logger.warning("Failed to save alert history: %s", e)
