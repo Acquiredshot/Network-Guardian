@@ -28,6 +28,7 @@
 | **Password Manager** | CLI credential vault (`password_vault.json`) + team user management — PBKDF2-HMAC-SHA256, atomic persistence, integrated with `TeamStore` |
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
+| **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
 
 ---
 
@@ -56,6 +57,7 @@
 pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
 python _start_dashboard.py                         # web dashboard at http://127.0.0.1:8080
+python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)
 python password_manager.py                         # credential vault + team user management CLI
 python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
 python -m network_guardian.agent.email_react_agent # autonomous email ReAct agent CLI
@@ -205,6 +207,47 @@ agent.stop()
 - **PDF reports** — `~/.network_guardian/email_react/pdf_reports/` and `./pdf_reports/`
 - **Scan history** — `~/.network_guardian/email_react/scan_history.json`
 - **Event bus topic** — `email.react.threat_detected`
+
+---
+
+## Desktop App
+
+A native **PyQt5 firewall console** that runs the same `Engine` as the web dashboard — same IDS rules, same IPS blocklist, same event bus. Useful when you want a local desktop window instead of a browser tab.
+
+### Install & launch
+
+```bash
+pip install PyQt5
+python -m network_guardian --desktop
+# or with a custom config file:
+python -m network_guardian --desktop --config config.yaml
+```
+
+> **macOS / Linux only for real-time blocking** — the IPS block/unblock calls use `iptables` under the hood. The UI itself runs on any platform.
+
+### Features
+
+| Feature | Details |
+|---|---|
+| **Alert feed** | Live IDS alerts stream in as the engine detects threats — category, severity, source IP, description |
+| **One-click block** | Select any alert and click **Block source IP** to send an immediate IPS block request |
+| **Auto-respond toggle** | Enable to let the IPS block IPs automatically without manual confirmation |
+| **Payload analyser** | Paste any raw payload / HTTP request and click **Analyze** — routes through `engine.ids.analyse_payload()` |
+| **Blocked-IP list** | Shows all currently blocked IPs with reason and duration (timed / permanent) |
+| **Unblock** | Select a blocked IP and click **Unblock selected IP** to release it immediately |
+
+### Architecture
+
+`desktop.py` is a **thin client** over the existing engine stack:
+
+```
+QApplication (main thread)
+  └── SmartFirewall (QWidget) — renders state, forwards intent
+        └── EngineThread (QThread + asyncio loop)
+              └── Engine — IDS / IPS / EventBus / all detection logic
+```
+
+All detection and blocking lives in `network_guardian.ids` / `network_guardian.ips`. The desktop layer subscribes to `ids.alert`, `ips.block`, and `ips.unblock` events and routes UI actions back via `asyncio.run_coroutine_threadsafe`.
 
 ---
 

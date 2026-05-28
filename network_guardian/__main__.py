@@ -56,6 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start the web dashboard alongside the interactive CLI",
     )
     parser.add_argument(
+        "--desktop",
+        action="store_true",
+        default=False,
+        help="Launch the PyQt5 desktop firewall console (requires PyQt5)",
+    )
+    parser.add_argument(
         "--dashboard-host",
         type=str,
         default="0.0.0.0",
@@ -105,6 +111,9 @@ async def async_main(args: argparse.Namespace) -> int:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    if args.desktop:
+        from network_guardian.interface.desktop import main as desktop_main
+        sys.exit(desktop_main(args.config))
     sys.exit(asyncio.run(async_main(args)))
 
 

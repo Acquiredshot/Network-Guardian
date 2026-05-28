@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v22] — 2026-05-27
+
+### Added
+
+#### Desktop App — PyQt5 Firewall Console (`network_guardian/interface/desktop.py`)
+- New `python -m network_guardian --desktop` launch flag routes to `network_guardian.interface.desktop.main()`.
+- `EngineThread` — runs the full `Engine` (IDS + IPS + EventBus) on a dedicated asyncio loop inside a `QThread`; re-emits `ids.alert`, `ips.block`, and `ips.unblock` events as Qt signals so the UI never blocks.
+- `SmartFirewall` (`QWidget`) — minimal desktop firewall console:
+  - **Alert feed** — live IDS alert list populated as events arrive; each row shows severity, category, source IP, and description
+  - **One-click block** — select any alert and click **Block source IP** to fire an immediate IPS block via `asyncio.run_coroutine_threadsafe`
+  - **Auto-respond toggle** — `QCheckBox` that calls `engine.ips.set_auto_respond()` to let the IPS block automatically without user confirmation
+  - **Payload analyser** — paste/type any raw payload and click **Analyze** to route it through `engine.ids.analyse_payload()`
+  - **Blocked-IP list** — live list of all blocked IPs with reason and duration tag (timed / permanent)
+  - **Unblock** — select a blocked IP and click **Unblock selected IP**; dispatched via `engine.ips.unblock_ip()`
+- `main(config_path)` — entry point used by `__main__.py`; creates `QApplication`, instantiates `EngineThread` + `SmartFirewall`, starts the engine thread, wires `aboutToQuit` → `shutdown`, and runs the Qt event loop.
+- `__main__.py` updated: `--desktop` arg added to `build_parser()`; `main()` branches to `desktop_main` when flag is set.
+- `PyQt5` added to `requirements.txt` as an optional dependency.
+
+### Changed
+- `README.md` — new **Desktop App** section with install/launch instructions, feature table, and architecture diagram; Quick Start table updated with `--desktop` command; Capabilities table updated with Desktop App row.
+
+---
+
 ## [v21] — 2026-05-27
 
 ### Added
