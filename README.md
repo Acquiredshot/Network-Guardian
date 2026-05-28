@@ -107,12 +107,28 @@ All scan results logged to `network_guardian.db` with:
 
 | Tool | Purpose | Install |
 |---|---|---|
-| **OpenRouter API Key** | AI threat analysis | Get free tier at openrouter.ai; set env var or edit code |
-| `spamc` (SpamAssassin) | Spam / phishing scoring | `brew install spamassassin` or `apt install spamassassin` |
-| `clamscan` (ClamAV) | Malware / virus detection | `brew install clamav` or `apt install clamav` |
+| **OpenRouter API Key** | AI threat analysis | Get free tier at openrouter.ai; add to `.env` file |
+| `spamc` (SpamAssassin) | Spam / phishing scoring | **macOS**: Install from [source](https://spamassassin.apache.org/) (not in Homebrew); **Linux**: `apt install spamassassin` |
+| `clamscan` (ClamAV) | Malware / virus detection | `brew install clamav` (macOS) or `apt install clamav` (Linux), then run `sudo freshclam` to update virus definitions |
+| `PyQt5` (Desktop GUI) | Native desktop firewall console | `pip install PyQt5` — only needed for `--desktop` flag |
 | Python `imaplib` / `email` | IMAP connection & message parsing | Standard library — no install needed |
 
-If either CLI tool is absent the corresponding check is skipped and flagged in the result — the scanner still runs with whatever tools are available.
+If any CLI tool is absent, the corresponding check is skipped and flagged in the result — the scanner still runs with whatever tools are available.
+
+### Configuration
+
+Create a `.env` file in the project root with your OpenRouter API key:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit .env and add your key
+OPENROUTER_API_KEY=your-api-key-here
+OPENROUTER_MODEL=gpt-oss-120b
+```
+
+The `.env` file is automatically git-ignored to prevent accidentally committing secrets.
 
 ### Action modes
 

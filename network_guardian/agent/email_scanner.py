@@ -271,10 +271,11 @@ Respond with this exact JSON structure:
 # ── SpamAssassin & ClamAV ────────────────────────────────────────────────────
 
 def _run_spamassassin(raw: bytes, threshold: float) -> SpamResult:
-    if not shutil.which("spamc"):
+    spamc = shutil.which("spamc") or shutil.which("/usr/local/local/bin/spamc")
+    if not spamc:
         return SpamResult(available=False)
     try:
-        proc = subprocess.run(["spamc", "-c"], input=raw, capture_output=True, timeout=30)
+        proc = subprocess.run([spamc, "-c"], input=raw, capture_output=True, timeout=30)
         out = proc.stdout.decode(errors="replace").strip()
         score, thr = 0.0, threshold
         if "/" in out:

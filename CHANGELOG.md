@@ -77,6 +77,12 @@ All notable changes to this project are documented here.
 - Removed v1-specific test file (`tests/test_email_scanner.py`) that referenced non-existent helper functions (`_spamc_available`, `_clamscan_available`).
 - v2 checks tool availability inline via `shutil.which()` on every call, with graceful fallback.
 
+#### SpamAssassin Non-Standard Installation Path Support
+- Updated `_run_spamassassin()` to check `/usr/local/local/bin/spamc` as fallback location.
+- **Issue**: SpamAssassin installed via `make install PREFIX=/usr/local` creates binaries at `/usr/local/local/bin/` (double "local"), not `/usr/local/bin/`.
+- **Fix**: `shutil.which("spamc") or shutil.which("/usr/local/local/bin/spamc")` now finds the binary in both standard and non-standard paths.
+- **Impact**: Email Scanner now works with source-compiled SpamAssassin without requiring manual PATH configuration or symlinks.
+
 ---
 
 ## [v28] — 2026-05-28
