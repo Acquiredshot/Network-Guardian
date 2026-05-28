@@ -880,14 +880,67 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
             return addr, 0
 
     def _get_processes(self) -> list[ProcessInfo]:
-        """Get running processes with resource usage."""
+        """Get running processes with resource usage.
+
+        Tries psutil first (fast, cross-platform, real CPU/mem figures).
+        Falls back to subprocess only when psutil is unavailable.
+        """
         procs: list[ProcessInfo] = []
+
+        # --- Primary path: psutil -------------------------------------------
+        try:
+            import psutil as _psutil
+            # On Windows, cpu_percent and memory_percent both call OpenProcess
+            # per-process — 3-4 s for 500+ processes each. Collect the fast
+            # attributes first (pid/name/user: ~0.1 s), then back-fill CPU%
+            # only for processes that already match a suspicious-name pattern,
+            # avoiding the expensive full-fleet syscall.
+            fast = list(_psutil.process_iter(["pid", "name", "username"]))
+            # Build a set of PIDs that need a CPU reading (name-suspicious only)
+            suspicious_pids: set[int] = {
+                p.pid for p in fast
+                if (p.info.get("name") or "").lower() in _SUSPICIOUS_PROCS
+            }
+            cpu_by_pid: dict[int, float] = {}
+            if suspicious_pids:
+                for proc in _psutil.process_iter(["pid", "cpu_percent"]):
+                    if proc.pid in suspicious_pids:
+                        try:
+                            cpu_by_pid[proc.pid] = float(
+                                proc.info.get("cpu_percent") or 0.0
+                            )
+                        except (_psutil.NoSuchProcess, _psutil.AccessDenied):
+                            pass
+            for proc in fast:
+                try:
+                    info = proc.info
+                    pid = info["pid"]
+                    procs.append(ProcessInfo(
+                        pid=pid,
+                        name=info.get("name") or "",
+                        user=info.get("username") or "",
+                        cpu_pct=cpu_by_pid.get(pid, 0.0),
+                        mem_pct=0.0,
+                        command="",
+                    ))
+                except (_psutil.NoSuchProcess, _psutil.AccessDenied,
+                        _psutil.ZombieProcess):
+                    pass
+            return procs
+        except ImportError:
+            pass  # psutil not available — fall through to subprocess
+
+        # --- Fallback path: subprocess ---------------------------------------
+        # On Windows, /V (verbose) adds per-process WMI window-title lookups
+        # that routinely exceed 10 s on systems with many processes.
+        # Use basic /FO CSV without /V and decode with the OEM codepage.
         try:
             os_name = platform.system().lower()
             if os_name in ("darwin", "linux"):
                 r = subprocess.run(
                     ["ps", "aux"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=30,
                 )
                 for line in r.stdout.splitlines()[1:]:
                     p = self._parse_ps_line(line)
@@ -895,10 +948,12 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                         procs.append(p)
             elif os_name == "windows":
                 r = subprocess.run(
-                    ["tasklist", "/V", "/FO", "CSV"],
-                    capture_output=True, text=True, timeout=10,
+                    ["tasklist", "/FO", "CSV"],
+                    capture_output=True, timeout=30,
                 )
-                for line in r.stdout.splitlines()[1:]:
+                # tasklist emits OEM codepage (cp437) output on Windows
+                text = r.stdout.decode("oem", errors="replace")
+                for line in text.splitlines()[1:]:
                     p = self._parse_tasklist_line(line)
                     if p:
                         procs.append(p)
