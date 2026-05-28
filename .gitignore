@@ -31,6 +31,15 @@ Thumbs.db
 
 # Environment files with secrets
 .env
+.env.local
+
+# SQLite databases (may contain sensitive scan results)
+*.db
+network_guardian.db
+
+# API keys and credentials
+*_api_key.txt
+*_credentials.json
 
 # Standalone probe — contains live fleet key, distribute directly to team members only
 # NEVER push to a public repo

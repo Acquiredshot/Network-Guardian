@@ -1,10 +1,3 @@
-"""
-Network Guardian — Email Protection Scanner
-Backend: uses OpenRouter API (gpt-oss-120b) for AI-powered threat analysis.
-SpamAssassin (spamc) and ClamAV (clamscan) for local scanning.
-SQLite for persistent logging.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +5,7 @@ import email
 import imaplib
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -28,8 +22,21 @@ logger = logging.getLogger("network_guardian")
 DB_PATH = Path("network_guardian.db")
 
 # ── OpenRouter config ─────────────────────────────────────────────────────────
-OPENROUTER_API_KEY = "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"   # ← paste your key here
-OPENROUTER_MODEL   = "gpt-oss-120b"
+# Load from environment variable or .env file
+def _load_env_file():
+    """Load .env file if it exists."""
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip())
+
+_load_env_file()
+
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL   = os.environ.get("OPENROUTER_MODEL", "gpt-oss-120b")
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
 _SPAM_FOLDER_PRESETS = {
