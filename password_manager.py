@@ -8,6 +8,8 @@ so the entire codebase shares one hashing approach.
 Vault is persisted to password_vault.json (separate from wolfpak_team.json).
 """
 
+from __future__ import annotations
+
 import getpass
 import hashlib
 import hmac

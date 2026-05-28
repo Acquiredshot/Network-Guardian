@@ -107,6 +107,13 @@ class EmailReActConfig:
     mailbox: str = "INBOX"
     spam_threshold: float = 5.0
     fetch_limit: int = 50
+    # Active protection mode passed through to EmailScanner:
+    #   "monitor"    — detect and report only (default, safe)
+    #   "move_spam"  — move spam to Junk/Spam folder; delete malware
+    #   "delete_all" — permanently delete all flagged messages
+    action_mode: str = "monitor"
+    # Override the spam destination folder (auto-detected by provider if empty)
+    spam_folder: str = ""
     # Agent behaviour
     interval_secs: float = 300.0          # polling interval
     generate_pdf: str = "on_threat"       # "on_threat" | "always" | "never"
@@ -199,6 +206,8 @@ class EmailReActAgent:
             mailbox=config.mailbox,
             spam_threshold=config.spam_threshold,
             fetch_limit=config.fetch_limit,
+            action_mode=config.action_mode,
+            spam_folder=config.spam_folder,
         )
         self._scanner = EmailScanner(scan_cfg)
 
@@ -274,7 +283,7 @@ class EmailReActAgent:
                 "malware":    r.malware.is_infected,
                 "signature":  r.malware.signature,
                 "timestamp":  r.timestamp.isoformat(),
-                "action_taken": "",
+                "action_taken": getattr(r, "action_taken", "none"),
                 "resolved":   False,
             })
 
@@ -300,29 +309,51 @@ class EmailReActAgent:
         recommendations: list[str] = []
 
         if threats:
-            _step("act", f"Executing protective response for {len(threats)} flagged message(s)")
+            mode = self._cfg.action_mode
+            _step("act", f"Executing protective response for {len(threats)} flagged message(s) (mode={mode})")
 
             for t in threats:
-                t["action_taken"] = "alert_and_log"
+                imap_action = t.get("action_taken", "none")
+                t["action_taken"] = imap_action
+                human_action = imap_action if imap_action != "none" else "alert_and_log"
                 actions.append({
                     "action":  f"Flagged: {t['sender']} — {t['subject'][:60]}",
                     "detail":  (
                         f"Category: {t['category']} | Severity: {t['severity']} | "
                         f"Spam score: {t['spam_score']:.1f} | "
-                        f"Malware: {t['signature'] or 'none'}"
+                        f"Malware: {t['signature'] or 'none'} | "
+                        f"IMAP action: {human_action}"
                     ),
                     "success": True,
                 })
                 if t["malware"]:
-                    recommendations.append(
-                        f"MALWARE — Do not open attachments from {t['sender']} "
-                        f"(signature: {t['signature']}). Delete immediately."
-                    )
+                    if "deleted" in imap_action:
+                        recommendations.append(
+                            f"MALWARE DELETED — Message from {t['sender']} "
+                            f"(signature: {t['signature']}) was permanently removed."
+                        )
+                    else:
+                        recommendations.append(
+                            f"MALWARE — Do not open attachments from {t['sender']} "
+                            f"(signature: {t['signature']}). Delete immediately."
+                        )
                 elif t["spam"]:
-                    recommendations.append(
-                        f"SPAM/PHISHING — Mark as spam and block sender: {t['sender']} "
-                        f"(score: {t['spam_score']:.1f})"
-                    )
+                    if "moved_to:" in imap_action:
+                        folder = imap_action.split("moved_to:", 1)[1]
+                        recommendations.append(
+                            f"SPAM MOVED — Message from {t['sender']} "
+                            f"(score: {t['spam_score']:.1f}) moved to {folder}."
+                        )
+                    elif "deleted" in imap_action:
+                        recommendations.append(
+                            f"SPAM DELETED — Message from {t['sender']} "
+                            f"(score: {t['spam_score']:.1f}) permanently removed."
+                        )
+                    else:
+                        recommendations.append(
+                            f"SPAM/PHISHING — Mark as spam and block sender: {t['sender']} "
+                            f"(score: {t['spam_score']:.1f})"
+                        )
 
             # Publish to event bus
             if self.event_bus:

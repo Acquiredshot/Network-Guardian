@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v21] — 2026-05-27
+
+### Added
+
+#### Active Email Protection — IMAP write operations (`email_scanner.py`, `email_react_agent.py`)
+- `EmailScanConfig` now supports three **action modes** that control what the scanner does with flagged messages:
+  - `monitor` (default) — detect and report only; mailbox is never modified (`readonly=True` on IMAP SELECT)
+  - `move_spam` — spam moved to Junk/Spam folder via IMAP COPY + STORE `\Deleted` + EXPUNGE; malware permanently deleted
+  - `delete_all` — all flagged messages (spam and malware) permanently deleted
+- `EmailScanConfig.spam_folder` — explicit override for the destination spam folder
+- `EmailScanConfig.resolved_spam_folder()` — auto-detects the provider's spam folder from `imap_host` using built-in presets: Gmail → `[Gmail]/Spam`, Outlook/Hotmail → `Junk`, Yahoo → `Bulk Mail`, iCloud → `Junk`, Zoho → `Spam`, Fastmail → `Spam`; falls back to `Spam` for unknown providers
+- `_SPAM_FOLDER_PRESETS` — module-level dict for provider-to-folder mapping (extensible)
+- `EmailScanner._take_action()` — new private method that executes the IMAP write operation for a flagged message and returns a human-readable action string (`"none"`, `"deleted"`, `"moved_to:<folder>"`, `"error:<msg>"`)
+- `EmailScanResult.action_taken` — new field recording the IMAP action performed on each message
+- CLI (`python -m network_guardian.agent.email_scanner`) now prompts for protection mode, confirms before activating any write mode, and shows an `Action` column in the results table
+- `EmailReActConfig.action_mode` and `.spam_folder` fields — passed through to `EmailScanConfig` so the ReAct agent can operate in active protection mode
+- ReAct ACT phase now logs mode-aware recommendations (e.g. "SPAM MOVED to [Gmail]/Spam" instead of generic "mark as spam")
+
+### Fixed
+- `password_manager.py` — added `from __future__ import annotations` to fix `str | None` union syntax error on Python 3.9
+
+### Tests
+- Added `TestActiveProtection` class (7 new tests) to `tests/test_email_scanner.py`, covering: monitor mode (no IMAP writes), move_spam mode (COPY + STORE + EXPUNGE verified), delete_all mode, provider preset resolution (Gmail, custom override, unknown host), and clean-message action_taken default
+- Total test count: **436 passing** (up from 429)
+
+---
+
 ## [v20] — 2026-05-27
 
 ### Added

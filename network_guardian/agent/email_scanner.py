@@ -43,7 +43,19 @@ logger = logging.getLogger("network_guardian.agent.email_scanner")
 
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Provider spam-folder presets
+# ---------------------------------------------------------------------------
+
+_SPAM_FOLDER_PRESETS: dict[str, str] = {
+    "imap.gmail.com":         "[Gmail]/Spam",
+    "imap.googlemail.com":    "[Gmail]/Spam",
+    "outlook.office365.com":  "Junk",
+    "imap-mail.outlook.com":  "Junk",
+    "imap.mail.yahoo.com":    "Bulk Mail",
+    "imap.mail.me.com":       "Junk",       # iCloud
+    "imap.zoho.com":          "Spam",
+    "imap.fastmail.com":      "Spam",
+}
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -59,6 +71,20 @@ class EmailScanConfig:
     spam_threshold: float = 5.0
     # Maximum number of unseen messages to fetch per run
     fetch_limit: int = 50
+    # Active protection mode:
+    #   "monitor"       — detect only, no IMAP changes (default, safe)
+    #   "move_spam"     — move spam to spam_folder; delete malware
+    #   "delete_all"    — delete spam and malware (permanent after expunge)
+    action_mode: str = "monitor"
+    # Destination folder for spam when action_mode="move_spam".
+    # Leave as empty string to auto-detect from imap_host using provider presets.
+    spam_folder: str = ""
+
+    def resolved_spam_folder(self) -> str:
+        """Return the spam folder, auto-detecting from provider presets if not set."""
+        if self.spam_folder:
+            return self.spam_folder
+        return _SPAM_FOLDER_PRESETS.get(self.imap_host.lower(), "Spam")
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +116,8 @@ class EmailScanResult:
     timestamp: datetime
     spam: SpamResult
     malware: MalwareResult
-    flagged: bool = False    # True if spam OR malware detected
+    flagged: bool = False       # True if spam OR malware detected
+    action_taken: str = "none" # IMAP action performed (none/deleted/moved_to:...)
 
     def __post_init__(self) -> None:
         self.flagged = self.spam.is_spam or self.malware.is_infected
@@ -227,7 +254,8 @@ class EmailScanner:
         self, conn: imaplib.IMAP4 | imaplib.IMAP4_SSL
     ) -> list[tuple[str, bytes]]:
         """Select the mailbox and return (uid, raw_bytes) for unseen messages."""
-        conn.select(f'"{self._cfg.mailbox}"', readonly=True)
+        readonly = self._cfg.action_mode == "monitor"
+        conn.select(f'"{self._cfg.mailbox}"', readonly=readonly)
         _, data = conn.uid("search", None, "UNSEEN")
         uids = data[0].split() if data and data[0] else []
         uids = uids[-self._cfg.fetch_limit:]   # newest N only
@@ -239,6 +267,49 @@ class EmailScanner:
                 if isinstance(part, tuple):
                     messages.append((uid.decode(), part[1]))
         return messages
+
+    def _take_action(
+        self,
+        conn: imaplib.IMAP4 | imaplib.IMAP4_SSL,
+        uid: str,
+        result: "EmailScanResult",
+    ) -> str:
+        """Perform an IMAP action on a flagged message. Returns action description."""
+        if self._cfg.action_mode == "monitor" or not result.flagged:
+            return "none"
+
+        uid_bytes = uid.encode()
+
+        try:
+            if result.malware.is_infected or self._cfg.action_mode == "delete_all":
+                # Mark as deleted and expunge — permanent removal
+                conn.uid("store", uid_bytes, "+FLAGS", "(\\Deleted)")
+                conn.expunge()
+                action = "deleted"
+                logger.warning(
+                    "DELETED uid=%s from=%s — malware=%s spam=%s",
+                    uid, result.sender,
+                    result.malware.signature or "yes" if result.malware.is_infected else "no",
+                    result.spam.is_spam,
+                )
+            elif result.spam.is_spam and self._cfg.action_mode == "move_spam":
+                # Move to spam folder via IMAP COPY + delete original
+                spam_folder = self._cfg.resolved_spam_folder()
+                conn.uid("copy", uid_bytes, spam_folder)
+                conn.uid("store", uid_bytes, "+FLAGS", "(\\Deleted)")
+                conn.expunge()
+                action = f"moved_to:{spam_folder}"
+                logger.warning(
+                    "MOVED uid=%s from=%s to %s (spam score=%.1f)",
+                    uid, result.sender, spam_folder, result.spam.score,
+                )
+            else:
+                action = "none"
+        except Exception as e:
+            logger.error("IMAP action failed for uid=%s: %s", uid, e)
+            action = f"error:{e}"
+
+        return action
 
     # ------------------------------------------------------------------
     # Per-message scanning
@@ -289,7 +360,7 @@ class EmailScanner:
     # ------------------------------------------------------------------
 
     def scan_once(self) -> list[EmailScanResult]:
-        """Synchronous: connect, scan unseen messages, disconnect."""
+        """Synchronous: connect, scan unseen messages, act on threats, disconnect."""
         try:
             conn = self._connect()
         except imaplib.IMAP4.error as e:
@@ -301,23 +372,25 @@ class EmailScanner:
         except Exception as e:
             logger.error("Failed to fetch messages: %s", e)
             return []
-        finally:
-            try:
-                conn.logout()
-            except Exception:
-                pass
 
         results: list[EmailScanResult] = []
         for uid, raw in messages:
             result = self._scan_message(uid, raw)
             results.append(result)
-            if result.flagged and self._bus is not None:
-                self._publish_event(result)
+            if result.flagged:
+                result.action_taken = self._take_action(conn, uid, result)
+                if self._bus is not None:
+                    self._publish_event(result)
+
+        try:
+            conn.logout()
+        except Exception:
+            pass
 
         flagged = sum(1 for r in results if r.flagged)
         logger.info(
-            "Email scan complete: %d messages scanned, %d flagged",
-            len(results), flagged,
+            "Email scan complete: %d messages scanned, %d flagged (mode=%s)",
+            len(results), flagged, self._cfg.action_mode,
         )
         return results
 
@@ -375,16 +448,32 @@ def main() -> None:
     )
 
     print("=== Network Guardian — Email Protection Scanner ===\n")
-    host = input("IMAP host (e.g. imap.gmail.com): ").strip()
-    user = input("Email address: ").strip()
+    host     = input("IMAP host (e.g. imap.gmail.com): ").strip()
+    user     = input("Email address: ").strip()
     password = _getpass.getpass("Password / app password: ")
-    mailbox = input("Mailbox [INBOX]: ").strip() or "INBOX"
+    mailbox  = input("Mailbox [INBOX]: ").strip() or "INBOX"
+
+    print("\nProtection mode:")
+    print("  monitor    — scan and report only (no changes to mailbox)")
+    print("  move_spam  — move spam to Junk/Spam folder; delete malware")
+    print("  delete_all — permanently delete all spam and malware")
+    mode = input("Mode [monitor]: ").strip().lower() or "monitor"
+    if mode not in ("monitor", "move_spam", "delete_all"):
+        print(f"Unknown mode '{mode}', defaulting to monitor.")
+        mode = "monitor"
+
+    spam_folder = ""
+    if mode == "move_spam":
+        preset = _SPAM_FOLDER_PRESETS.get(host.lower(), "Spam")
+        spam_folder = input(f"Spam folder [{preset}]: ").strip() or preset
 
     cfg = EmailScanConfig(
         imap_host=host,
         imap_user=user,
         imap_password=password,
         mailbox=mailbox,
+        action_mode=mode,
+        spam_folder=spam_folder,
     )
 
     if not _spamc_available():
@@ -394,6 +483,14 @@ def main() -> None:
         print("\n[!] clamscan not found — ClamAV malware checks will be skipped.")
         print("    Install: brew install clamav  OR  apt install clamav\n")
 
+    if mode != "monitor":
+        confirm = input(
+            f"\n[!] Active mode '{mode}' will modify your mailbox. Continue? (yes/no): "
+        ).strip().lower()
+        if confirm != "yes":
+            print("Aborted.")
+            return
+
     scanner = EmailScanner(cfg)
     results = scanner.scan_once()
 
@@ -401,17 +498,22 @@ def main() -> None:
         print("No unseen messages found or connection failed.")
         return
 
-    print(f"\n{'─' * 70}")
-    print(f"{'UID':<10} {'Spam':>6} {'Score':>6}  {'Malware':<10}  Subject")
-    print(f"{'─' * 70}")
+    print(f"\n{'─' * 80}")
+    print(f"{'UID':<10} {'Spam':>6} {'Score':>6}  {'Malware':<24}  {'Action':<20}  Subject")
+    print(f"{'─' * 80}")
     for r in results:
-        spam_tag = "SPAM" if r.spam.is_spam else "ok"
-        mal_tag = f"VIRUS:{r.malware.signature[:20]}" if r.malware.is_infected else "clean"
+        spam_tag  = "SPAM" if r.spam.is_spam else "ok"
+        mal_tag   = f"VIRUS:{r.malware.signature[:18]}" if r.malware.is_infected else "clean"
         score_str = f"{r.spam.score:.1f}" if r.spam.available else "N/A"
-        print(f"{r.message_id[-9:]:<10} {spam_tag:>6} {score_str:>6}  {mal_tag:<22}  {r.subject[:40]}")
-    print(f"{'─' * 70}")
+        act_tag   = r.action_taken if r.action_taken != "none" else "-"
+        print(
+            f"{r.message_id[-9:]:<10} {spam_tag:>6} {score_str:>6}  "
+            f"{mal_tag:<24}  {act_tag:<20}  {r.subject[:30]}"
+        )
+    print(f"{'─' * 80}")
     flagged = sum(1 for r in results if r.flagged)
-    print(f"\n{len(results)} messages scanned — {flagged} flagged\n")
+    acted  = sum(1 for r in results if r.action_taken not in ("none", ""))
+    print(f"\n{len(results)} messages scanned — {flagged} flagged — {acted} actions taken\n")
 
 
 if __name__ == "__main__":

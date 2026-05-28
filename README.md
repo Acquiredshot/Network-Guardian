@@ -65,7 +65,7 @@ python -m network_guardian.agent.email_react_agent # autonomous email ReAct agen
 
 ## Email Protection
 
-Scans incoming (and outgoing) email for spam, phishing, and malware. Lives at `network_guardian/agent/email_scanner.py`.
+Scans incoming email for spam, phishing, and malware — and can **actively protect** the mailbox by moving spam to Junk or deleting malware, all over standard IMAP. Lives at `network_guardian/agent/email_scanner.py`.
 
 ### Dependencies
 
@@ -77,12 +77,24 @@ Scans incoming (and outgoing) email for spam, phishing, and malware. Lives at `n
 
 If either CLI tool is absent the corresponding check is skipped and flagged in the result — the scanner still runs with whatever tools are available.
 
-### Quick start
+### Action modes
+
+| Mode | What happens to flagged messages |
+|---|---|
+| `monitor` (default) | Detected and logged only — mailbox is **never modified** |
+| `move_spam` | Spam → moved to Junk/Spam folder; malware → permanently deleted |
+| `delete_all` | All flagged messages (spam and malware) → permanently deleted |
+
+Provider spam-folder names are auto-detected from `imap_host` (Gmail, Outlook, Yahoo, iCloud, Zoho, Fastmail). You can override with `spam_folder="My Custom Folder"`.
+
+### Quick start (CLI)
 
 ```bash
 python -m network_guardian.agent.email_scanner
-# prompts for IMAP host, email address, password, and mailbox
+# prompts for IMAP host, email address, password, mailbox, and protection mode
 ```
+
+> **Gmail / Outlook / Yahoo users:** Generate an **app-specific password** in your account security settings before connecting. Never use your main account password.
 
 ### Programmatic usage
 
@@ -93,18 +105,20 @@ from network_guardian.agent.email_scanner import EmailScanner, EmailScanConfig
 config = EmailScanConfig(
     imap_host="imap.gmail.com",
     imap_user="you@gmail.com",
-    imap_password="app-password",   # use an app-specific password, not your account password
+    imap_password="app-password",   # use an app-specific password
     spam_threshold=5.0,             # SpamAssassin score above which a message is flagged
     fetch_limit=50,                 # max unseen messages per run
+    action_mode="move_spam",        # "monitor" | "move_spam" | "delete_all"
+    # spam_folder="[Gmail]/Spam",   # auto-detected for Gmail; override if needed
 )
 
 scanner = EmailScanner(config)
 
-# Single scan (synchronous)
+# Single scan (synchronous) — moves spam, deletes malware
 results = scanner.scan_once()
 for r in results:
     if r.flagged:
-        print(r.sender, r.subject, r.spam.score, r.malware.signature)
+        print(r.sender, r.subject, r.spam.score, r.action_taken)
 
 # Continuous async loop — scans every 5 minutes
 asyncio.run(scanner.run(interval_seconds=300))
@@ -119,6 +133,7 @@ EmailScanResult
   .sender          — From header
   .timestamp       — parsed Date header (timezone-aware)
   .flagged         — True if spam OR malware detected
+  .action_taken    — IMAP action performed: "none" | "deleted" | "moved_to:<folder>"
   .spam
     .available     — False if spamc not installed
     .score         — SpamAssassin score (float)

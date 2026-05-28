@@ -332,3 +332,136 @@ class TestEmailScanResult:
             malware=MalwareResult(available=True, is_infected=True, signature="Virus.X"),
         )
         assert r.flagged is True
+
+
+# ---------------------------------------------------------------------------
+# Active protection — action modes
+# ---------------------------------------------------------------------------
+
+class TestActiveProtection:
+    """Tests for move_spam and delete_all action modes."""
+
+    def _mock_imap(self, raw_messages: list[bytes]):
+        conn = MagicMock()
+        uids = [str(i).encode() for i in range(len(raw_messages))]
+        conn.select.return_value = ("OK", [b"1"])
+        conn.uid.side_effect = [
+            (None, [b" ".join(uids)]),
+            *[(None, [(None, raw), None]) for raw in raw_messages],
+        ]
+        return conn
+
+    def test_monitor_mode_does_not_modify_mailbox(self):
+        """In monitor mode readonly=True and no STORE/COPY calls made."""
+        cfg = _make_config(action_mode="monitor")
+        scanner = EmailScanner(cfg)
+        raw = [_make_raw_email(subject="WIN A PRIZE!!!")]
+        conn = self._mock_imap(raw)
+
+        spam_result = SpamResult(available=True, score=9.0, threshold=5.0, is_spam=True)
+        clean_mal = MalwareResult(available=True, is_infected=False)
+
+        with patch.object(scanner, "_connect", return_value=conn), \
+             patch("network_guardian.agent.email_scanner._run_spamassassin", return_value=spam_result), \
+             patch("network_guardian.agent.email_scanner._run_clamscan", return_value=clean_mal):
+            results = scanner.scan_once()
+
+        conn.select.assert_called_once()
+        call_kwargs = conn.select.call_args.kwargs
+        assert call_kwargs.get("readonly") is True
+        uid_calls = [str(c) for c in conn.uid.call_args_list]
+        assert not any("store" in c.lower() for c in uid_calls)
+        assert not any("copy" in c.lower() for c in uid_calls)
+        assert results[0].action_taken == "none"
+
+    def test_move_spam_mode_copies_and_deletes(self):
+        """move_spam mode should COPY spam to Junk then STORE \\Deleted + EXPUNGE."""
+        cfg = _make_config(action_mode="move_spam", spam_folder="Junk",
+                           imap_host="imap.example.com")
+        scanner = EmailScanner(cfg)
+        raw = [_make_raw_email(subject="WIN A PRIZE!!!")]
+
+        # Build a conn that handles SEARCH, FETCH, then open-ended uid calls for COPY/STORE
+        conn = MagicMock()
+        conn.select.return_value = ("OK", [b"1"])
+        conn.uid.side_effect = [
+            (None, [b"0"]),                          # SEARCH
+            (None, [(None, raw[0]), None]),           # FETCH uid=0
+            ("OK", [b"[COPYUID 1 0 1]"]),            # COPY
+            ("OK", [b""]),                           # STORE \Deleted
+        ]
+
+        spam_result = SpamResult(available=True, score=9.0, threshold=5.0, is_spam=True)
+        clean_mal = MalwareResult(available=True, is_infected=False)
+
+        with patch.object(scanner, "_connect", return_value=conn), \
+             patch("network_guardian.agent.email_scanner._run_spamassassin", return_value=spam_result), \
+             patch("network_guardian.agent.email_scanner._run_clamscan", return_value=clean_mal):
+            results = scanner.scan_once()
+
+        conn.select.assert_called_once()
+        assert conn.select.call_args.kwargs.get("readonly") is False
+        uid_call_ops = [c.args[0].lower() for c in conn.uid.call_args_list]
+        assert "copy" in uid_call_ops
+        assert "store" in uid_call_ops
+        conn.expunge.assert_called()
+        assert results[0].action_taken == "moved_to:Junk"
+
+    def test_delete_all_mode_deletes_malware(self):
+        """delete_all mode should STORE \\Deleted + EXPUNGE malware messages."""
+        cfg = _make_config(action_mode="delete_all")
+        scanner = EmailScanner(cfg)
+        raw = [_make_raw_email(subject="Invoice")]
+
+        conn = MagicMock()
+        conn.select.return_value = ("OK", [b"1"])
+        conn.uid.side_effect = [
+            (None, [b"0"]),                          # SEARCH
+            (None, [(None, raw[0]), None]),           # FETCH uid=0
+            ("OK", [b""]),                           # STORE \Deleted
+        ]
+
+        clean_spam = SpamResult(available=True, score=1.0, threshold=5.0, is_spam=False)
+        mal_result = MalwareResult(available=True, is_infected=True, signature="Eicar-Test")
+
+        with patch.object(scanner, "_connect", return_value=conn), \
+             patch("network_guardian.agent.email_scanner._run_spamassassin", return_value=clean_spam), \
+             patch("network_guardian.agent.email_scanner._run_clamscan", return_value=mal_result):
+            results = scanner.scan_once()
+
+        uid_call_ops = [c.args[0].lower() for c in conn.uid.call_args_list]
+        assert "store" in uid_call_ops
+        conn.expunge.assert_called()
+        assert results[0].action_taken == "deleted"
+
+    def test_resolved_spam_folder_preset(self):
+        """Gmail host should auto-resolve to [Gmail]/Spam."""
+        cfg = _make_config(imap_host="imap.gmail.com", action_mode="move_spam")
+        assert cfg.resolved_spam_folder() == "[Gmail]/Spam"
+
+    def test_resolved_spam_folder_custom_override(self):
+        """Explicit spam_folder should take precedence over auto-detect."""
+        cfg = _make_config(imap_host="imap.gmail.com", spam_folder="MyJunk")
+        assert cfg.resolved_spam_folder() == "MyJunk"
+
+    def test_resolved_spam_folder_unknown_host_default(self):
+        """Unknown host should fall back to 'Spam'."""
+        cfg = _make_config(imap_host="mail.unknown.example.com")
+        assert cfg.resolved_spam_folder() == "Spam"
+
+    def test_action_taken_defaults_to_none_on_clean_message(self):
+        """Clean messages should have action_taken='none'."""
+        cfg = _make_config(action_mode="move_spam")
+        scanner = EmailScanner(cfg)
+        raw = [_make_raw_email(subject="Normal email")]
+        conn = self._mock_imap(raw)
+
+        clean_spam = SpamResult(available=True, score=1.0, threshold=5.0, is_spam=False)
+        clean_mal = MalwareResult(available=True, is_infected=False)
+
+        with patch.object(scanner, "_connect", return_value=conn), \
+             patch("network_guardian.agent.email_scanner._run_spamassassin", return_value=clean_spam), \
+             patch("network_guardian.agent.email_scanner._run_clamscan", return_value=clean_mal):
+            results = scanner.scan_once()
+
+        assert results[0].action_taken == "none"
