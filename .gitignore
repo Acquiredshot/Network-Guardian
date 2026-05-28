@@ -59,3 +59,9 @@ incident_reports/*.md
 # Runtime data — contains hashed passwords and access logs
 users_db.json
 access_log.json
+
+# Business & test documents (internal use only)
+BUSINESS_REQUIREMENTS_DOCUMENT.md
+FUNCTIONALITY_TEST_REPORT.md
+*_TEST_REPORT.md
+PRICING_TIER_MATRIX.txt

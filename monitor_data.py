@@ -17,7 +17,7 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
-from typing import Any
+from typing import Any, Optional
 import threading
 
 
@@ -37,7 +37,7 @@ class Metric:
 
 
 class DataCollector:
-    def __init__(self, data_dir: Path | None = None):
+    def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or Path.home() / ".network_guardian"
         self.metrics_dir = self.data_dir / "metrics"
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ class DataCollector:
         except Exception as e:
             print(f"[!] Failed to save metrics: {e}")
 
-    def _collect_snapshot(self) -> Metric | None:
+    def _collect_snapshot(self) -> Optional[Metric]:
         """Collect current system metrics."""
         try:
             firewall_events = 0

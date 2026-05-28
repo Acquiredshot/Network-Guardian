@@ -16,11 +16,11 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 import csv
-from typing import Any
+from typing import Any, Optional
 
 
 class DataExporter:
-    def __init__(self, data_dir: Path | None = None):
+    def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or Path.home() / ".network_guardian"
         self.export_dir = Path.cwd() / "export"
         self.export_dir.mkdir(exist_ok=True)
