@@ -25,6 +25,9 @@
 | **Remote Control** | WhatsApp, SMS (Twilio), Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
 | **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection page, Reports, and Incidents pages |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
+| **Password Manager** | CLI credential vault (`password_vault.json`) + team user management — PBKDF2-HMAC-SHA256, atomic persistence, integrated with `TeamStore` |
+| **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
+| **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 
 ---
 
@@ -51,9 +54,178 @@
 
 ```bash
 pip install -e ".[dev]"
-network-guardian            # interactive CLI
-python _start_dashboard.py  # web dashboard at http://127.0.0.1:8080
+network-guardian                                   # interactive CLI
+python _start_dashboard.py                         # web dashboard at http://127.0.0.1:8080
+python password_manager.py                         # credential vault + team user management CLI
+python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
+python -m network_guardian.agent.email_react_agent # autonomous email ReAct agent CLI
 ```
+
+---
+
+## Email Protection
+
+Scans incoming (and outgoing) email for spam, phishing, and malware. Lives at `network_guardian/agent/email_scanner.py`.
+
+### Dependencies
+
+| Tool | Purpose | Install |
+|---|---|---|
+| `spamc` (SpamAssassin) | Spam / phishing scoring | `brew install spamassassin` or `apt install spamassassin` |
+| `clamscan` (ClamAV) | Malware / virus detection | `brew install clamav` or `apt install clamav` |
+| Python `imaplib` / `email` | IMAP connection & message parsing | Standard library — no install needed |
+
+If either CLI tool is absent the corresponding check is skipped and flagged in the result — the scanner still runs with whatever tools are available.
+
+### Quick start
+
+```bash
+python -m network_guardian.agent.email_scanner
+# prompts for IMAP host, email address, password, and mailbox
+```
+
+### Programmatic usage
+
+```python
+import asyncio
+from network_guardian.agent.email_scanner import EmailScanner, EmailScanConfig
+
+config = EmailScanConfig(
+    imap_host="imap.gmail.com",
+    imap_user="you@gmail.com",
+    imap_password="app-password",   # use an app-specific password, not your account password
+    spam_threshold=5.0,             # SpamAssassin score above which a message is flagged
+    fetch_limit=50,                 # max unseen messages per run
+)
+
+scanner = EmailScanner(config)
+
+# Single scan (synchronous)
+results = scanner.scan_once()
+for r in results:
+    if r.flagged:
+        print(r.sender, r.subject, r.spam.score, r.malware.signature)
+
+# Continuous async loop — scans every 5 minutes
+asyncio.run(scanner.run(interval_seconds=300))
+```
+
+### Result structure
+
+```
+EmailScanResult
+  .message_id      — Message-ID header (or IMAP UID)
+  .subject         — decoded Subject header
+  .sender          — From header
+  .timestamp       — parsed Date header (timezone-aware)
+  .flagged         — True if spam OR malware detected
+  .spam
+    .available     — False if spamc not installed
+    .score         — SpamAssassin score (float)
+    .threshold     — configured threshold
+    .is_spam       — True if score ≥ threshold
+  .malware
+    .available     — False if clamscan not installed
+    .is_infected   — True if a signature was found
+    .signature     — ClamAV signature name (e.g. "Eicar-Test-Signature")
+```
+
+### Event bus
+
+Pass an `EventBus` instance to `EmailScanner(config, event_bus=bus)` and every flagged message will emit a `email.threat_detected` event into the live dashboard feed.
+
+---
+
+## Email ReAct Agent
+
+Wraps the Email Protection scanner inside a full autonomous **Observe → Reason → Act → Learn** cycle, matching the `MalwareReActAgent` and `RansomwareReActAgent` patterns.
+
+Lives at `network_guardian/agent/email_react_agent.py`.
+
+### ReAct cycle
+
+| Phase | What happens |
+|---|---|
+| **OBSERVE** | Connects to IMAP, fetches unseen messages via `EmailScanner` |
+| **REASON** | Classifies each flagged message — malware → `critical`; spam scored by SpamAssassin band (`medium` / `high` / `critical`); computes 0–100 cumulative threat score |
+| **ACT** | Logs all threats, builds recommendations, publishes `email.react.threat_detected` to the event bus, generates branded PDF report on high/critical cycles |
+| **LEARN** | Appends to `~/.network_guardian/email_react/scan_history.json` (capped at 500 cycles); computes rising/stable trend from the last 10 cycles |
+
+### Usage
+
+```bash
+# Interactive CLI (one-shot or loop)
+python -m network_guardian.agent.email_react_agent
+```
+
+```python
+import asyncio
+from network_guardian.agent.email_react_agent import EmailReActAgent, EmailReActConfig
+
+cfg = EmailReActConfig(
+    imap_host="imap.gmail.com",
+    imap_user="you@gmail.com",
+    imap_password="app-password",
+    spam_threshold=5.0,
+    interval_secs=300,        # scan every 5 minutes
+    generate_pdf="on_threat", # "on_threat" | "always" | "never"
+)
+agent = EmailReActAgent(cfg)
+
+# One-shot cycle
+report = asyncio.run(agent.run_cycle())
+print(report.risk_level, report.threat_score, report.messages_flagged)
+
+# Autonomous loop
+asyncio.run(agent.run())
+
+# Background task on existing event loop (same interface as other ReAct agents)
+agent.start()
+# ... later ...
+agent.stop()
+```
+
+### Output
+
+- **PDF reports** — `~/.network_guardian/email_react/pdf_reports/` and `./pdf_reports/`
+- **Scan history** — `~/.network_guardian/email_react/scan_history.json`
+- **Event bus topic** — `email.react.threat_detected`
+
+---
+
+## Password Manager
+
+A unified CLI for managing both the credential vault and team operator accounts.
+
+```bash
+python password_manager.py
+```
+
+### Credential Vault (options 1–4)
+
+Stores credentials for external services in `password_vault.json` alongside the project. Passwords are never stored in plaintext — each entry holds a PBKDF2-HMAC-SHA256 hash, a random salt, and (for generated passwords only) the original plaintext so it can be shown once.
+
+| Option | Action |
+|---|---|
+| 1 | Add a vault entry with a user-supplied password |
+| 2 | Verify a stored password interactively |
+| 3 | Generate a cryptographically random password (`secrets.token_urlsafe(16)`) and store it |
+| 4 | List all vault labels (plaintext shown for generated entries, `[REDACTED]` otherwise) |
+
+### Team User Accounts (options 5–8)
+
+Directly manages `~/.network_guardian/wolfpak_team.json` via the same `TeamStore` used by the live dashboard — any changes are immediately reflected without a server restart.
+
+| Option | Action |
+|---|---|
+| 5 | Add a new operator or admin account |
+| 6 | Change an existing user's password (complexity rules enforced) |
+| 7 | List all users with role, active status, and days until password expiry |
+| 8 | Remove a user (requires `yes` confirmation) |
+
+### Hashing
+
+Both the vault and team accounts use **PBKDF2-HMAC-SHA256 (260,000 iterations)** with per-entry random salts and constant-time comparison — the same algorithm as `network_guardian.interface._security`. No external crypto dependencies required.
 
 ---
 
