@@ -216,6 +216,14 @@ A unified CLI for managing both the credential vault and team operator accounts.
 python password_manager.py
 ```
 
+### Availability by tier
+
+| Tier | Vault access | Users | Credentials |
+|---|---|---|---|
+| **Starter** | Local, single-user | 1 | Up to 5 |
+| **Professional** | Team-shared | Up to 25 | Unlimited |
+| **Enterprise** | Enterprise-shared + audit log | Unlimited | Unlimited |
+
 ### Credential Vault (options 1–4)
 
 Stores credentials for external services in `password_vault.json` alongside the project. Passwords are never stored in plaintext — each entry holds a PBKDF2-HMAC-SHA256 hash, a random salt, and (for generated passwords only) the original plaintext so it can be shown once.

@@ -56,7 +56,7 @@ Features:
   - Live dashboard
   - Basic anomaly detection
   - Standard logging and audit trail
-  - Password vault (local, single user)
+  - Password vault (local, single user — up to 5 stored credentials)
   - TeamStore (up to 5 users)
 
 NOT included in Starter:
@@ -66,6 +66,7 @@ NOT included in Starter:
   - AI forecasting / NLP
   - PDF reporting
   - Role-based access
+  - Team-shared / multi-user vault
 
 Support  : email, business hours
 SLA      : best effort
@@ -88,6 +89,7 @@ Deployment        : on-prem or private cloud
 
 Features:
   - Everything in Starter
+  - Password vault — team-shared (up to 25 users, unlimited credentials)
   - MalwareReActAgent (autonomous malware detection & response)
   - RansomwareReActAgent (autonomous ransomware monitoring & response)
   - EmailReActAgent — up to 10 mailboxes
@@ -123,6 +125,7 @@ Deployment        : on-prem, private cloud, hybrid
 Features:
   - Everything in Professional
   - Unlimited EmailReActAgent mailbox connections
+  - Password vault — enterprise-shared (unlimited users, unlimited credentials, audit log)
   - High-scale fleet controls
   - Custom policies and compliance mapping
   - Premium audit and reporting package
