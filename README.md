@@ -14,7 +14,7 @@
 | **IPS** | IP block/allowlist, rate limiting, quarantine zones, auto-respond to IDS alerts |
 | **IP Cloaking** | MAC masking, IP obfuscation, source rotation, decoy generation, proxy chains, named identities |
 | **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy |
-| **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding — base IP never exposed |
+| **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding — base IP never exposed in logs, process list, or wire traffic |
 | **24/7 AI Monitor** | Background asyncio loop — rolling time-series, spike detection, 4-tier anomaly thresholds, live AI event stream |
 | **Malware ReAct Agent** | Autonomous process scanner running Observe → Reason → Act → Learn. Classifies each finding by severity (critical/high/medium), computes a 0–100 threat score, and generates a branded PDF report on every threat detection |
 | **Ransomware ReAct Agent** | Real-time file-system watcher that triggers a full ReAct reasoning cycle on every alert (ransomware extension or burst activity), with optional auto-quarantine and per-alert PDF reports |
@@ -794,19 +794,29 @@ Detection history is also persisted as JSON:
 
 ```bash
 # Probe — periodic scanner that phones home every ~60s
-python -m network_guardian.agent.probe \
-  --base https://YOUR-DASHBOARD-URL \
-  --key YOUR_FLEET_KEY \
-  --tor --stealth
+# Use env vars (NG_BASE / NG_KEY) so credentials never appear in ps/top
+export NG_BASE=https://YOUR-DASHBOARD-URL
+export NG_KEY=YOUR_FLEET_KEY
+python -m network_guardian.agent.probe --tor --stealth
 
 # Sentinel — persistent stay-behind bot
-python -m network_guardian.agent.sentinel \
-  --base https://YOUR-DASHBOARD-URL \
-  --key YOUR_FLEET_KEY \
-  --tor --stealth
+python -m network_guardian.agent.sentinel --tor --stealth
 ```
 
-Covert flags: `--tor`, `--proxy socks5://...`, `--stealth` (30–300s jitter + decoys). The dashboard base URL is never exposed on the wire.
+Covert flags: `--tor`, `--proxy socks5://...`, `--stealth` (30–300s jitter + decoys).
+
+#### Covert Comms Environment Variables
+
+| Variable | Description |
+|---|---|
+| `NG_BASE` | Base station URL — keeps URL out of `ps`/`top` process listing |
+| `NG_KEY` | Fleet authentication key — keeps key out of process listing |
+| `NG_PROXY` | Proxy URL (`socks5://host:port` or `http://host:port`) |
+| `NG_TOR` | Set to `1` to force Tor routing |
+| `NG_STEALTH` | Set to `1` for ghost mode — 30–300s jitter, 4 decoys, full log suppression |
+| `NG_REQUIRE_PROXY` | Set to `1` to fail-closed — probe refuses to transmit if no anonymous channel is available |
+
+The base station URL and fleet key are **never logged** in any form. All log messages use `[BASE]` as a placeholder. `--base` and `--key` values are scrubbed from `sys.argv` immediately after parse so they do not appear in process listings.
 
 ### Standalone probe (zero-dep, team distribution)
 
@@ -908,6 +918,103 @@ The dashboard uses a nonce-based CSP policy (`script-src 'nonce-...'`). The nonc
 ---
 
 ## Patch Notes
+
+### v21 — May 2026 (False Positive Remediation + Covert Comms Hardening + Remote Patch Push)
+
+#### 1. Malware Scanner — Trusted Installer Allowlist
+
+**Problem:** The malware process scanner (`malware_scanner.py`) flagged VS Code Insiders and other legitimate Windows auto-update installers as HIGH-risk threats. These processes run from `%TEMP%` during update cycles, which correctly matches the `\temp\` path heuristic used to catch malware — but produced false positives on every IDE update.
+
+**Fix:** Added `TRUSTED_NAME_PREFIXES` — a list of known-safe installer name prefixes that override path-based suspicion. Any process whose lowercase name starts with one of these prefixes is skipped for path-only hits; name-based heuristics (e.g. `svchost32`) still apply.
+
+```python
+TRUSTED_NAME_PREFIXES = [
+    "codesetup-",    # VS Code / VS Code Insiders installer (Microsoft-signed)
+    "vscode-",       # VS Code update helper
+    "teams-",        # Microsoft Teams updater
+    "squirrel-",     # Squirrel.Windows (GitHub Desktop, Slack, etc.)
+    "update-",       # Generic Electron auto-update helper
+    "nsis-",         # NSIS installer helper
+]
+```
+
+Verified: Both `CodeSetup-insider-*.exe` and `CodeSetup-insider-*.tmp` carry a valid Microsoft Authenticode signature and have `Code - Insiders` as parent process — confirmed false positives.
+
+---
+
+#### 2. MacBook Fleet Probe — False Positive Remediation + Remote Patch Push Channel
+
+**Problem:** The ReAct field agent (`react_agent.py`) running on `Cortezs-MacBook-Air.local` (NG-608852BB) generated recurring MEDIUM alerts across 8 of 19 assessment cycles. Two root causes:
+
+1. **Apple system daemon CPU spikes** — `duetexpertd`, `corespotlightd`, `biomesyncd`, `avconferenced`, `WindowServer`, `FaceTime`, and `contactsd` all triggered the high-CPU anomaly heuristic (threshold: `> 80%`). These are legitimate Apple ML, indexing, sync, and display processes that routinely spike during normal operation.
+
+2. **Exfil threshold too low for macOS** — 71 simultaneous external connections triggered `alert_data_exfil` (MITRE T1041, CVSS 7.2). On macOS, iCloud Drive, iCloud Photos, App Store, and background Apple services maintain 50–80+ concurrent connections during normal sync cycles.
+
+**Fixes applied to `react_agent.py`:**
+
+- Added `_TRUSTED_MACOS_SYSTEM_PROCS` frozenset (20 entries) — known Apple system daemons exempt from the CPU anomaly check on Darwin. Name-based checks (known offensive tooling) still apply to all processes regardless.
+- Raised default exfil threshold from `50` to `100` on `platform.system() == "darwin"`. The `50` threshold is unchanged on Windows and Linux.
+- Both thresholds are overridable at runtime via the base-pushed `patch_config` (see below).
+
+**New: Base-to-Probe Remote Patch Push Channel**
+
+Rather than requiring a `git pull` + restart on every remote agent, the base station can now push configuration updates to any probe over the existing phone-home channel.
+
+**How it works:**
+
+```
+1. Operator queues a config on the base:
+   FleetStore.set_patch_config("NG-XXXXXXXX", {"exfil_threshold": 100, ...})
+
+2. On the probe's next POST /api/fleet/report (every 60s), the base ACK includes:
+   {"ok": true, "agent_id": "NG-XXXXXXXX", "patch_config": {...}}
+
+3. probe.py reads patch_config from the ACK and calls:
+   react_agent.apply_patch_config(config)
+
+4. Config saved to ~/.ng_agent/patch_config.json on the remote machine.
+   Takes effect on the very next ReAct cycle — no restart needed.
+```
+
+Config is **one-shot**: cleared from the fleet store immediately after delivery so it isn't re-applied on subsequent phone-homes.
+
+Files changed: `react_agent.py`, `probe.py`, `network_guardian/interface/_fleet.py`, `network_guardian/interface/dashboard.py`
+
+---
+
+#### 3. Covert Communications — Base Station Cloaking Hardened
+
+**Problem:** When no proxy or Tor was configured, the probe emitted a `WARNING`-level log to the operator terminal:
+
+```
+[WARNING] network_guardian.agent.covert: Covert comms: NO PROXY — communications
+are NOT anonymized. Install Tor or set --proxy to hide base station IP.
+```
+
+This revealed: (a) that a base station exists, (b) that its IP is visible on the wire, and (c) architectural detail about the system. Additionally, the base URL could leak into log output via `urllib` exception strings, and the base URL + fleet key were visible in `ps aux` / Task Manager via the `--base` and `--key` CLI flags.
+
+**Fixes applied:**
+
+| Surface | Before | After |
+|---|---|---|
+| `[WARNING]` no-proxy log | Emitted at `WARNING` — always visible | Downgraded to `DEBUG` — filtered by default `INFO` level; message stripped of architectural detail |
+| `_safe_url()` in error logs | Partial hash + scheme + port of base URL | Always returns `[BASE]` — no fragments |
+| Tor/Privoxy auto-detect logs | `INFO` with proxy host:port | `DEBUG` only, address removed: `"Covert channel active"` |
+| `--base` / `--key` in process list (`ps`) | Plaintext URL and key in `sys.argv` | Scrubbed to `[REDACTED]` immediately after argument parse |
+| `urllib` exception messages | Included base URL in error strings | Exceptions swallowed before logging — only generic messages emitted |
+| Covert channel status log | `proxy=http://...` logged at INFO | `"anonymous"` or `"direct"` — no addresses |
+
+**New controls:**
+
+| Env var | Effect |
+|---|---|
+| `NG_BASE` | Base URL from env — never in process list |
+| `NG_KEY` | Fleet key from env — never in process list |
+| `NG_REQUIRE_PROXY=1` | **Fail-closed** — transmission blocked entirely if no anonymous channel (Tor/proxy) is available |
+
+Files changed: `network_guardian/agent/covert_comms.py`, `network_guardian/agent/probe.py`
+
+---
 
 ### v20 — May 2026 (Windows Compatibility + Dependency Hardening)
 

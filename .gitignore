@@ -65,3 +65,7 @@ BUSINESS_REQUIREMENTS_DOCUMENT.md
 FUNCTIONALITY_TEST_REPORT.md
 *_TEST_REPORT.md
 PRICING_TIER_MATRIX.txt
+
+# Local scan artefacts — generated at runtime, not source
+pdf_reports/
+.network_guardian_scan/
