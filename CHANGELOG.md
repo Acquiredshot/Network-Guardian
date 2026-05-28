@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v31] — 2026-05-28
+
+### Added
+
+#### Cross-Platform Team Deployment System
+
+Complete cross-platform support for Windows, macOS, and Linux with unified startup and team deployment:
+
+##### Unified Startup Scripts
+- **`start_all.py`** — Master Python entry point for all platforms. Single command initializes dashboard + local probe with automatic restart on crashes.
+- **`START_ALL.bat`** — Windows batch file for double-click startup (non-technical team members).
+- **`Start-All.ps1`** — Windows PowerShell alternative with colored output and error handling.
+- All scripts use `pathlib.Path` for OS-agnostic path handling (Windows/Unix compatibility).
+
+##### System Verification & Pre-Flight Checks
+- **`verify_system.py`** — Comprehensive system health checker:
+  - Python 3.9+ validation
+  - Port 8080 availability check
+  - Required file presence verification
+  - Fleet configuration detection
+  - Network Guardian module availability
+  - OS-specific troubleshooting guidance
+  - Exit code: 0 (ready) or 1 (issues)
+
+##### Comprehensive Documentation
+- **`README_TEAM_SETUP.md`** — Quick-start guide for team deployment across all platforms. Default credentials, troubleshooting, file structure.
+- **`CROSS_PLATFORM_SETUP.md`** — Detailed OS-specific setup with native commands for Windows/macOS/Linux, network topology, and deployment strategies.
+- **`LOCAL_STARTUP.md`** — Local running guide with monitoring, troubleshooting, and data storage details.
+
+##### Cross-Platform Code Updates
+- **`run_local_probe.py`** — Updated for cross-platform path handling using `Path.home()` and `pathlib.Path`.
+- **`dashboard.py`** — Fixed rate limiting (increased RATE_LIMIT_MAX from 600 to 10,000) to support normal browser usage patterns.
+- All relative path handling abstracted away OS-specific path conventions.
+
+##### Team Deployment Model
+- Each team member clones repository and runs single command.
+- Dashboard and probe start automatically with independent fleet registration.
+- No central server required — each machine runs completely locally.
+- Data persists in `~/.network_guardian/` across restarts.
+- Auto-restart of crashed probes ensures high availability.
+
+### Fixed
+
+#### Dashboard Rate Limiting Issue
+- **Problem**: HTTP 429 "Too Many Requests" errors preventing dashboard access.
+- **Root cause**: RATE_LIMIT_MAX set to 600 requests/min (≈10 req/sec), browser auto-refresh exceeded limit.
+- **Solution**: Increased RATE_LIMIT_MAX to 10,000 requests/min (≈167 req/sec).
+- **Impact**: Dashboard now supports normal browser usage patterns without rate limiting errors.
+
+#### Cross-Platform Path Handling
+- **Problem**: Hardcoded Unix paths (`/Users/...`) broke Windows deployment.
+- **Root cause**: Absolute paths not portable across OS platforms.
+- **Solution**: Replaced all hardcoded paths with `pathlib.Path` API.
+- **Impact**: Identical startup commands work on Windows, macOS, and Linux.
+
+#### Process Management Compatibility
+- **Problem**: Unix kill commands (`kill -9`) don't exist on Windows.
+- **Root cause**: OS-specific process termination differences.
+- **Solution**: Platform detection with conditional process management (Windows: `taskkill /F`, Unix: `kill -9`).
+- **Impact**: Proper cleanup of probe/dashboard processes on all platforms.
+
+---
+
 ## [v30] — 2026-05-28
 
 ### Added

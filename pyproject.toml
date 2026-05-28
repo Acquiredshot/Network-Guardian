@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "network-guardian"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomous network auditing and system monitoring assistant"
 authors = [{name = "Wolf-Pak Innovations LLC", email = "legal@wolfpakinnovations.com"}]
 requires-python = ">=3.11"
