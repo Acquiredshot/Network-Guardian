@@ -1,5 +1,15 @@
 # Network Guardian — Data Collection & Analysis Guide
 
+**⚠️ IMPORTANT: All data stays local on your machine**
+
+- Only reads from: `~/.network_guardian/` (local directory)
+- Only writes to: `./export/` and `~/.network_guardian/metrics/` (local directories)
+- **NO external API calls** to any remote servers
+- **NO internet connectivity** required
+- **NO data transmission** or cloud uploads
+- All processing is **100% offline and local**
+- All data files are in standard formats (JSON, CSV) for easy inspection
+
 Complete guide to collecting, monitoring, and analyzing test data during Network Guardian testing.
 
 ---
@@ -10,6 +20,29 @@ Two tools work together to capture and analyze data:
 
 1. **`monitor_data.py`** — Real-time monitoring dashboard (runs during testing)
 2. **`export_test_data.py`** — Post-test analysis and reporting (runs after testing)
+
+---
+
+## Data Privacy & Security
+
+✅ **All data is 100% local and private**
+
+| Aspect | Status |
+|--------|--------|
+| Data Location | Local machine only (`~/.network_guardian/` and `./export/`) |
+| Remote Transmission | ❌ Never - No internet calls |
+| Cloud Sync | ❌ No cloud integrations |
+| External APIs | ❌ No external API calls |
+| Dependencies | ✅ Only Python standard library (json, csv, pathlib) |
+| Data Retention | ✅ You control - stored in standard formats |
+| Data Deletion | ✅ Delete with: `rm -rf ~/.network_guardian/` |
+| Encryption | ✅ Use OS-level encryption (FileVault on macOS) |
+
+**Verified with:**
+- No `requests`, `urllib`, or `http` library calls
+- No DNS lookups or network I/O
+- All imports are from Python standard library
+- All file I/O is to local directories
 
 ---
 
@@ -598,6 +631,105 @@ mv export/* test_results/run_$(date +%Y%m%d_%H%M%S)/
 2. **After Testing**: Use `export_test_data.py` to generate comprehensive reports
 3. **Analyze Results**: Open CSV files in spreadsheet app for visualization
 4. **Share Findings**: Use SUMMARY.json + CSV files in reports
+
+---
+
+## Support
+
+For issues:
+1. Check troubleshooting section above
+2. Verify test data exists in `~/.network_guardian/`
+3. Run `python monitor_data.py status` to confirm collection works
+4. Review generated CSV files for anomalies
+
+---
+
+## Data Management & Retention
+
+### Where Data is Stored (All Local)
+
+```
+~/.network_guardian/
+├── smart_firewall/
+│   └── injection_history.json          # Your machine only
+├── attack_correlator/
+│   ├── discoveries.json
+│   └── correlations.json
+├── payload_harvester/
+│   └── harvested_rules.json
+├── defensive_scanner/
+│   └── scan_results.json
+├── metrics/
+│   └── metrics_history.json
+└── [other local data]
+
+./export/                               # Current directory only
+├── SUMMARY.json
+├── firewall_stats.json
+├── *.csv files
+└── [other local reports]
+```
+
+### Controlling Data Retention
+
+**View what data exists:**
+```bash
+du -sh ~/.network_guardian/
+ls -lh ./export/
+```
+
+**Delete test data (keep application):**
+```bash
+# Delete only collected metrics (keeps rules/discoveries)
+rm ~/.network_guardian/metrics/metrics_history.json
+
+# Delete specific component data
+rm ~/.network_guardian/smart_firewall/injection_history.json
+rm ~/.network_guardian/attack_correlator/*.json
+rm ~/.network_guardian/payload_harvester/harvested_rules.json
+```
+
+**Complete clean slate (delete all data):**
+```bash
+# ⚠️  This removes ALL collected data but not the app itself
+rm -rf ~/.network_guardian/
+```
+
+**Delete exported reports:**
+```bash
+# Remove CSV/JSON exports from current directory
+rm -rf ./export/
+```
+
+### Data Backup
+
+**Back up your collected test data:**
+```bash
+# Copy to external drive or archive
+cp -r ~/.network_guardian/ /Volumes/ExternalDrive/ng_backup_2026-05-28/
+tar -czf ng_backup_2026-05-28.tar.gz ~/.network_guardian/
+```
+
+### Privacy Best Practices
+
+1. **Do not share raw JSON files** - they contain full payload/correlation data
+   - Instead: Export CSV summaries for analysis
+   - Or: Use SUMMARY.json which is aggregated
+
+2. **Sanitize before sharing reports** - remove IP addresses if needed
+   ```bash
+   sed 's/192\.168\.[0-9]\+\.[0-9]\+/[REDACTED_IP]/g' exported_file.csv
+   ```
+
+3. **Encrypt sensitive reports**
+   ```bash
+   gpg --symmetric export/SUMMARY.json
+   ```
+
+4. **Delete metrics after each test** if running on shared machine
+   ```bash
+   rm ~/.network_guardian/metrics/metrics_history.json
+   ```
 
 ---
 

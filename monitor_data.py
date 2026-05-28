@@ -2,6 +2,14 @@
 """
 Automated Data Collection & Monitoring for Network Guardian Testing
 
+⚠️  IMPORTANT: All data stays LOCAL on your machine
+- Only reads from: ~/.network_guardian/ (local user data)
+- Only writes to: ~/.network_guardian/metrics/ (local user data)
+- NO external API calls
+- NO internet connectivity required
+- NO data transmission
+- All processing is offline and local
+
 Runs in background during testing to:
 - Collect real-time metrics from all components
 - Display live status dashboard

@@ -2,6 +2,14 @@
 """
 Data Export & Analysis Tool for Network Guardian Testing
 
+⚠️  IMPORTANT: All data stays LOCAL on your machine
+- Only reads from: ~/.network_guardian/ (local user data)
+- Only writes to: ./export/ (current working directory)
+- NO external API calls
+- NO internet connectivity required
+- NO data transmission
+- All processing is offline and local
+
 Extracts and analyzes data collected during test runs:
 - Parses JSON files from ~/.network_guardian/
 - Generates CSV/JSON reports with statistics
