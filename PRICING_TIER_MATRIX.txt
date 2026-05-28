@@ -1,13 +1,13 @@
 NETWORK GUARDIAN COMMERCIAL TIER MATRIX (DRAFT)
 Wolf-Pak Innovations LLC
-Version 2.0 — updated 2026-05-27
+Version 2.1 — updated 2026-05-28
 Currency: USD
 
 IMPORTANT
 - This is an internal planning matrix.
 - Replace placeholder pricing before publishing or quoting.
 
-FEATURE REFERENCE (as of v21)
+FEATURE REFERENCE (as of v24)
   Core platform features (all tiers)
     - Core IDS/IPS engine
     - Live dashboard with event bus
@@ -18,6 +18,22 @@ FEATURE REFERENCE (as of v21)
     - MalwareReActAgent       — autonomous malware detection & response (Observe→Reason→Act→Learn)
     - RansomwareReActAgent    — autonomous ransomware monitoring & response
     - EmailReActAgent         — autonomous email protection agent (Observe→Reason→Act→Learn)
+    - SmartFirewallAgent      — autonomous injection-blocking ReAct agent (Observe→Reason→Act→Learn)
+
+  Smart Firewall (Starter+)
+    - 36 detection rules across 10 injection types:
+        SQL, XSS, Command, LDAP, XXE, SSTI, Path Traversal, Header, NoSQL, GraphQL
+    - WAF-bypass payload normalisation — 7 decode variants per request
+        (URL ×1/×2, HTML entity, Unicode NFKC, SQL comment strip, null-byte, base64)
+    - IP reputation scoring — continuous 0–100 float per source IP
+    - Sliding-window request-rate tracking — automated scanner detection
+    - Escalating blocks: 1h → 6h → permanent per source IP
+    - Confidence threshold tuning (default 0.70) to balance sensitivity vs. false positives
+    - Management API: get_stats(), dashboard_summary(), reputation_score(),
+        mark_false_positive(), add_rule(), enable_rule(), disable_rule(),
+        set_confidence_threshold()
+    - PDF threat reports per ReAct cycle (high/critical severity)
+    - Per-rule enable/disable at runtime (custom rule injection supported)
 
   Email Protection (per-mailbox add-on or bundled in tiers)
     - IMAP email scanner (SpamAssassin + ClamAV integration)
@@ -58,15 +74,23 @@ Features:
   - Standard logging and audit trail
   - Password vault (local, single user — up to 5 stored credentials)
   - TeamStore (up to 5 users)
+  - SmartFirewallAgent
+    - Full 36-rule / 10-type injection detection engine
+    - WAF-bypass normalisation (7 decode variants)
+    - Escalating IP blocks (1h → 6h → permanent)
+    - IP reputation scoring
+    - get_stats() / dashboard_summary() management API
+    - Confidence threshold and per-rule enable/disable
 
 NOT included in Starter:
   - ReAct agents (Malware / Ransomware / Email)
   - Active email protection
   - Fleet management
   - AI forecasting / NLP
-  - PDF reporting
+  - PDF reporting (Smart Firewall PDF reports available as add-on)
   - Role-based access
   - Team-shared / multi-user vault
+  - Custom rule injection (add_rule API) — Professional+
 
 Support  : email, business hours
 SLA      : best effort
@@ -96,6 +120,13 @@ Features:
     - All three protection modes (Monitor / Move Spam / Delete All)
     - Provider presets (Gmail, Outlook, Yahoo, iCloud, Zoho, Fastmail)
     - PDF threat reports per scan cycle
+  - SmartFirewallAgent — full feature set:
+    - Custom rule injection via add_rule() API
+    - SmartFirewall PDF threat reports per ReAct cycle
+    - Dashboard /api/smart_firewall endpoint (dashboard_summary)
+    - mark_false_positive() and false-positive tracking
+    - Rate-limiting scanner detection (record_request)
+    - Sliding-window stats (get_stats with blocks_last_hour, top_attacking_ips)
   - Fleet management and remote agent control
   - Advanced anomaly controls
   - Alert routing integrations
@@ -148,6 +179,14 @@ ADD-ONS (all tiers)
   Email Protection bundle (Starter)        : $25/mailbox/month
     Adds EmailReActAgent for up to 5 mailboxes, all three protection modes,
     PDF reports, event bus integration
+
+  SmartFirewall PDF Reports (Starter)      : $15/month
+    Unlocks PDF threat report generation per high/critical ReAct cycle
+    (SmartFirewallAgent core detection is always included in Starter)
+
+  SmartFirewall Custom Rules (Starter)     : $20/month
+    Unlocks the add_rule() API for injecting custom InjectionRule objects
+    at runtime (included in Professional+)
 
   Additional protected mailboxes (Pro)     : $18/mailbox/month
     Beyond the 10 included in Professional tier
