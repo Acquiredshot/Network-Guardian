@@ -1,82 +1,176 @@
 NETWORK GUARDIAN COMMERCIAL TIER MATRIX (DRAFT)
 Wolf-Pak Innovations LLC
-Version 1.0
+Version 2.0 — updated 2026-05-27
 Currency: USD
 
 IMPORTANT
 - This is an internal planning matrix.
 - Replace placeholder pricing before publishing or quoting.
 
-TIER 1 - STARTER
-- Intended Customer: small teams / lab environments
-- Agents Included: up to 25
-- Users Included: up to 5
-- Deployment: on-prem only
-- Features:
-  - Core IDS/IPS
-  - Dashboard
-  - Basic anomaly detection
-  - Standard logging
-- Support: email, business hours
-- SLA: best effort
-- Suggested Price:
-  - Monthly: 499
-  - Annual: 4,990
-- Overage:
-  - Per additional agent/month: 12
+FEATURE REFERENCE (as of v21)
+  Core platform features (all tiers)
+    - Core IDS/IPS engine
+    - Live dashboard with event bus
+    - Standard logging and audit trail
+    - Basic anomaly detection
 
-TIER 2 - PROFESSIONAL
-- Intended Customer: SMB and security teams
-- Agents Included: up to 250
-- Users Included: up to 25
-- Deployment: on-prem or private cloud
-- Features:
-  - Everything in Starter
+  Security agents (Professional+)
+    - MalwareReActAgent       — autonomous malware detection & response (Observe→Reason→Act→Learn)
+    - RansomwareReActAgent    — autonomous ransomware monitoring & response
+    - EmailReActAgent         — autonomous email protection agent (Observe→Reason→Act→Learn)
+
+  Email Protection (per-mailbox add-on or bundled in tiers)
+    - IMAP email scanner (SpamAssassin + ClamAV integration)
+    - Three protection modes: Monitor / Move Spam / Delete All
+    - Provider auto-detection: Gmail, Outlook, Yahoo, iCloud, Zoho, Fastmail
+    - Active IMAP write operations: move to Junk, permanent delete
+    - Event bus integration for live dashboard threat feed
+
+  Credential & Team Security
+    - Password vault (PBKDF2-HMAC-SHA256, 260,000 iterations, encrypted JSON persistence)
+    - TeamStore team user management (add/remove/list/change password)
+    - Role-based access control
+
+  AI & Automation
+    - Advanced anomaly controls
+    - AI forecasting and NLP
+    - Smart automation policies
+    - Fleet agent management
+
+  Reporting
+    - PDF threat reports (per ReAct agent cycle)
+    - Audit analyzer
+    - Compliance mapping
+
+───────────────────────────────────────────────────────────────
+TIER 1 — STARTER
+───────────────────────────────────────────────────────────────
+Intended Customer : small teams / home labs / individual security professionals
+Agents Included   : up to 25 endpoints
+Users Included    : up to 5
+Mailboxes         : 0 (Email Protection not included; available as add-on)
+Deployment        : on-prem only
+
+Features:
+  - Core IDS/IPS
+  - Live dashboard
+  - Basic anomaly detection
+  - Standard logging and audit trail
+  - Password vault (local, single user)
+  - TeamStore (up to 5 users)
+
+NOT included in Starter:
+  - ReAct agents (Malware / Ransomware / Email)
+  - Active email protection
   - Fleet management
+  - AI forecasting / NLP
+  - PDF reporting
+  - Role-based access
+
+Support  : email, business hours
+SLA      : best effort
+
+Suggested Price:
+  Monthly    : $549
+  Annual     : $5,490  (saves ~$1,100 vs monthly)
+
+Overage:
+  Per additional agent/month : $14
+
+───────────────────────────────────────────────────────────────
+TIER 2 — PROFESSIONAL
+───────────────────────────────────────────────────────────────
+Intended Customer : SMB and dedicated security teams
+Agents Included   : up to 250 endpoints
+Users Included    : up to 25
+Mailboxes         : up to 10 protected mailboxes
+Deployment        : on-prem or private cloud
+
+Features:
+  - Everything in Starter
+  - MalwareReActAgent (autonomous malware detection & response)
+  - RansomwareReActAgent (autonomous ransomware monitoring & response)
+  - EmailReActAgent — up to 10 mailboxes
+    - All three protection modes (Monitor / Move Spam / Delete All)
+    - Provider presets (Gmail, Outlook, Yahoo, iCloud, Zoho, Fastmail)
+    - PDF threat reports per scan cycle
+  - Fleet management and remote agent control
   - Advanced anomaly controls
   - Alert routing integrations
-  - Role-based access
-- Support: priority email + scheduled calls
-- SLA: next-business-day response
-- Suggested Price:
-  - Monthly: 2,500
-  - Annual: 25,000
-- Overage:
-  - Per additional agent/month: 9
+  - Role-based access control
+  - AI forecasting and NLP modules
 
-TIER 3 - ENTERPRISE
-- Intended Customer: large organizations and MSSP operations
-- Agents Included: up to 2,500
-- Users Included: up to 250
-- Deployment: on-prem, private cloud, hybrid
-- Features:
+Support  : priority email + scheduled calls
+SLA      : next-business-day response
+
+Suggested Price:
+  Monthly    : $2,750
+  Annual     : $27,500  (saves ~$5,500 vs monthly)
+
+Overage:
+  Per additional agent/month        : $10
+  Per additional protected mailbox  : $18/month
+
+───────────────────────────────────────────────────────────────
+TIER 3 — ENTERPRISE
+───────────────────────────────────────────────────────────────
+Intended Customer : large organizations and MSSP operations
+Agents Included   : up to 2,500 endpoints
+Users Included    : up to 250
+Mailboxes         : unlimited protected mailboxes
+Deployment        : on-prem, private cloud, hybrid
+
+Features:
   - Everything in Professional
+  - Unlimited EmailReActAgent mailbox connections
   - High-scale fleet controls
   - Custom policies and compliance mapping
   - Premium audit and reporting package
+  - Smart automation policies
   - Dedicated technical account manager
-- Support: 24x7 priority
-- SLA: 4-hour response for Sev-1
-- Suggested Price:
-  - Annual only: 120,000
-- Overage:
-  - Per additional agent/month: 6
+  - Custom integration support
 
-ADD-ONS
-- OEM/White-label rights: custom quote
-- Reseller rights: custom quote
-- Premium onboarding package: 5,000 one-time
-- Custom integration package: 8,000 minimum
-- Dedicated training day: 2,500/day
+Support  : 24x7 priority
+SLA      : 4-hour response for Sev-1
 
+Suggested Price:
+  Annual only : $135,000
+
+Overage:
+  Per additional agent/month : $7
+
+───────────────────────────────────────────────────────────────
+ADD-ONS (all tiers)
+───────────────────────────────────────────────────────────────
+  Email Protection bundle (Starter)        : $25/mailbox/month
+    Adds EmailReActAgent for up to 5 mailboxes, all three protection modes,
+    PDF reports, event bus integration
+
+  Additional protected mailboxes (Pro)     : $18/mailbox/month
+    Beyond the 10 included in Professional tier
+
+  OEM / White-label rights                 : custom quote
+  Reseller rights                          : custom quote
+  Premium onboarding package               : $6,000 one-time
+  Custom integration package               : $9,000 minimum
+  Dedicated training day                   : $2,750/day
+  Annual security audit & review session   : $4,500/year
+
+───────────────────────────────────────────────────────────────
 DISCOUNTS AND COMMERCIAL GUARDRAILS
-- Multi-year discount guidance:
-  - 2-year: up to 8%
-  - 3-year: up to 15%
-- Nonprofit/public-sector discount: case-by-case
-- Floor pricing requires executive approval
+───────────────────────────────────────────────────────────────
+  Multi-year discount guidance:
+    2-year : up to 8%
+    3-year : up to 15%
+  Nonprofit / public-sector discount : case-by-case
+  Floor pricing requires executive approval
+  Volume mailbox discount (50+ mailboxes): negotiate separately
 
+───────────────────────────────────────────────────────────────
 REVENUE MODEL NOTES
-- Default contract term: annual prepaid
-- Production use requires commercial agreement execution
-- Use outside licensed scope triggers true-up and potential termination
+───────────────────────────────────────────────────────────────
+  Default contract term         : annual prepaid
+  Production use requires commercial agreement execution
+  Use outside licensed scope triggers true-up and potential termination
+  Email protection modes (move_spam / delete_all) require written acknowledgment
+    from customer that IMAP write access has been authorized on their mailbox
