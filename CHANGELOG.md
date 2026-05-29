@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v33] — 2026-05-29
+
+### Fixed
+
+#### Probe Threat Detection — False Positive Reduction
+- **HIGH_CPU threshold** raised from `>5.0` to `>9.0` load average — prevents false positives on developer workstations actively running VS Code, dashboard, and probe simultaneously.
+- **EXCESSIVE_CONNECTIONS threshold** raised from `>20` to `>50` (MEDIUM) and `>100` (HIGH) — modern workstations with a browser open typically hold 20–40 external connections legitimately; previous threshold fired on normal activity.
+
+---
+
 ## [v32] — 2026-05-29
 
 ### Added
