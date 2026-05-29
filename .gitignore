@@ -69,3 +69,6 @@ PRICING_TIER_MATRIX.txt
 # Local scan artefacts — generated at runtime, not source
 pdf_reports/
 .network_guardian_scan/
+
+# Scan/export data — contains network topology, attacker IPs, firewall rules (sensitive)
+export/
