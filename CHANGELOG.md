@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v32] — 2026-05-29
+
+### Added
+
+#### Multi-Agent Fleet Management
+
+Full fleet registration, labeling, and persistence improvements for multi-probe deployments:
+
+##### Named Agent Labels
+- **Fleet label fix** — `label` field in `~/.network_guardian/fleet.json` is now correctly seeded from `identity.hostname` at first registration.
+- Probe `NG-13571285` registered and labeled **"Eli"** — persistent across dashboard restarts.
+- Label is displayed on the fleet card name, fleet map node, and all per-agent drill-downs.
+
+##### Fleet Persistence & Restart Safety
+- Dashboard now reloads `fleet.json` cleanly on startup — all custom labels survive a restart.
+- Fixed edge case where re-registration of an existing agent preserved a stale IP-based label instead of the configured name.
+
+##### Probe Continuity
+- Local probe (`run_local_probe.py`) auto-restarts cleanly after dashboard restarts — no manual intervention required.
+- PORT env-var respected across both `_start_dashboard.py` and `run_local_probe.py` (defaults to 8080, override with `$env:PORT=8081`).
+
+### Fleet Status (as of v32)
+
+| Agent ID | Label | Platform | Status |
+|---|---|---|---|
+| NG-175079C4 | pheonix | Windows 11 | Online — reporting every 30s |
+| NG-608852BB | Cortezs-MacBook-Air.local | macOS | Offline — last seen 15h ago |
+| NG-13571285 | Eli | Unknown | Registered — awaiting first probe run |
+
+### Fixed
+
+#### Eli Probe Display Name
+- **Problem**: Fleet card for `NG-13571285` displayed a raw IP address instead of the agent name "Eli".
+- **Root cause**: `register_agent()` preserves existing label on re-registration (`existing.get("label", ...)`). The first registration had captured an IP as the label before the hostname was set.
+- **Solution**: Patched `label` field directly in `fleet.json` to `"Eli"` and restarted the dashboard to reload from disk.
+- **Impact**: Fleet map, agent cards, and per-agent drill-downs all display "Eli" correctly.
+
+#### Probe Offline After Dashboard Restart
+- **Problem**: pheonix probe showed OFFLINE after dashboard was restarted to pick up fleet label fix.
+- **Root cause**: Probe process tied to old dashboard terminal session — killed when session was recycled.
+- **Solution**: Probe restarted with `$env:PORT=8081; python run_local_probe.py` — back ONLINE within one report cycle.
+
+### Documentation
+
+- **Updated:** `CHANGELOG.md` — This entry
+- **Updated:** `README.md` — Fleet section updated with 3-probe fleet, label behavior, and startup notes
+
+### Version
+- **Semantic Version:** 0.2.1
+- **Release Date:** May 29, 2026
+- **Features Added:** 1 (named fleet labels)
+- **Bugs Fixed:** 2 (label display, probe continuity)
+
+---
+
 ## [v31] — 2026-05-28
 
 ### Added

@@ -13,7 +13,7 @@
 | **IDS** | 15 signature rules, payload analysis, brute-force & multi-stage attack correlation, alert suppression |
 | **IPS** | IP block/allowlist, rate limiting, quarantine zones, auto-respond to IDS alerts |
 | **IP Cloaking** | MAC masking, IP obfuscation, source rotation, decoy generation, proxy chains, named identities |
-| **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy |
+| **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy. **v32:** Named agent labels — each probe registers with a persistent display name (e.g. "Eli", "pheonix"). 3-probe fleet operational: NG-175079C4 (pheonix/Windows), NG-608852BB (macOS), NG-13571285 (Eli). |
 | **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding — base IP never exposed in logs, process list, or wire traffic |
 | **24/7 AI Monitor** | Background asyncio loop — rolling time-series, spike detection, 4-tier anomaly thresholds, live AI event stream |
 | **Malware ReAct Agent** | Autonomous process scanner running Observe → Reason → Act → Learn. Classifies each finding by severity (critical/high/medium), computes a 0–100 threat score, and generates a branded PDF report on every threat detection |
@@ -30,7 +30,7 @@
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
 | **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), confidence aggregation across overlapping rules, IP escalation (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking. **v30: NEW** — Integrated with Probe for threat intelligence feedback, payload harvesting, defensive scanning, and attack correlation (see below) |
-| **Patch & Fix Delivery** | **v31: NEW** — Centralized patch management system. Delivers security recommendations, system hardening fixes, and vulnerability patches to remote probes. RESTful API (`/api/patches`) serves fixes by severity (critical/high/medium/low). Includes CVE tracking, auto-generated remediation commands, and deployment status tracking. Probes fetch patches via `fetch_patches.py` script with configurable update intervals. |
+| **Patch & Fix Delivery** | **v31:** Centralized patch management system. Delivers security recommendations, system hardening fixes, and vulnerability patches to remote probes. RESTful API (`/api/patches`) serves fixes by severity (critical/high/medium/low). Includes CVE tracking, auto-generated remediation commands, and deployment status tracking. Probes fetch patches via `fetch_patches.py` script with configurable update intervals. |
 | **Email Protection** | IMAP email scanner — **v2 now includes OpenRouter AI (gpt-oss-120b)** for per-email threat classification (phishing / CEO fraud / invoice scam / malware / spam / clean) + confidence scoring, **SQLite logging** for persistent result archival, **triple-layer defense** (SpamAssassin spam scoring + ClamAV malware + AI behaviour analysis) |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management, real-time block/unblock; runs the same Engine as the web dashboard. v29: blocked-IPs panel + auto-respond toggle + live ips.block/ips.unblock event sync |
 | **Safe Web Browsing Agent** | Autonomous URL safety evaluation agent — allowlist/blocklist with wildcard subdomain matching, SSRF guard, 17 content threat signals (phishing, malware, cryptominer, exploit kit, drive-by), IPS auto-block on malicious verdicts, persistent domain lists, event bus integration. 73-test suite included. Interactive TUI test monitor (`run_web_browsing_tests.py`)
@@ -61,7 +61,9 @@
 ```bash
 pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
-python _start_dashboard.py                         # web dashboard at http://127.0.0.1:8080
+python _start_dashboard.py                         # web dashboard (default port 8080; set PORT env var to override)
+$env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
+PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
 python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)
 python password_manager.py                         # credential vault + team user management CLI
 python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
