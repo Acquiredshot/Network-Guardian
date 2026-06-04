@@ -180,6 +180,14 @@ Patches are stored locally at:
 
 ---
 
+## Recent Patches Applied
+
+| Date | Severity | Component | Description |
+|------|----------|-----------|-------------|
+| 2026-06-04 | LOW | `dashboard.py` — `loadStatus()` | Added 401 redirect guard to `/api/ransomware/status` poll — prevents unauthenticated request loop on session expiry |
+
+---
+
 ## Patch Categories
 
 | Category | Purpose | Examples |

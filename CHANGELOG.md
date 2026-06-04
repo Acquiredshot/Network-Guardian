@@ -62,6 +62,7 @@ All notable changes to this project are documented here.
 ### Fixed
 
 - **`tests/test_step4.py`** — Updated hardcoded node count assertions from `== 4` to `== 6` to reflect the two new UEBA nodes added to `NodeGraph.create_default()`.
+- **`network_guardian/interface/dashboard.py` — `loadStatus()` unauthenticated request loop** — The security page's `loadStatus()` function polled `/api/ransomware/status` every 3 seconds with no 401 response handler. When a session expired while the page was open, every poll fired unauthenticated, generating continuous `Unauthenticated request from 127.0.0.1: GET /api/ransomware/status` warnings in the terminal (the auth gate was correctly blocking them, but the JS silently swallowed the 401). Fixed by adding the same redirect-on-401 guard already present in `startMonitor()` — expired sessions now immediately redirect to `/login?next=/security` instead of looping indefinitely.
 
 ---
 
