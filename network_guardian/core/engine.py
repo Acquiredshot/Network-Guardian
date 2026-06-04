@@ -295,7 +295,10 @@ class Engine:
         """Dual-Pass Evaluation Pipeline — async pre/post context injection verification."""
         if self._dual_pass_evaluator is None:
             from network_guardian.agent.dual_pass_evaluator import DualPassEvaluator
-            self._dual_pass_evaluator = DualPassEvaluator(event_bus=self.event_bus)
+            self._dual_pass_evaluator = DualPassEvaluator(
+                event_bus=self.event_bus,
+                shadow_mode=self.config.shadow_mode,
+            )
         return self._dual_pass_evaluator
 
     @property
@@ -306,6 +309,7 @@ class Engine:
             self._isolation_sandbox = IsolationSandboxEngine(
                 ips=self.ips,
                 event_bus=self.event_bus,
+                shadow_mode=self.config.shadow_mode,
             )
         return self._isolation_sandbox
 

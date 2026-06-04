@@ -86,7 +86,8 @@ class FullSystemCoordinator:
 
         logger.info("[9/9] Initializing Isolation & Sandboxing Engine...")
         _ = self.engine.isolation_sandbox
-        logger.info(f"      ✓ Sandbox ready (suspicious≥40 isolation≥70)")
+        _shadow = " [SHADOW MODE — observe only]" if self.engine.config.shadow_mode else ""
+        logger.info(f"      ✓ Sandbox ready (suspicious≥40 isolation≥70){_shadow}")
 
         logger.info("\n" + "=" * 80)
         logger.info("  System Ready — All Components Online")

@@ -60,6 +60,15 @@ class Config:
     log_level: str = "INFO"
     data_dir: Path = field(default_factory=lambda: Path.home() / ".network_guardian")
 
+    # Shadow / Learning Mode
+    # When True, all enforcement actions (block verdicts, TCP severance, IPS
+    # blocks triggered by the sandbox) are suppressed.  Detections are still
+    # scored, logged, and published on the event bus so operators can observe
+    # baseline behaviour before activating strict inline blocking.
+    # Set via YAML key ``shadow_mode: true`` or env var
+    # ``NETWORK_GUARDIAN_SHADOW_MODE=1``.
+    shadow_mode: bool = False
+
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
         """Load configuration from a YAML file, falling back to defaults.
@@ -85,6 +94,10 @@ class Config:
         if env_data:
             cfg.data_dir = Path(env_data)
 
+        env_shadow = os.environ.get("NETWORK_GUARDIAN_SHADOW_MODE")
+        if env_shadow and env_shadow.lower() in ("1", "true", "yes"):
+            cfg.shadow_mode = True
+
         return cfg
 
 
@@ -94,6 +107,8 @@ def _apply_dict(cfg: Config, raw: dict[str, Any]) -> Config:
         cfg.log_level = str(raw["log_level"])
     if "data_dir" in raw:
         cfg.data_dir = Path(raw["data_dir"])
+    if "shadow_mode" in raw:
+        cfg.shadow_mode = bool(raw["shadow_mode"])
 
     _apply_section(cfg.scan, raw.get("scan"))
     _apply_section(cfg.monitor, raw.get("monitor"))

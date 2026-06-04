@@ -202,8 +202,13 @@ class DualPassEvaluator:
         await evaluator.stop()
     """
 
-    def __init__(self, event_bus: "EventBus | None" = None) -> None:
+    def __init__(
+        self,
+        event_bus: "EventBus | None" = None,
+        shadow_mode: bool = False,
+    ) -> None:
         self._event_bus = event_bus
+        self._shadow_mode = shadow_mode
         self._running = False
 
         self._pre_queue:  asyncio.Queue[EvaluationContext] = asyncio.Queue(maxsize=500)
@@ -230,7 +235,13 @@ class DualPassEvaluator:
         self._post_queue = asyncio.Queue(maxsize=500)
         self._pre_worker_task  = asyncio.create_task(self._worker_pre(),  name="eval-pre")
         self._post_worker_task = asyncio.create_task(self._worker_post(), name="eval-post")
-        logger.info("[DualPassEval] Started — pre-worker and post-worker online")
+        if self._shadow_mode:
+            logger.warning(
+                "[DualPassEval] Started in SHADOW MODE — block verdicts will be "
+                "downgraded to 'flag' (observe only, no enforcement)"
+            )
+        else:
+            logger.info("[DualPassEval] Started — pre-worker and post-worker online")
 
     async def stop(self) -> None:
         self._running = False
@@ -468,6 +479,12 @@ class DualPassEvaluator:
 
     def _decide_action(self, score: float) -> str:
         if score >= BLOCK_THRESHOLD:
+            if self._shadow_mode:
+                logger.warning(
+                    "[DualPassEval][SHADOW] Score %.1f would block — downgraded to 'flag' "
+                    "(shadow mode active)", score
+                )
+                return "flag"
             return "block"
         if score >= FLAG_THRESHOLD:
             return "flag"
@@ -507,6 +524,7 @@ class DualPassEvaluator:
     def get_stats(self) -> dict[str, Any]:
         return {
             "running": self._running,
+            "shadow_mode": self._shadow_mode,
             "pre_queue_depth":  self._pre_queue.qsize(),
             "post_queue_depth": self._post_queue.qsize(),
             "pre_total":    self._pre_total,

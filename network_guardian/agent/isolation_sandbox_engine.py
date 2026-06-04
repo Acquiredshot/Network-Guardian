@@ -226,9 +226,11 @@ class IsolationSandboxEngine:
         self,
         ips: "IntrusionPreventionSystem | None" = None,
         event_bus: "EventBus | None" = None,
+        shadow_mode: bool = False,
     ) -> None:
         self._ips = ips
         self._event_bus = event_bus
+        self._shadow_mode = shadow_mode
         self._running = False
 
         self._sessions: dict[str, SessionRecord] = {}        # session_id → record
@@ -252,8 +254,16 @@ class IsolationSandboxEngine:
         if self._event_bus:
             await self._subscribe_events()
         self._prune_task = asyncio.create_task(self._prune_loop(), name="sandbox-prune")
-        logger.info("[IsolationSandbox] Started — suspicious=%.0f isolation=%.0f thresholds",
-                    SUSPICIOUS_THRESHOLD, ISOLATION_THRESHOLD)
+        if self._shadow_mode:
+            logger.warning(
+                "[IsolationSandbox] Started in SHADOW MODE — suspicious=%.0f isolation=%.0f "
+                "thresholds (TCP sever and IPS block suppressed; publishes "
+                "sandbox.shadow.would_isolate instead)",
+                SUSPICIOUS_THRESHOLD, ISOLATION_THRESHOLD,
+            )
+        else:
+            logger.info("[IsolationSandbox] Started — suspicious=%.0f isolation=%.0f thresholds",
+                        SUSPICIOUS_THRESHOLD, ISOLATION_THRESHOLD)
 
     async def stop(self) -> None:
         self._running = False
@@ -324,7 +334,10 @@ class IsolationSandboxEngine:
         if effective >= ISOLATION_THRESHOLD and record.status not in (
             SessionStatus.ISOLATED, SessionStatus.RELEASED
         ):
-            await self._isolate_session(record, trigger_event=event_summary)
+            if self._shadow_mode:
+                await self._shadow_would_isolate(record, trigger_event=event_summary)
+            else:
+                await self._isolate_session(record, trigger_event=event_summary)
 
         elif effective >= SUSPICIOUS_THRESHOLD and record.status == SessionStatus.ACTIVE:
             record.status = SessionStatus.SUSPICIOUS
@@ -411,6 +424,28 @@ class IsolationSandboxEngine:
             "[IsolationSandbox] Session %s ISOLATED. Block=%s Forensics=%s",
             record.session_id, block_result, record.forensic_path or "N/A",
         )
+
+    async def _shadow_would_isolate(
+        self, record: SessionRecord, trigger_event: str
+    ) -> None:
+        """Shadow-mode stub: log and publish without taking any blocking action."""
+        effective = record.effective_score()
+        logger.warning(
+            "[IsolationSandbox][SHADOW] Session %s (%s) WOULD BE ISOLATED — "
+            "score=%.1f trigger='%s' (shadow mode active — no enforcement)",
+            record.session_id, record.source_ip, effective, trigger_event,
+        )
+        if self._event_bus:
+            await self._event_bus.publish(Event(
+                topic="sandbox.shadow.would_isolate",
+                data={
+                    "session_id": record.session_id,
+                    "source_ip": record.source_ip,
+                    "effective_score": round(effective, 2),
+                    "trigger_event": trigger_event,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            ))
 
     async def _sever_connection(self, source_ip: str, threat_score: float) -> str:
         """Block the source IP via IPS to sever the TCP session."""
