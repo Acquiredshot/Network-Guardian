@@ -4,6 +4,67 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v35] — 2026-06-04
+
+### Added
+
+#### UEBA — Per-Device Behavioral Baseline (Feature 1)
+
+- **`network_guardian/ai/device_baseline.py`** — NEW:
+  - Per-device persistent behavioral baseline engine. Each IP builds its own rolling Isolation Forest, isolated from fleet-wide averages — no shared signal contamination between devices.
+  - `DeviceBaseline(device_id, window_size=200, min_samples=30)` — single-device rolling window with personal Isolation Forest.
+  - `observe(features)` — returns `None` during warm-up (< 30 samples), then scores against the device's personal baseline; model refits every 10 observations.
+  - `DeviceBaselineManager` — multi-device orchestrator; creates a `DeviceBaseline` on first contact per IP and delegates all scoring to it.
+  - Persistence: baselines saved to `~/.network_guardian/baselines/<sanitized_ip>.json` and fully restored on init (non-fatal on error).
+  - Integrated into `Engine` as lazy singleton property `engine.device_baseline_manager`.
+
+- **`DeviceBaselineNode`** — NEW (in `network_guardian/ai/nodes.py`):
+  - Subscribes to `sensor.metrics`, `monitor.metric_recorded`, and `ids.alert` bus events.
+  - Extracts `device_id` + numeric feature vectors from each event type.
+  - Publishes `ai.device_baseline_alert` when a device's observed behavior deviates from its personal baseline.
+  - Added to `NodeGraph.create_default()` — node graph now contains 6 nodes (was 4).
+
+#### UEBA — Lateral Movement Detection (Feature 2)
+
+- **`network_guardian/ai/lateral_movement.py`** — NEW:
+  - Detects ransomware propagation, worm spread, and internal reconnaissance by tracking unique destination fan-out per source IP across rolling 5-minute time windows.
+  - `LateralMovementDetector(window_seconds=300, spike_z_threshold=3.0, spike_absolute_threshold=20)`:
+    - Raises `LateralMovementAlert` when a device's fan-out spikes ≥ 3 standard deviations above its rolling per-source baseline.
+    - Absolute threshold (≥ 20 unique destinations in one window) fires on brand-new devices with no history.
+    - Per-source history deques (`max_history=50`) accumulate fan-out counts across windows for z-score calculation.
+  - `LateralMovementAlert` dataclass: `src_ip`, `current_fanout`, `baseline_mean`, `baseline_std`, `z_score`, `is_alert`, `window_seconds`, `dst_ips`, `timestamp`; `.as_dict()` serialization.
+  - Persistence: fan-out history saved to `~/.network_guardian/lateral_movement.json` and restored on init.
+  - Integrated into `Engine` as lazy singleton property `engine.lateral_movement_detector`.
+
+- **`LateralMovementNode`** — NEW (in `network_guardian/ai/nodes.py`):
+  - Subscribes to `ids.alert` bus events.
+  - Extracts `source_ip` → `destination_ip` connection pairs from each IDS alert.
+  - Publishes `ai.lateral_movement_alert` when fan-out spike is detected for a source.
+  - Added to `NodeGraph.create_default()` alongside `DeviceBaselineNode`.
+
+#### Engine Updates
+
+- **`network_guardian/core/engine.py`** — Updated:
+  - Lazy `engine.device_baseline_manager` property → `DeviceBaselineManager(data_dir=config.data_dir / "baselines")`.
+  - Lazy `engine.lateral_movement_detector` property → `LateralMovementDetector(data_dir=config.data_dir)`.
+  - Both auto-initialize on first access with zero startup cost when unused.
+
+#### Test Coverage
+
+- **`tests/test_ueba.py`** — NEW (36 tests, all passing):
+  - `TestDeviceBaseline` (7): warm-up behavior, fitting, normal/anomaly scoring, stats, persistence roundtrip, observation count.
+  - `TestDeviceBaselineManager` (7): creation, warm-up, scoring, multi-device independence, stats, save/reload, graceful bad-dir handling.
+  - `TestLateralMovementDetector` (9): no-alert-without-baseline, absolute threshold, normal fanout, spike alert, z-score validity, alert fields, stats, save/reload, window roll.
+  - `TestDeviceBaselineNode` (6): start/manager creation, missing features ignored, metric event processing, IDS alert processing, publishes on anomaly, skips unknown src.
+  - `TestLateralMovementNode` (4): start/detector creation, ignores missing dst, publishes on spike, no alert for normal traffic.
+  - `TestNodeGraphIntegration` (3): default graph contains new nodes, starts/stops, engine lazy properties.
+
+### Fixed
+
+- **`tests/test_step4.py`** — Updated hardcoded node count assertions from `== 4` to `== 6` to reflect the two new UEBA nodes added to `NodeGraph.create_default()`.
+
+---
+
 ## [v34] — 2026-06-04
 
 ### Added

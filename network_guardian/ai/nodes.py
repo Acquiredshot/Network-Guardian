@@ -334,6 +334,152 @@ class TaskRecommendationNode(AINode):
 
 
 # ---------------------------------------------------------------------------
+# DeviceBaselineNode — per-device persistent behavioral baselines
+# ---------------------------------------------------------------------------
+
+
+class DeviceBaselineNode(AINode):
+    """Scores each device's current metrics against its own rolling baseline.
+
+    Subscribes to metric and IDS events.  Publishes to
+    ``ai.device_baseline_alert`` whenever a device deviates from its
+    personal baseline (not the fleet average).
+    """
+
+    name = "device_baseline_node"
+
+    def __init__(self, event_bus: EventBus, **kwargs: Any) -> None:
+        super().__init__(
+            event_bus,
+            input_topics=[
+                "sensor.metrics",
+                "monitor.metric_recorded",
+                "ids.alert",
+            ],
+            output_topics=["ai.device_baseline_alert"],
+            **kwargs,
+        )
+        self._manager = None
+
+    async def start(self) -> None:
+        from network_guardian.ai.device_baseline import DeviceBaselineManager
+        self._manager = DeviceBaselineManager()
+        await super().start()
+
+    async def process(self, event: Event) -> None:
+        device_id, features = self._extract(event)
+        if not device_id or not features:
+            return
+
+        result = self._manager.observe(device_id, features)
+        if result is None:
+            return  # still warming up
+
+        if result.is_anomaly:
+            await self.publish("ai.device_baseline_alert", {
+                "device_id": device_id,
+                "anomaly_score": result.score,
+                "method": result.method,
+                "source_topic": event.topic,
+                "details": result.details,
+            })
+
+    @staticmethod
+    def _extract(event: Event) -> tuple[str, list[float]]:
+        """Pull (device_id, feature_vector) out of the event payload."""
+        data = event.data
+
+        # IDS alert: use source_ip as device_id, connection/port features
+        if event.topic == "ids.alert":
+            alert = data.get("alert", {})
+            src = alert.get("source_ip", "")
+            if not src or src == "unknown":
+                return "", []
+            # Feature: [severity_num, has_dst_ip, src_port, dst_port]
+            sev_map = {"low": 1.0, "medium": 2.0, "high": 3.0, "critical": 4.0}
+            sev = sev_map.get(alert.get("severity", ""), 1.0)
+            has_dst = 1.0 if alert.get("destination_ip") else 0.0
+            src_port = float(alert.get("source_port", 0))
+            dst_port = float(alert.get("destination_port", 0))
+            return src, [sev, has_dst, src_port, dst_port]
+
+        # Metric event: use host/device field + numeric values
+        host = (
+            data.get("host")
+            or data.get("device_id")
+            or data.get("source_ip")
+            or ""
+        )
+        if not host:
+            return "", []
+
+        raw_features = data.get("features") or data.get("values")
+        if raw_features is None:
+            # Try to pull named numeric fields
+            raw_features = [
+                v for v in data.values()
+                if isinstance(v, (int, float)) and not isinstance(v, bool)
+            ]
+        if not raw_features:
+            return "", []
+
+        try:
+            features = [float(x) for x in raw_features]
+        except (TypeError, ValueError):
+            return "", []
+
+        return host, features
+
+
+# ---------------------------------------------------------------------------
+# LateralMovementNode — connection fan-out spike detection
+# ---------------------------------------------------------------------------
+
+
+class LateralMovementNode(AINode):
+    """Detects lateral movement (ransomware, worms, recon) via fan-out spikes.
+
+    Observes every ``ids.alert`` event's ``source_ip → destination_ip`` pair.
+    When a source IP's unique destination count spikes above its baseline,
+    publishes a ``ai.lateral_movement_alert``.
+    """
+
+    name = "lateral_movement_node"
+
+    def __init__(self, event_bus: EventBus, **kwargs: Any) -> None:
+        super().__init__(
+            event_bus,
+            input_topics=["ids.alert"],
+            output_topics=["ai.lateral_movement_alert"],
+            **kwargs,
+        )
+        self._detector = None
+
+    async def start(self) -> None:
+        from network_guardian.ai.lateral_movement import LateralMovementDetector
+        self._detector = LateralMovementDetector()
+        await super().start()
+
+    async def process(self, event: Event) -> None:
+        alert = event.data.get("alert", {})
+        src_ip = alert.get("source_ip", "")
+        dst_ip = alert.get("destination_ip", "")
+
+        if not src_ip or src_ip == "unknown" or not dst_ip:
+            return
+
+        result = self._detector.observe_connection(src_ip, dst_ip)
+        if result is None or not result.is_alert:
+            return
+
+        await self.publish("ai.lateral_movement_alert", result.as_dict())
+        logger.warning(
+            "LateralMovementNode: ALERT src=%s fanout=%d z=%.1f",
+            src_ip, result.current_fanout, result.z_score,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Node Graph — manages a full compute-graph lifecycle
 # ---------------------------------------------------------------------------
 
@@ -395,4 +541,6 @@ class NodeGraph:
         graph.add_node(ForecastNode(event_bus))
         graph.add_node(AuditAnalysisNode(event_bus))
         graph.add_node(TaskRecommendationNode(event_bus))
+        graph.add_node(DeviceBaselineNode(event_bus))
+        graph.add_node(LateralMovementNode(event_bus))
         return graph

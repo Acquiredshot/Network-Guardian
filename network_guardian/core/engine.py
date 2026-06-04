@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from network_guardian.ai.nlp import NLPEngine
     from network_guardian.ai.nodes import NodeGraph
     from network_guardian.ai.training import TrainingPipeline
+    from network_guardian.ai.device_baseline import DeviceBaselineManager
+    from network_guardian.ai.lateral_movement import LateralMovementDetector
     from network_guardian.auditor import Auditor
     from network_guardian.automator import Automator
     from network_guardian.cloaking import IPCloakingSystem, WiFiStealthSystem
@@ -83,6 +85,8 @@ class Engine:
         self._mcp_parser: MCPProtocolParser | None = None
         self._dual_pass_evaluator: DualPassEvaluator | None = None
         self._isolation_sandbox: IsolationSandboxEngine | None = None
+        self._device_baseline_manager: DeviceBaselineManager | None = None
+        self._lateral_movement_detector: LateralMovementDetector | None = None
 
         self._running = False
 
@@ -304,6 +308,26 @@ class Engine:
                 event_bus=self.event_bus,
             )
         return self._isolation_sandbox
+
+    @property
+    def device_baseline_manager(self) -> "DeviceBaselineManager":
+        """Per-device persistent behavioral baseline manager."""
+        if self._device_baseline_manager is None:
+            from network_guardian.ai.device_baseline import DeviceBaselineManager
+            self._device_baseline_manager = DeviceBaselineManager(
+                data_dir=self.config.data_dir / "baselines"
+            )
+        return self._device_baseline_manager
+
+    @property
+    def lateral_movement_detector(self) -> "LateralMovementDetector":
+        """Connection fan-out lateral movement detector."""
+        if self._lateral_movement_detector is None:
+            from network_guardian.ai.lateral_movement import LateralMovementDetector
+            self._lateral_movement_detector = LateralMovementDetector(
+                data_dir=self.config.data_dir
+            )
+        return self._lateral_movement_detector
 
     # -- Lifecycle -------------------------------------------------------
 

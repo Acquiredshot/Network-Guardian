@@ -295,3 +295,27 @@ Ensure probe has write access to:
 - [ ] Integration with CVE databases (NVD, CISA)
 - [ ] Vulnerability assessment to recommend patches
 - [ ] Patch effectiveness metrics and reporting
+- [ ] UEBA-driven patch recommendations — surface targeted hardening fixes when a device's behavioral baseline flags persistent anomaly patterns
+
+---
+
+## Version History
+
+### v35 — 2026-06-04
+
+**UEBA: Per-Device Behavioral Baseline + Lateral Movement Detection**
+
+- Added `DeviceBaselineManager` — per-IP rolling Isolation Forest baseline. Each device warms up independently (30 samples), then scores all future observations against its own personal model. Baselines persist across restarts under `~/.network_guardian/baselines/`.
+- Added `LateralMovementDetector` — rolling 5-minute window fan-out tracker per source IP. Raises alerts when a device's unique destination count spikes ≥ 3σ above its historical baseline or crosses an absolute threshold of 20 destinations. History persists under `~/.network_guardian/lateral_movement.json`.
+- Both detectors wired into the AI node graph as `DeviceBaselineNode` and `LateralMovementNode`; publish `ai.device_baseline_alert` and `ai.lateral_movement_alert` events to the engine bus.
+- Engine exposes `engine.device_baseline_manager` and `engine.lateral_movement_detector` as lazy properties.
+- 36 new tests added in `tests/test_ueba.py` — full suite now 591 passed, 0 failed.
+
+### v34 — 2026-06-04
+
+**Semantic Threat Detection: MCP Parser + Dual-Pass Evaluator + Isolation Sandbox**
+
+- Added MCP/API Protocol Parser — semantic-layer threat detection for JSON-RPC 2.0, MCP, GraphQL, and multi-agent protocol streams.
+- Added Dual-Pass Evaluation Pipeline — async pre/post verification workers that screen AI context before injection and after response generation.
+- Added Isolation & Sandboxing Engine — per-session threat score aggregation with time-decay; severs TCP session and generates honeypot response on isolation.
+- Full system expanded from 6 to 9 components in `run_full_system.py`.

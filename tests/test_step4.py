@@ -239,11 +239,13 @@ class TestNodeGraph:
     async def test_create_default_graph(self):
         bus = EventBus()
         graph = NodeGraph.create_default(bus)
-        assert len(graph.node_names) == 4
+        assert len(graph.node_names) == 6
         assert "anomaly_detection_node" in graph.node_names
         assert "forecast_node" in graph.node_names
         assert "audit_analysis_node" in graph.node_names
         assert "task_recommendation_node" in graph.node_names
+        assert "device_baseline_node" in graph.node_names
+        assert "lateral_movement_node" in graph.node_names
 
     @pytest.mark.asyncio
     async def test_start_stop_all(self):
@@ -428,7 +430,7 @@ class TestEngineIntegration:
     async def test_engine_node_graph_property(self):
         engine = Engine()
         graph = engine.node_graph
-        assert len(graph.node_names) == 4
+        assert len(graph.node_names) == 6
 
     @pytest.mark.asyncio
     async def test_engine_training_property(self):

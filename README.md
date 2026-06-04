@@ -22,6 +22,8 @@
 | **Threat Reports** | Automatic `ThreatReport` generated on every threat with full CVSS-style scoring, explanations, and recommended response steps |
 | **Incident Reports** | Auto-generated Markdown incident reports saved to `incident_reports/` on every detection event |
 | **ML / AI Engine** | Isolation Forest, One-Class SVM, ARIMA/Holt-Winters forecasting, ROS-style AI node graph, NLP parsing |
+| **Per-Device Behavioral Baseline (UEBA)** | **v35: NEW** — Each IP builds its own rolling Isolation Forest (30-sample warm-up, 200-sample window). Flags deviations from a device's *personal* baseline rather than fleet-wide averages. Persists baselines to `~/.network_guardian/baselines/`. Wired into the node graph as `DeviceBaselineNode`; publishes `ai.device_baseline_alert` events. |
+| **Lateral Movement Detection (UEBA)** | **v35: NEW** — Tracks unique destination fan-out per source IP in rolling 5-minute windows. Raises `ai.lateral_movement_alert` when fan-out spikes ≥ 3σ above per-source baseline OR hits the absolute threshold of 20 unique destinations. Catches ransomware propagation, worm spread, and internal recon in real time. History persisted to `~/.network_guardian/lateral_movement.json`. |
 | **Remote Control** | WhatsApp, SMS (Twilio), Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
 | **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection page, Reports, and Incidents pages |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
@@ -64,7 +66,7 @@
 ```bash
 pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
-python run_full_system.py                          # full 9-component system (v33: MCP parser + dual-pass eval + sandbox)
+python run_full_system.py                          # full 9-component system (v35: +UEBA per-device baselines + lateral movement detection)
 python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
 $env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
 PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
