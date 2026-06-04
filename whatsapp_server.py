@@ -50,7 +50,7 @@ and routes them through the Network Guardian engine.
   TWILIO_WHATSAPP_FROM   Sandbox number (default: whatsapp:+14155238886)
   WEBHOOK_SECRET         Optional HMAC secret for webhook verification
   ALLOWED_NUMBERS        Comma-separated phone numbers to allow (e.g. +12025551234)
-  HOST                   Bind address (default: 0.0.0.0)
+  HOST                   Bind address (default: 127.0.0.1)
   PORT                   Bind port (default: 8765)
 """
 

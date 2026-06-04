@@ -22,7 +22,7 @@ async def main() -> None:
 
     import os
     dash = engine.dashboard
-    dash.host = "0.0.0.0"
+    dash.host = os.environ.get("HOST", "127.0.0.1")
     dash.port = int(os.environ.get("PORT", 8080))
     await dash.start()
 

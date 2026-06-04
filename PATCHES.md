@@ -309,6 +309,14 @@ Ensure probe has write access to:
 
 ## Version History
 
+### v38 — 2026-06-04
+
+**Security: Close Remaining 0.0.0.0 Bindings**
+
+- `_start_dashboard.py`: Removed hardcoded `dash.host = "0.0.0.0"` — now reads `HOST` env var, defaulting to `127.0.0.1`. Dashboard no longer exposes port 8080 on all interfaces by default.
+- `network_guardian/__main__.py`: Changed `--dashboard-host` CLI default from `"0.0.0.0"` → `"127.0.0.1"`. Help text updated to clarify remote-access opt-in.
+- `whatsapp_server.py`: Fixed stale docstring that still advertised `HOST` default as `0.0.0.0` (already changed in v37).
+
 ### v37 — 2026-06-04
 
 **Security: Port & Attack Surface Hardening**

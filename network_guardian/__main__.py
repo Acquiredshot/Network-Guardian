@@ -64,8 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dashboard-host",
         type=str,
-        default="0.0.0.0",
-        help="Host/IP for the dashboard to bind to (default: 0.0.0.0 = all interfaces)",
+        default="127.0.0.1",
+        help="Host/IP for the dashboard to bind to (default: 127.0.0.1; use 0.0.0.0 for remote access)",
     )
     parser.add_argument(
         "--dashboard-port",
