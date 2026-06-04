@@ -309,6 +309,16 @@ Ensure probe has write access to:
 
 ## Version History
 
+### v37 — 2026-06-04
+
+**Security: Port & Attack Surface Hardening**
+
+- `probe_router.py`: Removed hardcoded router password and serial — now loaded from `ROUTER_PASSWORD` / `ROUTER_SERIAL` env vars with startup guard. Removed `ssl.CERT_NONE` + `check_hostname = False` from both SSL contexts (MITM-safe by default).
+- `whatsapp_server.py`: Added Twilio HMAC-SHA256 webhook signature verification in `do_POST` (was unenforced). Changed default bind from `0.0.0.0` → `127.0.0.1`. Added `X-Content-Type-Options`, `X-Frame-Options`, `Cache-Control: no-store` headers. Added 16 KB body cap.
+- Dashboard `RATE_LIMIT_MAX` lowered 10,000 → 200 requests/60s per IP.
+- Dashboard CSP extended with `font-src fonts.googleapis.com fonts.gstatic.com` and `img-src 'self' data:`.
+- Full test suite: 597 passed, 0 failed (pre-existing unrelated failures unchanged).
+
 ### v36 — 2026-06-04
 
 **Global Shadow / Learning Mode**

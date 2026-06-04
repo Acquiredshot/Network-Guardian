@@ -92,7 +92,7 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "network-guardian-test")
 ALLOWED_NUMBERS = [
     n.strip() for n in os.environ.get("ALLOWED_NUMBERS", "").split(",") if n.strip()
 ]
-HOST = os.environ.get("HOST", "0.0.0.0")
+HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8765"))
 
 # ── Engine setup ──────────────────────────────────────────────────
@@ -174,7 +174,27 @@ class WhatsAppWebhookHandler(BaseHTTPRequestHandler):
 
         # Read and parse the POST body
         content_length = int(self.headers.get("Content-Length", 0))
-        raw_body = self.rfile.read(content_length).decode("utf-8")
+        if content_length > 16384:  # 16 KB max
+            self._respond(413, "text/plain", "Payload Too Large")
+            return
+        raw_body = self.rfile.read(content_length).decode("utf-8", errors="replace")
+
+        # Verify Twilio webhook signature (HMAC-SHA256) before processing
+        twilio_sig = self.headers.get("X-Twilio-Signature", "")
+        if WEBHOOK_SECRET and WEBHOOK_SECRET != "network-guardian-test":
+            if not whatsapp.verify_webhook(raw_body, twilio_sig):
+                logger.warning(
+                    "Rejected webhook with invalid Twilio signature from %s",
+                    self.client_address[0],
+                )
+                self._respond(403, "text/plain", "Forbidden")
+                return
+        elif not twilio_sig:
+            # No secret configured and no signature — allow only in local/test mode
+            logger.warning(
+                "Webhook signature not verified (WEBHOOK_SECRET not set or is default). "
+                "Configure a strong WEBHOOK_SECRET in production."
+            )
 
         # Parse URL-encoded form data (Twilio sends application/x-www-form-urlencoded)
         form_data = {}
@@ -188,7 +208,7 @@ class WhatsAppWebhookHandler(BaseHTTPRequestHandler):
         # Process through the WhatsApp channel
         try:
             twiml_response = run_async(whatsapp.handle_webhook(form_data))
-        except Exception as e:
+        except Exception:
             logger.exception("Error processing message")
             twiml_response = (
                 "<Response><Message>Internal error. Please try again.</Message></Response>"
@@ -204,6 +224,10 @@ class WhatsAppWebhookHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         encoded = body.encode("utf-8")
         self.send_header("Content-Length", str(len(encoded)))
+        # Security headers
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(encoded)
 

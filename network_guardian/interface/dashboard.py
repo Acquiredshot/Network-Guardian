@@ -369,7 +369,7 @@ class Dashboard:
     REQUEST_TIMEOUT = 10.0
     # Security: rate-limit window (seconds) and max requests per IP
     RATE_LIMIT_WINDOW = 60.0
-    RATE_LIMIT_MAX = 10000
+    RATE_LIMIT_MAX = 200
 
     # CSP nonce is regenerated each startup
     _csp_nonce: str = ""
@@ -1922,7 +1922,8 @@ class Dashboard:
             f"Content-Security-Policy: default-src 'self'; "
             f"script-src 'nonce-{cls._csp_nonce}'; "
             f"style-src 'self' 'unsafe-inline'; "
-            f"img-src 'self'; connect-src 'self'\r\n"
+            f"font-src fonts.googleapis.com fonts.gstatic.com; "
+            f"img-src 'self' data:; connect-src 'self'\r\n"
         )
         return (
             f"HTTP/1.1 {status} {reason}\r\n"

@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v37] — 2026-06-04
+
+### Security — Port & Attack Surface Hardening
+
+#### Critical Fixes
+
+- **`probe_router.py`** — Removed hardcoded router credentials (`password`, `serial`) and disabled-TLS flags:
+  - Router IP, password, and serial now loaded from `ROUTER_IP`, `ROUTER_PASSWORD`, and `ROUTER_SERIAL` environment variables.
+  - Process raises `RuntimeError` at startup if `ROUTER_PASSWORD` is unset — no silent insecure fallback.
+  - Removed `ctx.check_hostname = False` and `ctx.verify_mode = ssl.CERT_NONE` from both SSL contexts; `ssl.create_default_context()` now verifies certificates by default (prevents MITM).
+  - Same fix applied to the second SSL context block in the file (lines ~168-169).
+
+- **`whatsapp_server.py`** — Twilio webhook signature not being verified:
+  - `do_POST` now calls `whatsapp.verify_webhook(raw_body, X-Twilio-Signature)` before any processing.
+  - Unauthenticated POST requests return HTTP 403 immediately.
+  - Added 16 KB request body cap to prevent oversized payloads.
+  - Warning logged when `WEBHOOK_SECRET` is default/unset so operators know to configure it.
+
+#### High Fixes
+
+- **`whatsapp_server.py`** — Default bind address changed from `0.0.0.0` to `127.0.0.1`:
+  - Server no longer listens on all interfaces by default.
+  - Override with `HOST=0.0.0.0` env var when a public-facing tunnel (e.g. cloudflared) is required.
+  - Security response headers added to all responses: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`.
+
+- **`network_guardian/interface/dashboard.py`** — Rate limiter threshold reduced:
+  - `RATE_LIMIT_MAX` lowered from 10,000 to **200 requests per 60-second window** per IP.
+  - The previous value was effectively no protection against automated scanning or credential stuffing.
+
+- **`network_guardian/interface/dashboard.py`** — CSP `font-src` directive added:
+  - Dashboard loads Google Fonts via `<link>` from `fonts.googleapis.com` and `fonts.gstatic.com`.
+  - Previous CSP `default-src 'self'` caused fonts to be blocked by strict CSP enforcement in hardened browsers. Added `font-src fonts.googleapis.com fonts.gstatic.com` to the policy.
+  - `img-src` updated to allow `data:` URIs (used by inline favicon/icon patterns).
+
+---
+
 ## [v36] — 2026-06-04
 
 ### Added

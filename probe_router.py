@@ -10,14 +10,20 @@ import re
 import time
 from base64 import b64encode
 
-ip = "192.168.1.1"
-password = "Family10130120"
-serial = "6YN3477TD0A60"
+import os
+
+ip = os.environ.get("ROUTER_IP", "192.168.1.1")
+password = os.environ.get("ROUTER_PASSWORD", "")
+if not password:
+    raise RuntimeError(
+        "ROUTER_PASSWORD environment variable is required. "
+        "Set it before running this script."
+    )
+serial = os.environ.get("ROUTER_SERIAL", "")
 creds = b64encode(f"admin:{password}".encode()).decode()
 
 ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
+# SSL certificate verification is enabled by default via create_default_context()
 
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(
@@ -160,13 +166,17 @@ import time
 from base64 import b64encode
 from urllib.parse import urlencode
 
-ip = "192.168.1.1"
-password = "Family10130120"
+ip = os.environ.get("ROUTER_IP", "192.168.1.1")
+password = os.environ.get("ROUTER_PASSWORD", "")
+if not password:
+    raise RuntimeError(
+        "ROUTER_PASSWORD environment variable is required. "
+        "Set it before running this script."
+    )
 creds = b64encode(f"admin:{password}".encode()).decode()
 
 ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
+# SSL certificate verification is enabled by default via create_default_context()
 
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(
