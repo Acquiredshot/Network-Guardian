@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v39] — 2026-06-04
+
+### Stability — Smart Firewall Persistence & Runtime Hardening
+
+#### Fixed
+
+- **`network_guardian/agent/smart_firewall_agent.py`** — Replaced JSON history persistence with SQLite-backed incremental writes:
+  - Added `injection_history.db` storage (`detections` table + indexes) to avoid full-file rewrites on each detection.
+  - Preserved per-IP history cap (500 entries) with SQL pruning logic after inserts.
+  - Updated clear/false-positive flows to issue targeted SQL deletes.
+
+- **`network_guardian/agent/smart_firewall_agent.py`** — Prevented startup crashes in restricted environments:
+  - Added writable data-store fallback chain when default home path is not writable.
+  - Fallback order: configured/default path, `TMPDIR/network_guardian/smart_firewall`, then `cwd/.network_guardian/smart_firewall`.
+  - Eliminates `sqlite3.OperationalError: unable to open database file` under sandboxed test runners.
+
+- **`network_guardian/agent/smart_firewall_agent.py`** — Added stale request-tracker eviction:
+  - Periodic cleanup removes inactive IP entries from `_request_tracker`.
+  - Prevents unbounded in-memory growth during long-running scans or distributed probing.
+
+#### Validation
+
+- Targeted regression tests passed after patch:
+  - `tests/test_smart_firewall_fixes.py` + `tests/test_probe_bridge.py`: **18 passed**
+  - `tests/test_defensive_scanner.py` + `tests/test_payload_harvester.py`: **30 passed**
+  - Total targeted pass count: **48 passed, 0 failed**
+
 ## [v37] — 2026-06-04
 
 ### Security — Port & Attack Surface Hardening

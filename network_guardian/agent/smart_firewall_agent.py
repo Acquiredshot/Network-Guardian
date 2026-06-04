@@ -42,9 +42,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import html
-import json
 import logging
+import os
 import re
+import sqlite3
 import time
 import unicodedata
 import urllib.parse
@@ -539,9 +540,7 @@ class SmartFirewallAgent:
         self._probe_bridge = probe_bridge
         self._correlator = correlator
 
-        self._data_dir = data_dir or (Path.home() / ".network_guardian" / "smart_firewall")
-        self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._history_path = self._data_dir / "injection_history.json"
+        self._configure_data_store(data_dir)
 
         self._allowlist: set[str] = set(allowlist or [])
         self._allowlist.update({"127.0.0.1", "::1"})
@@ -884,7 +883,14 @@ class SmartFirewallAgent:
             self._ip_history.pop(ip, None)
         else:
             self._ip_history.clear()
-        self._persist_history()
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                if ip:
+                    conn.execute("DELETE FROM detections WHERE source_ip = ?", (ip,))
+                else:
+                    conn.execute("DELETE FROM detections")
+        except Exception as exc:
+            logger.error("SmartFirewallAgent: failed to clear history: %s", exc)
 
     def record_request(self, source_ip: str) -> bool:
         """Record any inbound request from *source_ip* (injection or clean).
@@ -991,7 +997,13 @@ class SmartFirewallAgent:
                 else:
                     del self._ip_history[ip]
         if found:
-            self._persist_history()
+            try:
+                with sqlite3.connect(self._db_path) as conn:
+                    conn.execute(
+                        "DELETE FROM detections WHERE detection_id = ?", (detection_id,)
+                    )
+            except Exception as exc:
+                logger.error("SmartFirewallAgent: failed to delete false positive: %s", exc)
         return found
 
     def add_rule(self, rule: InjectionRule) -> None:
@@ -1254,9 +1266,15 @@ class SmartFirewallAgent:
     # ------------------------------------------------------------------
 
     async def _loop(self) -> None:
+        _evict_every = 120.0  # seconds between request-tracker evictions
+        _last_evict = time.monotonic()
         while self._running:
             try:
                 await self.run_cycle()
+                now = time.monotonic()
+                if now - _last_evict >= _evict_every:
+                    self._evict_stale_trackers()
+                    _last_evict = now
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -1274,37 +1292,129 @@ class SmartFirewallAgent:
         return self._ESCALATION[idx]
 
     # ------------------------------------------------------------------
-    # Internal: persistence
+    # Internal: persistence (SQLite-backed)
     # ------------------------------------------------------------------
 
-    def _load_history(self) -> dict[str, list[dict]]:
-        if self._history_path.exists():
+    def _configure_data_store(self, data_dir: Path | None) -> None:
+        """Resolve a writable data directory and initialize the SQLite DB.
+
+        In restricted environments (sandboxed test runners), ``Path.home()``
+        may not be writable. We try a small fallback chain so the agent still
+        works in detection mode without crashing on startup.
+        """
+        preferred = data_dir or (Path.home() / ".network_guardian" / "smart_firewall")
+        fallbacks = [
+            preferred,
+            Path(os.environ.get("TMPDIR", ".")) / "network_guardian" / "smart_firewall",
+            Path.cwd() / ".network_guardian" / "smart_firewall",
+        ]
+
+        last_error: Exception | None = None
+        for candidate in fallbacks:
             try:
-                return json.loads(self._history_path.read_text())
-            except Exception:
-                pass
-        return {}
+                candidate.mkdir(parents=True, exist_ok=True)
+                self._data_dir = candidate
+                self._db_path = candidate / "injection_history.db"
+                self._init_db()
+                if candidate != preferred:
+                    logger.warning(
+                        "SmartFirewallAgent using fallback data directory: %s",
+                        candidate,
+                    )
+                return
+            except Exception as exc:
+                last_error = exc
+
+        raise RuntimeError(
+            "SmartFirewallAgent could not initialize writable data store"
+        ) from last_error
+
+    def _init_db(self) -> None:
+        """Create the SQLite schema if it does not already exist."""
+        with sqlite3.connect(self._db_path) as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS detections (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_ip       TEXT    NOT NULL,
+                    detection_id    TEXT    NOT NULL,
+                    injection_type  TEXT    NOT NULL,
+                    rule_name       TEXT    NOT NULL,
+                    severity        TEXT    NOT NULL,
+                    confidence      REAL    NOT NULL,
+                    payload_snippet TEXT    NOT NULL,
+                    action_taken    TEXT    NOT NULL DEFAULT '',
+                    block_duration  INTEGER,
+                    timestamp       TEXT    NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_det_source_ip ON detections(source_ip);
+                CREATE INDEX IF NOT EXISTS idx_det_timestamp  ON detections(timestamp);
+            """)
+
+    def _load_history(self) -> dict[str, list[dict]]:
+        result: dict[str, list[dict]] = {}
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                for row in conn.execute("SELECT * FROM detections ORDER BY id").fetchall():
+                    d = dict(row)
+                    d.pop("id", None)
+                    result.setdefault(d["source_ip"], []).append(d)
+        except Exception:
+            pass
+        return result
 
     def _persist_history(self) -> None:
-        try:
-            self._history_path.write_text(
-                json.dumps(self._ip_history, indent=2, default=str)
-            )
-        except Exception as exc:
-            logger.error("SmartFirewallAgent: failed to persist history: %s", exc)
+        """No-op — history is written incrementally to SQLite."""
 
     def _save_detections_to_history(self, detections: list[InjectionDetection]) -> None:
-        for det in detections:
-            if det.source_ip not in self._ip_history:
-                self._ip_history[det.source_ip] = []
-            self._ip_history[det.source_ip].append(det.to_dict())
-            # Cap history per IP at 500 entries
-            if len(self._ip_history[det.source_ip]) > 500:
-                self._ip_history[det.source_ip] = (
-                    self._ip_history[det.source_ip][-500:]
-                )
-        if detections:
-            self._persist_history()
+        if not detections:
+            return
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                for det in detections:
+                    d = det.to_dict()
+                    # Update in-memory cache
+                    self._ip_history.setdefault(det.source_ip, []).append(d)
+                    if len(self._ip_history[det.source_ip]) > 500:
+                        self._ip_history[det.source_ip] = (
+                            self._ip_history[det.source_ip][-500:]
+                        )
+                    # Insert into DB
+                    conn.execute(
+                        """INSERT INTO detections
+                           (source_ip, detection_id, injection_type, rule_name,
+                            severity, confidence, payload_snippet, action_taken,
+                            block_duration, timestamp)
+                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (d["source_ip"], d["detection_id"], d["injection_type"],
+                         d["rule_name"], d["severity"], d["confidence"],
+                         d["payload_snippet"], d.get("action_taken", ""),
+                         d.get("block_duration"), d["timestamp"]),
+                    )
+                    # Enforce 500-entry cap per IP in the DB
+                    conn.execute(
+                        """DELETE FROM detections WHERE source_ip = ? AND id NOT IN (
+                            SELECT id FROM detections WHERE source_ip = ?
+                            ORDER BY id DESC LIMIT 500
+                        )""",
+                        (det.source_ip, det.source_ip),
+                    )
+        except Exception as exc:
+            logger.error("SmartFirewallAgent: failed to save detections: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Internal: rate tracker maintenance
+    # ------------------------------------------------------------------
+
+    def _evict_stale_trackers(self) -> None:
+        """Remove IPs from the request tracker whose last activity is outside
+        the rate window, preventing unbounded memory growth."""
+        cutoff = time.monotonic() - self._rate_window_secs
+        stale = [ip for ip, q in self._request_tracker.items() if not q or q[-1] < cutoff]
+        for ip in stale:
+            del self._request_tracker[ip]
+        if stale:
+            logger.debug("[SmartFirewall] Evicted %d stale IPs from rate tracker", len(stale))
 
     def _update_reputation(self, ip: str, det: InjectionDetection) -> None:
         """Accumulate per-IP reputation threat score (0.0–100.0).

@@ -309,6 +309,16 @@ Ensure probe has write access to:
 
 ## Version History
 
+### v39 — 2026-06-04
+
+**Stability: Smart Firewall Persistence + Runtime Safety**
+
+- `network_guardian/agent/smart_firewall_agent.py`: Migrated offense history persistence from JSON file rewrites to SQLite (`injection_history.db`) with indexed `detections` table and incremental inserts.
+- `network_guardian/agent/smart_firewall_agent.py`: Added writable datastore fallback chain to prevent startup failures when home-directory writes are restricted (default path -> `TMPDIR` -> workspace-local fallback).
+- `network_guardian/agent/smart_firewall_agent.py`: Added periodic eviction of stale entries from request-rate tracker to prevent unbounded memory growth over long runtimes.
+- Updated clear-history and false-positive paths to issue targeted SQL deletes instead of rewriting full history blobs.
+- Validation: targeted regression suites passed — 48 total tests (`test_smart_firewall_fixes`, `test_probe_bridge`, `test_defensive_scanner`, `test_payload_harvester`) with 0 failures.
+
 ### v38 — 2026-06-04
 
 **Security: Close Remaining 0.0.0.0 Bindings**
