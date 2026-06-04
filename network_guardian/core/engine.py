@@ -26,6 +26,10 @@ if TYPE_CHECKING:
     from network_guardian.agent.payload_harvester import PayloadHarvester
     from network_guardian.agent.probe_defensive_scanner import ProbeDefensiveScanner
     from network_guardian.agent.probe_attack_correlator import ProbeAttackCorrelator
+    from network_guardian.agent.triage_agent import TriageAgent
+    from network_guardian.agent.mcp_protocol_parser import MCPProtocolParser
+    from network_guardian.agent.dual_pass_evaluator import DualPassEvaluator
+    from network_guardian.agent.isolation_sandbox_engine import IsolationSandboxEngine
     from network_guardian.ai import AIEngine
     from network_guardian.ai.nlp import NLPEngine
     from network_guardian.ai.nodes import NodeGraph
@@ -74,6 +78,11 @@ class Engine:
         self._payload_harvester: PayloadHarvester | None = None
         self._defensive_scanner: ProbeDefensiveScanner | None = None
         self._attack_correlator: ProbeAttackCorrelator | None = None
+        self._triage: TriageAgent | None = None
+
+        self._mcp_parser: MCPProtocolParser | None = None
+        self._dual_pass_evaluator: DualPassEvaluator | None = None
+        self._isolation_sandbox: IsolationSandboxEngine | None = None
 
         self._running = False
 
@@ -261,6 +270,41 @@ class Engine:
             self._remote = RemoteAccessManager(self)
         return self._remote
 
+    @property
+    def triage(self) -> "TriageAgent":
+        """Orchestration Central Brain — master coordinator for all sub-agents."""
+        if self._triage is None:
+            from network_guardian.agent.triage_agent import TriageAgent
+            self._triage = TriageAgent(self)
+        return self._triage
+
+    @property
+    def mcp_parser(self) -> "MCPProtocolParser":
+        """MCP/API Protocol Parser — decodes JSON-RPC, MCP, GraphQL, and multi-agent streams."""
+        if self._mcp_parser is None:
+            from network_guardian.agent.mcp_protocol_parser import MCPProtocolParser
+            self._mcp_parser = MCPProtocolParser(event_bus=self.event_bus)
+        return self._mcp_parser
+
+    @property
+    def dual_pass_evaluator(self) -> "DualPassEvaluator":
+        """Dual-Pass Evaluation Pipeline — async pre/post context injection verification."""
+        if self._dual_pass_evaluator is None:
+            from network_guardian.agent.dual_pass_evaluator import DualPassEvaluator
+            self._dual_pass_evaluator = DualPassEvaluator(event_bus=self.event_bus)
+        return self._dual_pass_evaluator
+
+    @property
+    def isolation_sandbox(self) -> "IsolationSandboxEngine":
+        """Isolation & Sandboxing Engine — threshold-based TCP session severance and honeypot."""
+        if self._isolation_sandbox is None:
+            from network_guardian.agent.isolation_sandbox_engine import IsolationSandboxEngine
+            self._isolation_sandbox = IsolationSandboxEngine(
+                ips=self.ips,
+                event_bus=self.event_bus,
+            )
+        return self._isolation_sandbox
+
     # -- Lifecycle -------------------------------------------------------
 
     async def start(self) -> None:
@@ -272,6 +316,12 @@ class Engine:
             await self._node_graph.start_all()
         # Auto-start the Smart Firewall injection agent
         self.smart_firewall.start()
+        # Auto-start the Triage Agent (Orchestration Central Brain)
+        self.triage.start()
+        # Auto-start semantic stream analysis and sandboxing pipeline
+        self.mcp_parser.start()
+        await self.dual_pass_evaluator.start()
+        await self.isolation_sandbox.start()
         self._running = True
         logger.info("Engine started. Data directory: %s", self.config.data_dir)
 
@@ -279,6 +329,14 @@ class Engine:
         """Gracefully stop all subsystems."""
         logger.info("Engine shutting down...")
         self._running = False
+        if self._isolation_sandbox is not None:
+            await self._isolation_sandbox.stop()
+        if self._dual_pass_evaluator is not None:
+            await self._dual_pass_evaluator.stop()
+        if self._mcp_parser is not None:
+            self._mcp_parser.stop()
+        if self._triage is not None:
+            await self._triage.stop()
         if self._smart_firewall is not None:
             self._smart_firewall.stop()
         if self._web_browsing is not None:

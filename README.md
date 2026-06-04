@@ -30,6 +30,9 @@
 | **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports, history persistence, dashboard event bus integration |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management; runs the same Engine as the web dashboard |
 | **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), confidence aggregation across overlapping rules, IP escalation (1h → 6h → permanent), event-bus driven, wired into IPS for instant IP blocking. **v30: NEW** — Integrated with Probe for threat intelligence feedback, payload harvesting, defensive scanning, and attack correlation (see below) |
+| **MCP/API Protocol Parser** | **v33: NEW** — Semantic-layer threat detection for structured AI protocol streams. Decodes JSON-RPC 2.0, MCP (tool_calls/RAG/context_injection), GraphQL, and multi-agent payloads. Detects prompt injection, tool abuse, introspection probes, context poisoning, schema exfiltration, and malformed envelopes. Publishes threat events to the engine bus. |
+| **Dual-Pass Evaluation Pipeline** | **v33: NEW** — Non-blocking async verification array with independent pre/post workers. Pass 1 (INPUT) screens content before context injection; Pass 2 (OUTPUT) screens AI responses before re-injection. Score thresholds: allow (<25), flag (25–59), block (≥60). Zero latency impact — both passes run from `asyncio.Queue` workers. |
+| **Isolation & Sandboxing Engine** | **v33: NEW** — Aggregates per-session threat scores from MCP Parser, Dual-Pass Evaluator, IDS, and Firewall with time-decay (halves every 5 min). On isolation (score ≥ 70): severs TCP session via IPS, generates convincing honeypot response to poison attacker tooling, writes forensic log. Session lifecycle: ACTIVE → SUSPICIOUS (≥40) → ISOLATED (≥70) → RELEASED. |
 | **Patch & Fix Delivery** | **v31:** Centralized patch management system. Delivers security recommendations, system hardening fixes, and vulnerability patches to remote probes. RESTful API (`/api/patches`) serves fixes by severity (critical/high/medium/low). Includes CVE tracking, auto-generated remediation commands, and deployment status tracking. Probes fetch patches via `fetch_patches.py` script with configurable update intervals. |
 | **Email Protection** | IMAP email scanner — **v2 now includes OpenRouter AI (gpt-oss-120b)** for per-email threat classification (phishing / CEO fraud / invoice scam / malware / spam / clean) + confidence scoring, **SQLite logging** for persistent result archival, **triple-layer defense** (SpamAssassin spam scoring + ClamAV malware + AI behaviour analysis) |
 | **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, auto-respond toggle, payload analyser, blocked-IP management, real-time block/unblock; runs the same Engine as the web dashboard. v29: blocked-IPs panel + auto-respond toggle + live ips.block/ips.unblock event sync |
@@ -61,7 +64,8 @@
 ```bash
 pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
-python _start_dashboard.py                         # web dashboard (default port 8080; set PORT env var to override)
+python run_full_system.py                          # full 9-component system (v33: MCP parser + dual-pass eval + sandbox)
+python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
 $env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
 PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
 python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)

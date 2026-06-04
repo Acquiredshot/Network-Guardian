@@ -76,6 +76,18 @@ class FullSystemCoordinator:
         scanner = self.engine.defensive_scanner
         logger.info(f"      ✓ Scanner ready")
 
+        logger.info("[7/9] Initializing MCP/API Protocol Parser...")
+        _ = self.engine.mcp_parser
+        logger.info(f"      ✓ MCP parser ready (JSON-RPC / MCP / GraphQL / multi-agent)")
+
+        logger.info("[8/9] Initializing Dual-Pass Evaluation Pipeline...")
+        _ = self.engine.dual_pass_evaluator
+        logger.info(f"      ✓ Dual-pass evaluator ready (pre + post workers)")
+
+        logger.info("[9/9] Initializing Isolation & Sandboxing Engine...")
+        _ = self.engine.isolation_sandbox
+        logger.info(f"      ✓ Sandbox ready (suspicious≥40 isolation≥70)")
+
         logger.info("\n" + "=" * 80)
         logger.info("  System Ready — All Components Online")
         logger.info("=" * 80)
@@ -101,17 +113,27 @@ class FullSystemCoordinator:
 
             # Log cycle status periodically
             if self._cycle_count % 12 == 0:  # Every 60 seconds
-                fw_stats = self.engine.smart_firewall.get_stats()
+                fw_stats   = self.engine.smart_firewall.get_stats()
                 corr_stats = len(self.engine.attack_correlator._correlations)
                 harv_stats = len(self.engine.payload_harvester._harvested_rules)
                 disc_stats = len(self.engine.probe_bridge._discovered_services)
+                mcp_stats  = self.engine.mcp_parser.get_stats()
+                eval_stats = self.engine.dual_pass_evaluator.get_stats()
+                sb_stats   = self.engine.isolation_sandbox.get_stats()
 
                 logger.info(
                     f"[Cycle {self._cycle_count}] FW: {fw_stats['unique_attackers']} attackers, "
                     f"{fw_stats['total_scanned']} events | "
-                    f"Correlations: {corr_stats} | "
-                    f"Rules: {harv_stats} | "
+                    f"Correlations: {corr_stats} | Rules: {harv_stats} | "
                     f"Discoveries: {disc_stats}"
+                )
+                logger.info(
+                    f"[Cycle {self._cycle_count}] MCP: {mcp_stats['total_parsed']} parsed, "
+                    f"{mcp_stats['total_threats']} threats, {mcp_stats['total_blocked']} blocked | "
+                    f"Eval pre:{eval_stats['pre_total']}/post:{eval_stats['post_total']} "
+                    f"(blocked {eval_stats['pre_blocked']+eval_stats['post_blocked']}) | "
+                    f"Sandbox: {sb_stats['active_sessions']} sessions, "
+                    f"{sb_stats['total_isolated']} isolated"
                 )
 
             await asyncio.sleep(5)
@@ -143,10 +165,14 @@ async def main():
     """Main entry point."""
     coordinator = FullSystemCoordinator()
 
-    # Set up signal handlers
+    # Set up signal handlers (loop.add_signal_handler not supported on Windows)
     loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(coordinator.shutdown()))
+    if sys.platform != "win32":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(coordinator.shutdown()))
+    else:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, lambda s, f: asyncio.create_task(coordinator.shutdown()))
 
     try:
         # Initialize

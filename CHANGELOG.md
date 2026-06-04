@@ -4,6 +4,88 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v34] — 2026-06-04
+
+### Added
+
+#### Semantic Layer Threat Detection — MCP/API Protocol Parser
+
+- **`network_guardian/agent/mcp_protocol_parser.py`** — NEW:
+  - Operates at the *semantic* layer above the SmartFirewallAgent, fully structuring protocol envelopes before evaluating each field for threat content.
+  - Supported envelope types: **JSON-RPC 2.0**, **MCP** (role/content/tool_calls/tool_results/context_injection/rag_blocks), **GraphQL** (query/mutation/subscription/introspection), **Multi-agent** (tool_execution/agent_handoff/memory_write/retrieval_augmentation).
+  - Threat detection categories: `prompt_injection`, `tool_abuse`, `introspection_probe`, `context_poisoning`, `oversized_payload`, `schema_exfiltration`, `method_enumeration`, `malformed_envelope`.
+  - Publishes `mcp.parser.threat`, `mcp.parser.parsed`, and `mcp.parser.malformed` events to the engine event bus.
+  - Integrated into `Engine` as lazy singleton property `engine.mcp_parser`.
+  - Initialized as step [7/9] in `run_full_system.py`.
+
+#### Dual-Pass Evaluation Pipeline
+
+- **`network_guardian/agent/dual_pass_evaluator.py`** — NEW:
+  - Non-blocking async verification array that reviews AI context content across two independent passes before context injection occurs.
+  - **Pass 1 — Pre-execution (INPUT):** Evaluates system prompts, tool definitions, RAG context blocks, and user-supplied messages before injection. Detects prompt injection, instruction overrides, dangerous tool definitions, and oversized context.
+  - **Pass 2 — Post-execution (OUTPUT):** Evaluates tool responses, RAG-retrieved blocks, and assistant turns before they are fed into the next context window. Detects data exfiltration, recursive instruction following, PII leakage, and malicious code.
+  - Score thresholds: `allow` (<25), `flag` (25–59), `block` (≥60).
+  - Both passes run as persistent async workers consuming from independent `asyncio.Queue`s — submissions are non-blocking.
+  - Publishes `eval.pipeline.flagged`, `eval.pipeline.blocked`, and `eval.pipeline.result` events.
+  - Integrated into `Engine` as lazy singleton property `engine.dual_pass_evaluator`.
+  - Initialized as step [8/9] in `run_full_system.py`.
+
+#### Isolation & Sandboxing Engine
+
+- **`network_guardian/agent/isolation_sandbox_engine.py`** — NEW:
+  - Aggregates per-session threat scores from MCP Parser, Dual-Pass Evaluator, IDS alerts, and SmartFirewall injection events with time-decay (scores halve every 5 minutes).
+  - Session lifecycle: `ACTIVE` → `SUSPICIOUS` (score ≥ 40) → `ISOLATED` (score ≥ 70) → `RELEASED`.
+  - On isolation: severs TCP session via IPS IP block, generates a convincing synthetic honeypot response, and writes a forensic log entry.
+  - Subscribes to: `mcp.parser.threat`, `eval.pipeline.flagged`, `eval.pipeline.blocked`, `ids.alert`, `firewall.injection.blocked`.
+  - Publishes: `sandbox.session.suspicious`, `sandbox.session.isolated`, `sandbox.session.released`, `sandbox.forensic.written`.
+  - Integrated into `Engine` as lazy singleton property `engine.isolation_sandbox`.
+  - Initialized as step [9/9] in `run_full_system.py`.
+
+#### Full System Coordinator Expanded
+
+- **`run_full_system.py`** — Updated initialization sequence from 6 to 9 steps:
+  - [7/9] MCP/API Protocol Parser
+  - [8/9] Dual-Pass Evaluation Pipeline
+  - [9/9] Isolation & Sandboxing Engine
+- Coordinator loop now reports MCP, evaluator, and sandbox stats in addition to firewall/correlation/discovery metrics.
+- Final state persistence on shutdown includes all new component data paths.
+
+### Fixed
+
+#### Windows Signal Handler Crash on Startup
+- **Problem**: `run_full_system.py` crashed immediately on Windows with `NotImplementedError`.
+- **Root cause**: `asyncio.AbstractEventLoop.add_signal_handler()` is not implemented on Windows.
+- **Solution**: Added `sys.platform` check — uses `loop.add_signal_handler` on Unix/macOS and `signal.signal` on Windows.
+- **Impact**: `run_full_system.py` starts cleanly on all platforms.
+- **File**: `run_full_system.py`
+
+#### IsolationSandboxEngine Event Subscription TypeError
+- **Problem**: Two tests (`TestEngine.test_start_stop`, `TestEngineIntegration.test_engine_start_stop_with_nodes`) failed with `TypeError: object NoneType can't be used in 'await' expression`.
+- **Root cause**: `isolation_sandbox_engine.py::_subscribe_events()` was calling `await eb.subscribe(...)` but `EventBus.subscribe()` is a synchronous method returning `None`.
+- **Solution**: Removed `await` from all 5 `subscribe()` calls in `_subscribe_events()`.
+- **Impact**: Engine startup succeeds; all 555 tests now pass (was 553/555).
+- **File**: `network_guardian/agent/isolation_sandbox_engine.py`
+
+### Test Results
+
+| Run | Passed | Failed | Total |
+|---|---|---|---|
+| Before fix | 553 | 2 | 555 |
+| After fix | **555** | **0** | 555 |
+
+### Documentation
+
+- **Updated:** `CHANGELOG.md` — This entry
+- **Updated:** `README.md` — Added MCP Protocol Parser, Dual-Pass Evaluator, and Isolation Sandbox to capabilities table; updated Quick Start with `run_full_system.py`
+
+### Version
+- **Semantic Version:** 0.2.2
+- **Release Date:** June 4, 2026
+- **Features Added:** 3 (MCP parser, dual-pass evaluator, isolation sandbox)
+- **Bugs Fixed:** 2 (Windows signal handler, sandbox event subscription)
+
+---
+
 ## [v33] — 2026-05-29
 
 ### Fixed

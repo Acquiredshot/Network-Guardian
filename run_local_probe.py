@@ -22,7 +22,8 @@ logger = logging.getLogger("local_probe")
 
 def run_local_probe():
     """Run probe with local configuration, restarting if it crashes."""
-    base_url = "http://127.0.0.1:8080"
+    port = os.environ.get("PORT", "8080")
+    base_url = f"http://127.0.0.1:{port}"
     interval = 30  # Report every 30 seconds
 
     # Load the actual fleet key from fleet.json (required for signature verification)
