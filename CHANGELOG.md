@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v36] — 2026-06-04
+
+### Added
+
+#### Global Shadow / Learning Mode — Risk-2 False-Positive Mitigation
+
+- **`network_guardian/config/__init__.py`** — Updated:
+  - New `Config.shadow_mode: bool` field (default `False`).
+  - Loaded from YAML key `shadow_mode: true` via `Config.load()`.
+  - Overridable at runtime via env var `NETWORK_GUARDIAN_SHADOW_MODE=1` (also accepts `true` / `yes`).
+  - `_apply_dict()` updated to propagate the flag from YAML into the dataclass.
+
+- **`network_guardian/agent/dual_pass_evaluator.py`** — Updated:
+  - `DualPassEvaluator(shadow_mode=False)` — new constructor parameter.
+  - In shadow mode, `_decide_action()` downgrades any `block` verdict (score ≥ 60) to `flag` — content is logged and published on `eval.pipeline.flagged` but never rejected.
+  - `flag` tier (score 25–59) fires identically in both modes; all telemetry events still publish.
+  - Startup log warns clearly when shadow mode is active.
+  - `get_stats()` now includes `shadow_mode` key.
+
+- **`network_guardian/agent/isolation_sandbox_engine.py`** — Updated:
+  - `IsolationSandboxEngine(shadow_mode=False)` — new constructor parameter.
+  - In shadow mode, when a session crosses `ISOLATION_THRESHOLD` (70), the engine skips the IPS block call and TCP sever entirely and instead publishes `sandbox.shadow.would_isolate` with full score, trigger event, session ID, and timestamp.
+  - `SUSPICIOUS` tier (score ≥ 40) fires and publishes `sandbox.session.suspicious` identically in both modes — operators always see the escalation signal.
+  - Startup log warns clearly when shadow mode is active.
+  - New private method `_shadow_would_isolate()` handles the observe-only code path.
+
+- **`network_guardian/core/engine.py`** — Updated:
+  - `engine.dual_pass_evaluator` property threads `config.shadow_mode` into `DualPassEvaluator` at instantiation.
+  - `engine.isolation_sandbox` property threads `config.shadow_mode` into `IsolationSandboxEngine` at instantiation.
+
+- **`run_full_system.py`** — Updated:
+  - Startup log appends `[SHADOW MODE — observe only]` to the sandbox ready line when `config.shadow_mode` is `True`.
+
+#### Test Coverage
+
+- **`tests/test_shadow_mode.py`** — NEW (16 tests, all passing):
+  - `TestConfigShadowMode` (6): default False, YAML true/false, env var `1`, env var `true`, env var absent.
+  - `TestDualPassEvaluatorShadowMode` (3): block downgraded to flag; enforcement still blocks; flag tier unaffected.
+  - `TestIsolationSandboxShadowMode` (4): would_isolate published / isolated suppressed; enforcement calls IPS; suspicious tier fires in both modes; would_isolate event field completeness.
+  - `TestEngineShadowModeIntegration` (3): evaluator gets shadow_mode, sandbox gets shadow_mode, default engine is enforcement mode.
+
+---
+
 ## [v35] — 2026-06-04
 
 ### Added

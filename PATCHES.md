@@ -309,6 +309,16 @@ Ensure probe has write access to:
 
 ## Version History
 
+### v36 — 2026-06-04
+
+**Global Shadow / Learning Mode**
+
+- Added `Config.shadow_mode` — single boolean that puts the entire enforcement layer into observe-only mode. Set via `shadow_mode: true` in YAML or `NETWORK_GUARDIAN_SHADOW_MODE=1` env var.
+- `DualPassEvaluator` in shadow mode: all `block` verdicts (score ≥ 60) downgraded to `flag` — detection still scored, logged, and published on the event bus, but no content is ever rejected.
+- `IsolationSandboxEngine` in shadow mode: sessions that cross the isolation threshold (score ≥ 70) publish `sandbox.shadow.would_isolate` instead of triggering TCP sever and IPS block. `SUSPICIOUS` tier (≥ 40) fires in both modes.
+- Engine threads `config.shadow_mode` into both components at init time — one config flag covers the entire enforcement stack.
+- 16 new tests in `tests/test_shadow_mode.py` — full suite now 607 passed, 0 failed.
+
 ### v35 — 2026-06-04
 
 **UEBA: Per-Device Behavioral Baseline + Lateral Movement Detection**
