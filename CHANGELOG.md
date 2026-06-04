@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v40] — 2026-06-04
+
+### Added — Windows Security Posture Auditor (Read-Only)
+
+- **`Invoke-SecurityPosture.ps1`** — New standalone PowerShell 5.1+ audit script for host security posture assessment:
+  - Strictly read-only behavior (assessment only; no system mutation).
+  - Registry-based weighted check runner with per-check isolation so one failing check cannot crash the run.
+  - Built-in scoring model with letter grade output (`A`–`F`) and pass/warn/fail weighting.
+  - Optional self-contained HTML export via `-Html` argument.
+  - Console filtering support via `-MinSeverity` (`Pass`/`Warn`/`Fail`).
+
+- **`README.md`** — Quick Start updated with `pwsh ./Invoke-SecurityPosture.ps1` command for discoverability.
+
+### Fixed
+
+- **`Invoke-SecurityPosture.ps1`** — Corrected grade computation logic to return a single grade value (previous conditional switch expression could produce a multi-value output).
+
+### Validation
+
+- PowerShell smoke execution completed successfully (script runs end-to-end without crashing; unsupported platform checks degrade to `Unknown` as designed).
+- Python regression suites passed after integration changes:
+  - `tests/test_core.py` + `tests/test_security_systems.py`: **76 passed**
+
 ## [v39] — 2026-06-04
 
 ### Stability — Smart Firewall Persistence & Runtime Hardening

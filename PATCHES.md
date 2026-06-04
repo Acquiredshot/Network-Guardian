@@ -309,6 +309,17 @@ Ensure probe has write access to:
 
 ## Version History
 
+### v40 — 2026-06-04
+
+**Feature: Read-Only Windows Security Posture Auditor**
+
+- Added `Invoke-SecurityPosture.ps1` (PowerShell 5.1+), a standalone read-only security posture auditor.
+- Implemented weighted, isolated check registry model so individual check failures are contained and reported as `Unknown` without aborting the full run.
+- Added optional HTML report export (`-Html`) and console severity filter (`-MinSeverity`).
+- Fixed score grading output to reliably emit a single letter grade (`A`–`F`).
+- Updated `README.md` Quick Start with `pwsh ./Invoke-SecurityPosture.ps1` usage.
+- Validation: PowerShell smoke run completed cleanly and Python regression tests passed (`test_core.py` + `test_security_systems.py`: 76 passed, 0 failed).
+
 ### v39 — 2026-06-04
 
 **Stability: Smart Firewall Persistence + Runtime Safety**

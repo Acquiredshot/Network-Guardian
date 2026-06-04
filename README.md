@@ -70,6 +70,7 @@ python run_full_system.py                          # full 9-component system (v3
 python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
 $env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
 PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
+pwsh ./Invoke-SecurityPosture.ps1                  # Windows read-only posture audit (PowerShell 5.1+)
 python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)
 python password_manager.py                         # credential vault + team user management CLI
 python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
@@ -77,6 +78,21 @@ python -m network_guardian.agent.email_react_agent # autonomous email ReAct agen
 python -m network_guardian.agent.smart_firewall_agent  # standalone injection scanner CLI
 python -m network_guardian.agent.web_browsing_agent    # Safe Web Browsing Agent CLI
 python run_web_browsing_tests.py                       # interactive TUI test monitor (Textual)
+```
+
+---
+
+## Windows Security Posture Auditor (Read-Only)
+
+`Invoke-SecurityPosture.ps1` provides a standalone Windows host posture audit with weighted checks, resilient per-check isolation, and optional HTML export. It does not modify system state.
+
+Examples:
+
+```powershell
+pwsh ./Invoke-SecurityPosture.ps1
+pwsh ./Invoke-SecurityPosture.ps1 -MinSeverity Warn
+pwsh ./Invoke-SecurityPosture.ps1 -Html
+pwsh ./Invoke-SecurityPosture.ps1 -Html "C:\Reports\SecurityPosture.html" -MinSeverity Warn
 ```
 
 ---
