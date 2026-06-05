@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 
 from network_guardian.config import Config
 from network_guardian.core.engine import Engine
 from network_guardian.interface import InteractiveCLI
+from network_guardian.saas import SaaSService
 from network_guardian.utils.logging import setup_logging
 
 
@@ -83,6 +85,15 @@ async def async_main(args: argparse.Namespace) -> int:
         config.log_level = args.log_level
 
     setup_logging(config.log_level)
+
+    if config.saas.mode == "saas":
+        service = SaaSService(
+            config,
+            host=os.environ.get("HOST", args.dashboard_host),
+            port=int(os.environ.get("PORT", args.dashboard_port)),
+        )
+        await service.run_forever()
+        return 0
 
     engine = Engine(config)
     await engine.start()

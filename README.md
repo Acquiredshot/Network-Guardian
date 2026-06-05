@@ -1,6 +1,6 @@
 # Network Guardian
 
-> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, and a live web dashboard. Pure Python 3.11, zero heavy ML deps.
+> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.11, zero heavy ML deps.
 
 **Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (credentials provided separately)
 
@@ -26,6 +26,7 @@
 | **Lateral Movement Detection (UEBA)** | **v35: NEW** — Tracks unique destination fan-out per source IP in rolling 5-minute windows. Raises `ai.lateral_movement_alert` when fan-out spikes ≥ 3σ above per-source baseline OR hits the absolute threshold of 20 unique destinations. Catches ransomware propagation, worm spread, and internal recon in real time. History persisted to `~/.network_guardian/lateral_movement.json`. |
 | **Remote Control** | WhatsApp, SMS (Twilio), Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
 | **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection page, Reports, and Incidents pages |
+| **SaaS Control Plane** | Multi-tenant auth, organizations, memberships, API keys, fleet ingest API, hosted tenant app (`/` + `/app`), and billing checkout/portal/webhook flow. SQLite and PostgreSQL backends supported via migration-driven store. |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
 | **Password Manager** | CLI credential vault (`password_vault.json`) + team user management — PBKDF2-HMAC-SHA256, atomic persistence, integrated with `TeamStore` |
 | **Email Protection** | IMAP email scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop, event bus integration |
@@ -68,6 +69,10 @@ pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
 python run_full_system.py                          # full 9-component system (v35: +UEBA per-device baselines + lateral movement detection)
 python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
+NG_MODE=saas JWT_SECRET=dev-secret STRIPE_WEBHOOK_SECRET=whsec_local python _start_dashboard.py
+python scripts/validate_saas_stack.py --mode sqlite
+# PostgreSQL mode requires a running Postgres instance
+python scripts/validate_saas_stack.py --mode postgres --postgres-url postgresql://127.0.0.1:55432/postgres
 $env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
 PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
 pwsh ./Invoke-SecurityPosture.ps1                  # Windows read-only posture audit (PowerShell 5.1+)
@@ -79,6 +84,28 @@ python -m network_guardian.agent.smart_firewall_agent  # standalone injection sc
 python -m network_guardian.agent.web_browsing_agent    # Safe Web Browsing Agent CLI
 python run_web_browsing_tests.py                       # interactive TUI test monitor (Textual)
 ```
+
+---
+
+## SaaS Mode (Phase 1)
+
+SaaS mode is enabled with `NG_MODE=saas` and runs a multi-tenant service with the following API groups:
+
+- `POST /api/v1/auth/signup` and `POST /api/v1/auth/login`
+- `GET /api/v1/org`, `POST /api/v1/org/api-keys`
+- `POST /api/v1/fleet/register`, `POST /api/v1/fleet/report`, `GET /api/v1/fleet/agents`, `GET /api/v1/fleet/reports`
+- `POST /api/v1/billing/checkout-session`, `POST /api/v1/billing/portal-session`, `POST /api/v1/billing/webhook`
+
+Compatibility behavior for agents:
+
+- Legacy keys keep using `/api/fleet/*` with `X-Agent-Signature`
+- SaaS API keys auto-route to `/api/v1/fleet/*` with `X-API-Key`
+
+Data store support:
+
+- SQLite and PostgreSQL are both supported in `network_guardian.saas.store.SaaSStore`
+- SQL migrations are packaged under `network_guardian/saas/migrations/`
+- End-to-end validator script: `scripts/validate_saas_stack.py` (`sqlite`, `postgres`, `all` modes)
 
 ---
 

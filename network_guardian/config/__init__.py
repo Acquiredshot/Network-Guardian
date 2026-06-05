@@ -50,12 +50,31 @@ class SecurityConfig:
 
 
 @dataclass
+class SaaSConfig:
+    """SaaS platform settings."""
+
+    mode: str = "standalone"
+    database_url: str = ""
+    jwt_secret: str = ""
+    jwt_issuer: str = "network-guardian"
+    jwt_audience: str = "network-guardian-api"
+    access_token_ttl: int = 3600
+    app_base_url: str = "http://127.0.0.1:8080"
+    stripe_public_key: str = ""
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    billing_success_url: str = "http://127.0.0.1:8080/app?billing=success"
+    billing_cancel_url: str = "http://127.0.0.1:8080/app?billing=cancel"
+
+
+@dataclass
 class Config:
     """Root configuration for Network Guardian."""
 
     scan: ScanConfig = field(default_factory=ScanConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    saas: SaaSConfig = field(default_factory=SaaSConfig)
 
     log_level: str = "INFO"
     data_dir: Path = field(default_factory=lambda: Path.home() / ".network_guardian")
@@ -98,6 +117,54 @@ class Config:
         if env_shadow and env_shadow.lower() in ("1", "true", "yes"):
             cfg.shadow_mode = True
 
+        env_saas_mode = os.environ.get("NG_MODE")
+        if env_saas_mode:
+            cfg.saas.mode = env_saas_mode
+
+        env_database_url = os.environ.get("DATABASE_URL")
+        if env_database_url:
+            cfg.saas.database_url = env_database_url
+
+        env_jwt_secret = os.environ.get("JWT_SECRET")
+        if env_jwt_secret:
+            cfg.saas.jwt_secret = env_jwt_secret
+
+        env_jwt_issuer = os.environ.get("JWT_ISSUER")
+        if env_jwt_issuer:
+            cfg.saas.jwt_issuer = env_jwt_issuer
+
+        env_jwt_audience = os.environ.get("JWT_AUDIENCE")
+        if env_jwt_audience:
+            cfg.saas.jwt_audience = env_jwt_audience
+
+        env_access_ttl = os.environ.get("ACCESS_TOKEN_TTL")
+        if env_access_ttl:
+            cfg.saas.access_token_ttl = int(env_access_ttl)
+
+        env_app_base_url = os.environ.get("APP_BASE_URL")
+        if env_app_base_url:
+            cfg.saas.app_base_url = env_app_base_url
+
+        env_stripe_public = os.environ.get("STRIPE_PUBLIC_KEY")
+        if env_stripe_public:
+            cfg.saas.stripe_public_key = env_stripe_public
+
+        env_stripe_secret = os.environ.get("STRIPE_SECRET_KEY")
+        if env_stripe_secret:
+            cfg.saas.stripe_secret_key = env_stripe_secret
+
+        env_stripe_webhook = os.environ.get("STRIPE_WEBHOOK_SECRET")
+        if env_stripe_webhook:
+            cfg.saas.stripe_webhook_secret = env_stripe_webhook
+
+        env_billing_success = os.environ.get("BILLING_SUCCESS_URL")
+        if env_billing_success:
+            cfg.saas.billing_success_url = env_billing_success
+
+        env_billing_cancel = os.environ.get("BILLING_CANCEL_URL")
+        if env_billing_cancel:
+            cfg.saas.billing_cancel_url = env_billing_cancel
+
         return cfg
 
 
@@ -113,6 +180,7 @@ def _apply_dict(cfg: Config, raw: dict[str, Any]) -> Config:
     _apply_section(cfg.scan, raw.get("scan"))
     _apply_section(cfg.monitor, raw.get("monitor"))
     _apply_section(cfg.security, raw.get("security"))
+    _apply_section(cfg.saas, raw.get("saas"))
 
     return cfg
 

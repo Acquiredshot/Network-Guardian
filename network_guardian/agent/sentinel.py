@@ -22,15 +22,13 @@ The sentinel leaves itself behind on a network and keeps watch.
 
 Usage:
     python -m network_guardian.agent.sentinel \\
-        --base http://192.168.1.100:8080 --key <fleet-key>
+        --base http://192.168.1.100:8080 --key <fleet-key-or-saas-api-key>
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -985,16 +983,11 @@ class SentinelBot:
 
     def _send_report(self, report: dict) -> bool:
         """Send report to base station via the covert channel."""
-        url = f"{self._base_url}/api/fleet/report"
-        payload = json.dumps(report).encode()
-        sig = hmac.new(self._fleet_key.encode(), payload, hashlib.sha256).hexdigest()
+        from network_guardian.agent.probe import _fleet_endpoint, _fleet_headers
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-Agent-ID": self._agent_id,
-            "X-Agent-Signature": sig,
-            "X-Requested-With": "XMLHttpRequest",
-        }
+        url = _fleet_endpoint(self._base_url, "report", self._fleet_key)
+        payload = json.dumps(report).encode()
+        headers = _fleet_headers(payload, self._fleet_key, self._agent_id)
         ok, body = self._comms.post(url, headers, payload)
         if ok:
             return body.get("ok", False)
@@ -1084,7 +1077,7 @@ def main():
     parser.add_argument("--base", required=True,
                         help="Base station URL (e.g. http://192.168.1.100:8080)")
     parser.add_argument("--key", required=True,
-                        help="Fleet authentication key")
+                        help="Legacy fleet key or SaaS API key")
     parser.add_argument("--username", "-u",
                         help="Wolfpak username (or prompted interactively)")
     parser.add_argument("--password", "-p",

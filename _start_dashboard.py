@@ -11,12 +11,25 @@ sys.path.insert(0, ".")
 
 from network_guardian.config import Config
 from network_guardian.core.engine import Engine
+from network_guardian.saas import SaaSService
 from network_guardian.utils.logging import setup_logging
 
 
 async def main() -> None:
     config = Config.load(None)
     setup_logging("INFO")
+
+    if config.saas.mode == "saas":
+        import os
+
+        service = SaaSService(
+            config,
+            host=os.environ.get("HOST", "127.0.0.1"),
+            port=int(os.environ.get("PORT", 8080)),
+        )
+        await service.run_forever()
+        return
+
     engine = Engine(config)
     await engine.start()
 

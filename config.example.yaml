@@ -18,3 +18,17 @@ security:
   encrypt_reports: true
   max_login_attempts: 5
   session_timeout: 3600
+
+saas:
+  mode: standalone
+  database_url: "sqlite:///./network_guardian_saas.db"
+  jwt_secret: "change-me"
+  jwt_issuer: "network-guardian"
+  jwt_audience: "network-guardian-api"
+  access_token_ttl: 3600
+  app_base_url: "http://127.0.0.1:8080"
+  stripe_public_key: ""
+  stripe_secret_key: ""
+  stripe_webhook_secret: ""
+  billing_success_url: "http://127.0.0.1:8080/app?billing=success"
+  billing_cancel_url: "http://127.0.0.1:8080/app?billing=cancel"

@@ -55,6 +55,7 @@ Event bus interface
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import math
@@ -456,12 +457,14 @@ class IsolationSandboxEngine:
         try:
             duration = None  # permanent block for isolated sessions
             reason = f"Isolation Sandbox: threat score {threat_score:.1f} exceeded threshold"
-            self._ips.block_ip(
+            result = self._ips.block_ip(
                 ip=source_ip,
                 reason=reason,
                 severity="critical",
                 duration_seconds=duration,
             )
+            if inspect.isawaitable(result):
+                await result
             logger.info("[IsolationSandbox] IPS blocked %s (permanent)", source_ip)
             return "blocked_permanent"
         except Exception as exc:

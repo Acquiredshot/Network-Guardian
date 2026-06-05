@@ -70,6 +70,31 @@ _AUTH_FILE = "wolfpak_auth.json"
 _TOKEN_LIFETIME = 30 * 86400  # 30 days before re-auth required
 
 
+def _is_saas_api_key(agent_key: str) -> bool:
+    key = (agent_key or "").strip()
+    return key.startswith("ng_") and "." in key
+
+
+def _fleet_endpoint(base_url: str, route: str, agent_key: str) -> str:
+    root = base_url.rstrip("/")
+    if _is_saas_api_key(agent_key):
+        return f"{root}/api/v1/fleet/{route}"
+    return f"{root}/api/fleet/{route}"
+
+
+def _fleet_headers(payload: bytes, agent_key: str, agent_id: str) -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        "X-Agent-ID": agent_id,
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    if _is_saas_api_key(agent_key):
+        headers["X-API-Key"] = agent_key
+    else:
+        headers["X-Agent-Signature"] = _sign_payload(payload, agent_key)
+    return headers
+
+
 def _auth_path() -> Path:
     return _AGENT_DIR / _AUTH_FILE
 
@@ -111,6 +136,16 @@ def authenticate_agent(base_url: str, fleet_key: str,
     Returns auth dict with 'operator', 'agent_token', 'authenticated_at'.
     Raises SystemExit on failure.
     """
+    if _is_saas_api_key(fleet_key):
+        # SaaS mode authenticates the agent by API key instead of operator password.
+        return {
+            "operator": "saas-agent",
+            "agent_token": "",
+            "role": "agent",
+            "authenticated_at": int(time.time()),
+            "base_url": base_url,
+        }
+
     # Check cached token first
     cached = _load_auth_token()
     if cached:
@@ -908,20 +943,13 @@ def _sign_payload(payload: bytes, key: str) -> str:
 def phone_home(base_url: str, agent_key: str, report: AgentReport,
                comms: CovertComms | None = None) -> bool:
     """Send report to the base station via covert channel. Returns True on success."""
-    url = f"{base_url.rstrip('/')}/api/fleet/report"
+    url = _fleet_endpoint(base_url, "report", agent_key)
     c = comms or build_comms()
     # Embed covert status so base station can display opsec state per agent
     report_dict = report.to_dict()
     report_dict["covert_status"] = c.status()
     payload = json.dumps(report_dict).encode()
-    sig = _sign_payload(payload, agent_key)
-
-    headers = {
-        "Content-Type": "application/json",
-        "X-Agent-ID": report.agent_id,
-        "X-Agent-Signature": sig,
-        "X-Requested-With": "XMLHttpRequest",
-    }
+    headers = _fleet_headers(payload, agent_key, report.agent_id)
     c = comms or build_comms()
     ok, body = c.post(url, headers, payload)
     if ok:
@@ -945,18 +973,13 @@ def phone_home(base_url: str, agent_key: str, report: AgentReport,
 
 def register_with_base(base_url: str, agent_key: str, identity: AgentIdentity) -> bool:
     """Register this agent with the base station."""
-    url = f"{base_url.rstrip('/')}/api/fleet/register"
+    url = _fleet_endpoint(base_url, "register", agent_key)
     payload = json.dumps(asdict(identity)).encode()
-    sig = _sign_payload(payload, agent_key)
+    headers = _fleet_headers(payload, agent_key, identity.agent_id)
 
     req = urllib.request.Request(
         url, data=payload, method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-Agent-ID": identity.agent_id,
-            "X-Agent-Signature": sig,
-            "X-Requested-With": "XMLHttpRequest",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -1234,7 +1257,7 @@ def main():
     parser.add_argument("--base", required=False,
                         help="Base station URL — prefer NG_BASE env var to keep URL out of process list")
     parser.add_argument("--key", required=False,
-                        help="Agent authentication key — prefer NG_KEY env var")
+                        help="Legacy fleet key or SaaS API key — prefer NG_KEY env var")
     parser.add_argument("--interval", type=int, default=60,
                         help="Report interval in seconds (default: 60)")
     parser.add_argument("--no-discovery", action="store_true",

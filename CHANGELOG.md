@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v41] — 2026-06-05
+
+### Added — SaaS Platform Foundation and Validation Flow
+
+- Added SaaS runtime mode (`NG_MODE=saas`) wired through startup entry points to launch the SaaS control plane.
+- Added multi-tenant SaaS service endpoints for auth, organization, API keys, fleet ingest, billing checkout/portal, webhook processing, and hosted app pages.
+- Added migration-driven SaaS persistence with backend selection for SQLite and PostgreSQL.
+- Added one-command SaaS validation utility: `scripts/validate_saas_stack.py` (`sqlite`, `postgres`, `all`).
+- Added SaaS fleet compatibility path in agents:
+  - Legacy keys -> `/api/fleet/*` with `X-Agent-Signature`
+  - SaaS API keys -> `/api/v1/fleet/*` with `X-API-Key`
+
+### Fixed
+
+- `network_guardian/agent/isolation_sandbox_engine.py` now safely handles both sync and async `block_ip` implementations in `_sever_connection` by awaiting only when the return value is awaitable.
+- This removed the runtime warning triggered by async mocks in shadow-mode tests while keeping enforcement behavior unchanged.
+
+### Validation
+
+- `tests/test_shadow_mode.py`: **16 passed**
+- Full regression suite: **622 passed**
+- SaaS stack validator (sqlite mode): **passed**
+- SaaS stack validator (postgres mode): **passed**
+
+---
+
 ## [v40] — 2026-06-04
 
 ### Added — Windows Security Posture Auditor (Read-Only)

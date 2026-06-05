@@ -26,6 +26,7 @@ dependencies = [
     "requests>=2.32,<3",
     "beautifulsoup4>=4.12,<5",
     "lxml>=5.0",
+    "psycopg>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +56,9 @@ ng-status = "network_guardian.wolfpak.ng_status:main"
 
 [tool.setuptools.packages.find]
 include = ["network_guardian*"]
+
+[tool.setuptools.package-data]
+network_guardian = ["saas/migrations/*.sql"]
 
 [tool.ruff]
 target-version = "py311"
