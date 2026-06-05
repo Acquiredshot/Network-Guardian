@@ -184,6 +184,8 @@ Patches are stored locally at:
 
 | Date | Severity | Component | Description |
 |------|----------|-----------|-------------|
+| 2026-06-05 | HIGH | `_start_dashboard.py`, `network_guardian/__main__.py` | Fixed SaaS launcher bind behavior for Heroku by selecting `0.0.0.0` automatically when `DYNO` or `PORT` is present; removed the `os` shadowing import that crashed SaaS startup on Heroku. |
+| 2026-06-05 | MEDIUM | Heroku SaaS deployment validation | Verified the deployed SaaS app returns HTTP 200 on `/` and `/app` after the startup fixes; Heroku web dyno is now healthy. |
 | 2026-06-05 | HIGH | SaaS platform stack (`network_guardian/saas/*`, `config`, startup entry points, fleet agents) | Completed SaaS mode rollout: tenant auth/org/API keys, fleet v1 ingest, hosted app, billing checkout/portal/webhook, migration-driven SQLite/PostgreSQL store, and agent compatibility routing (legacy + SaaS). |
 | 2026-06-05 | MEDIUM | `scripts/validate_saas_stack.py` | Added one-command SaaS validator with sqlite/postgres/all modes covering signup, API key creation, fleet register/report, billing session, signed webhook replay, and org plan/status verification. |
 | 2026-06-05 | LOW | `network_guardian/agent/isolation_sandbox_engine.py` | Patched mixed sync/async boundary in `_sever_connection` to await awaitable `block_ip` results, eliminating runtime warnings in shadow-mode validation without changing enforcement semantics. |

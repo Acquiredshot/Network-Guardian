@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v42] — 2026-06-05
+
+### Fixed — Heroku SaaS Startup and Launch Hardening
+
+- `_start_dashboard.py` and `network_guardian/__main__.py` now choose a Heroku-safe bind address automatically for SaaS mode (`0.0.0.0` when `DYNO` or `PORT` is present, otherwise local loopback).
+- Removed the local `os` shadowing bug in `_start_dashboard.py` that caused SaaS startup to crash at runtime on Heroku.
+
+### Validation
+
+- GitHub push completed for the release commit.
+- Heroku deploy completed successfully and the web dyno is up.
+- Live SaaS routes validated with HTTP 200 responses on `/` and `/app`.
+
+---
+
 ## [v41] — 2026-06-05
 
 ### Added — SaaS Platform Foundation and Validation Flow
