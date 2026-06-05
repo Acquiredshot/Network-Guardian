@@ -4,6 +4,7 @@
 #!/usr/bin/env python3
 """Standalone dashboard launcher — no interactive CLI."""
 import asyncio
+import os
 import sys
 import signal
 
@@ -15,16 +16,21 @@ from network_guardian.saas import SaaSService
 from network_guardian.utils.logging import setup_logging
 
 
+def _saas_bind_host() -> str:
+    host = os.environ.get("HOST")
+    if host:
+        return host
+    return "0.0.0.0" if os.environ.get("DYNO") or os.environ.get("PORT") else "127.0.0.1"
+
+
 async def main() -> None:
     config = Config.load(None)
     setup_logging("INFO")
 
     if config.saas.mode == "saas":
-        import os
-
         service = SaaSService(
             config,
-            host=os.environ.get("HOST", "127.0.0.1"),
+            host=_saas_bind_host(),
             port=int(os.environ.get("PORT", 8080)),
         )
         await service.run_forever()

@@ -27,6 +27,13 @@ from network_guardian.saas import SaaSService
 from network_guardian.utils.logging import setup_logging
 
 
+def _saas_bind_host(default_host: str) -> str:
+    host = os.environ.get("HOST")
+    if host:
+        return host
+    return "0.0.0.0" if os.environ.get("DYNO") or os.environ.get("PORT") else default_host
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="network-guardian",
@@ -89,7 +96,7 @@ async def async_main(args: argparse.Namespace) -> int:
     if config.saas.mode == "saas":
         service = SaaSService(
             config,
-            host=os.environ.get("HOST", args.dashboard_host),
+            host=_saas_bind_host(args.dashboard_host),
             port=int(os.environ.get("PORT", args.dashboard_port)),
         )
         await service.run_forever()
