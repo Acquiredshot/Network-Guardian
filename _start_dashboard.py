@@ -39,7 +39,6 @@ async def main() -> None:
     engine = Engine(config)
     await engine.start()
 
-    import os
     dash = engine.dashboard
     dash.host = os.environ.get("HOST", "127.0.0.1")
     dash.port = int(os.environ.get("PORT", 8080))
