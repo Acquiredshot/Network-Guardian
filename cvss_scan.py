@@ -202,18 +202,39 @@ def scan_injection(src: str, lines: list[str], rel: str) -> None:
 
     # SQL injection patterns
     sql_patterns = [
-        (r'f["\'].*(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\b.*\{',
-         "SQL injection via f-string interpolation"),
-        (r'["\'].*(?:SELECT|INSERT|UPDATE|DELETE).*["\']\s*%\s*\(',
-         "SQL injection via %-formatting"),
-        (r'\.execute\(\s*f["\']',
-         "SQL injection via f-string in execute()"),
-        (r'\.execute\(\s*["\'].*\+',
-         "SQL injection via string concatenation in execute()"),
+        (
+            r'f["\'][^"\n]*(?:\bSELECT\b[^"\n]*\bFROM\b|\bINSERT\b[^"\n]*\bINTO\b|\bUPDATE\b[^"\n]*\bSET\b|\bDELETE\b[^"\n]*\bFROM\b|\bDROP\b[^"\n]*\bTABLE\b|\bCREATE\b[^"\n]*\bTABLE\b|\bALTER\b[^"\n]*\bTABLE\b)[^"\n]*\{',
+            "SQL injection via f-string interpolation",
+            True,
+        ),
+        (
+            r'["\'][^"\n]*(?:\bSELECT\b[^"\n]*\bFROM\b|\bINSERT\b[^"\n]*\bINTO\b|\bUPDATE\b[^"\n]*\bSET\b|\bDELETE\b[^"\n]*\bFROM\b)[^"\n]*["\']\s*%\s*\(',
+            "SQL injection via %-formatting",
+            True,
+        ),
+        (
+            r'\.execute\(\s*f["\']',
+            "SQL injection via f-string in execute()",
+            False,
+        ),
+        (
+            r'\.execute\(\s*["\'].*\+',
+            "SQL injection via string concatenation in execute()",
+            False,
+        ),
     ]
     for i, line in enumerate(lines, 1):
-        for pat, desc in sql_patterns:
+        for pat, desc, require_db_context in sql_patterns:
             if re.search(pat, line, re.IGNORECASE):
+                if require_db_context:
+                    ctx_start = max(0, i - 3)
+                    ctx_end = min(len(lines), i + 3)
+                    ctx = "\n".join(lines[ctx_start:ctx_end]).lower()
+                    db_markers = [
+                        ".execute(", "cursor", "sqlite", "sqlalchemy", "db.", "conn."
+                    ]
+                    if not any(marker in ctx for marker in db_markers):
+                        continue
                 _add(
                     f"Potential SQL Injection: {desc}",
                     "User-controlled input may be interpolated into SQL queries "

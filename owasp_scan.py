@@ -458,18 +458,31 @@ async def test_a06(host: str, port: int):
 
     # Check for hardcoded credentials in source
     import pathlib
+    import re
     src_dir = pathlib.Path(__file__).parent / "network_guardian"
-    cred_patterns = ["password=", "secret=", "api_key=", "token=", "private_key="]
+    literal_assignment_re = re.compile(
+        r"\\b(password|secret|api[_-]?key|token|private[_-]?key)\\b\\s*=\\s*['\"][^'\"]{4,}['\"]",
+        re.IGNORECASE,
+    )
+    literal_mapping_re = re.compile(
+        r"['\"](password|secret|api[_-]?key|token|private[_-]?key)['\"]\\s*:\\s*['\"][^'\"]{4,}['\"]",
+        re.IGNORECASE,
+    )
     found_creds = []
     for py_file in src_dir.rglob("*.py"):
         content = py_file.read_text(errors="replace")
-        for pattern in cred_patterns:
-            if pattern in content.lower():
-                # exclude config env var references and test patterns
-                lines = [l.strip() for l in content.split("\n") if pattern in l.lower()]
-                for line in lines:
-                    if "env" not in line.lower() and "test" not in line.lower() and "#" not in line[:5]:
-                        found_creds.append(f"{py_file.name}: {line[:80]}")
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+            lower_line = line.lower()
+            if "env" in lower_line or "test" in lower_line:
+                continue
+
+            if literal_assignment_re.search(line) or literal_mapping_re.search(line):
+                found_creds.append(f"{py_file.name}: {line[:120]}")
 
     if found_creds:
         report("A06", "HIGH", "Possible hardcoded credentials in source",

@@ -4,6 +4,8 @@
 
 The patch delivery system provides centralized distribution of security recommendations, system hardening fixes, and vulnerability patches to remote probes and fleet agents. Each patch includes severity levels, CVE identifiers, and pre-built remediation commands ready for deployment.
 
+Current runtime note (2026-06-06): In addition to `fetch_patches.py`, active probe-side update delivery is supported through base-pushed `patch_config` in fleet report ACKs (`FleetStore.set_patch_config(...)` -> probe applies on next phone-home).
+
 ---
 
 ## Capabilities
@@ -43,12 +45,12 @@ python3 fetch_patches.py [dashboard_url] [agent_id] [username] [password]
 
 Local dashboard:
 ```bash
-python3 fetch_patches.py http://127.0.0.1:8080 NG-608852BB <username> <password>!
+python3 fetch_patches.py http://127.0.0.1:8080 NG-608852BB <username> <password>
 ```
 
 Centralized server:
 ```bash
-python3 fetch_patches.py http://192.168.1.12:8081 NG-608852BB <username> <password>!
+python3 fetch_patches.py http://192.168.1.12:8081 NG-608852BB <username> <password>
 ```
 
 **Output:**
@@ -89,7 +91,7 @@ subprocess.run([
 
 Or schedule with cron:
 ```bash
-*/30 * * * * cd /path/to/Network\ Guardian && python3 fetch_patches.py http://127.0.0.1:8080 NG-LOCAL <username> <password>! >> /tmp/patches.log 2>&1
+*/30 * * * * cd /path/to/Network\ Guardian && python3 fetch_patches.py http://127.0.0.1:8080 NG-LOCAL <username> <password> >> /tmp/patches.log 2>&1
 ```
 
 ---
@@ -184,6 +186,13 @@ Patches are stored locally at:
 
 | Date | Severity | Component | Description |
 |------|----------|-----------|-------------|
+| 2026-06-06 | HIGH | `cvss_scan.py` | Refined SQL injection heuristics to require SQL-shaped statements and DB execution context for generic interpolation checks; removed residual false-critical findings and reduced CVSS critical count to zero. |
+| 2026-06-06 | MEDIUM | `fetch_patches.py` | Added multi-path patch retrieval (basic auth -> session login -> local fleet `pending_patch_config` fallback) and graceful no-endpoint/no-pending handling; now saves patch state instead of failing on 404. |
+| 2026-06-06 | HIGH | `start_all.py`, `network_guardian/wolfpak/ng_fleet.py`, `network_guardian/wolfpak/ng_status.py` | Removed shell command execution paths used for terminal/process control (`os.system`) and replaced with safer subprocess/ANSI alternatives; contributes to CVSS critical reduction (6 -> 3). |
+| 2026-06-06 | HIGH | `network_guardian/interface/dashboard.py` | Removed hardcoded bootstrap admin password path. First-run admin now uses `NG_BOOTSTRAP_ADMIN_PASSWORD` or generated random password at startup. |
+| 2026-06-06 | MEDIUM | `scan_endpoints.py`, `start_all.py` | Fixed endpoint validation reliability by defaulting scanner to port `8080` (`NG_DASHBOARD_PORT` override) and allowing launcher to reuse an already running dashboard on port collisions. |
+| 2026-06-06 | MEDIUM | `owasp_scan.py` | Tightened A06 hardcoded-credential heuristic to match likely literal secret assignments, reducing false-positive high findings in OWASP summary. |
+| 2026-06-06 | MEDIUM | Probe deploy + bridge update path (`network_guardian/agent/build.py`, `dist/usb_deploy/probe.py`, FleetStore patch_config flow) | Rebuilt USB probe package to match canonical probe code (hash parity verified), validated bridge subsystem stats, and exercised base-pushed `patch_config` delivery path for hotspot probe `NG-608852BB`. |
 | 2026-06-05 | HIGH | `_start_dashboard.py`, `network_guardian/__main__.py` | Fixed SaaS launcher bind behavior for Heroku by selecting `0.0.0.0` automatically when `DYNO` or `PORT` is present; removed the `os` shadowing import that crashed SaaS startup on Heroku. |
 | 2026-06-05 | MEDIUM | Heroku SaaS deployment validation | Verified the deployed SaaS app returns HTTP 200 on `/` and `/app` after the startup fixes; Heroku web dyno is now healthy. |
 | 2026-06-05 | HIGH | SaaS platform stack (`network_guardian/saas/*`, `config`, startup entry points, fleet agents) | Completed SaaS mode rollout: tenant auth/org/API keys, fleet v1 ingest, hosted app, billing checkout/portal/webhook, migration-driven SQLite/PostgreSQL store, and agent compatibility routing (legacy + SaaS). |

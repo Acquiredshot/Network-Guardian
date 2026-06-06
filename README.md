@@ -6,6 +6,36 @@
 
 ---
 
+## Recent Updates (2026-06-06)
+
+- Added **Public Defense Mode** for hotspot/public-network operation:
+  - `python start_all.py --public-defense`
+  - or `NG_PUBLIC_DEFENSE=1 python start_all.py`
+- Hardened launcher/process paths to remove shell-based command execution in key runtime tooling.
+- Startup now safely handles occupied dashboard port `8080` by reusing an existing local dashboard when appropriate.
+- Endpoint scanner reliability fix: now targets port `8080` by default with `NG_DASHBOARD_PORT` override.
+- Bootstrap auth hardening: first-run admin password is no longer hardcoded; use `NG_BOOTSTRAP_ADMIN_PASSWORD` or let the dashboard generate one.
+- Probe deployment refresh: rebuilt `dist/usb_deploy/probe.py` from canonical probe source and verified artifact parity.
+
+---
+
+## Operator Upgrade Notes (v42 -> v43)
+
+1. Startup mode change:
+  - For public/hotspot operation, start with `python start_all.py --public-defense` (or `NG_PUBLIC_DEFENSE=1 python start_all.py`).
+2. Bootstrap auth change:
+  - First-run admin password is no longer static.
+  - Set `NG_BOOTSTRAP_ADMIN_PASSWORD` before first boot if you need deterministic onboarding credentials.
+3. Endpoint validation change:
+  - `scan_endpoints.py` now targets `8080` by default.
+  - Override with `NG_DASHBOARD_PORT` when running non-default dashboard ports.
+4. Probe package refresh:
+  - Rebuild deploy artifacts before shipping: `python -m network_guardian.agent.build --base http://127.0.0.1:8080 --output dist`.
+5. Patch/update delivery note:
+  - Active runtime probe update delivery is `patch_config` via fleet ACK; keep bridge stack online for delivery (`probe_bridge`, `payload_harvester`, `attack_correlator`).
+
+---
+
 ## Capabilities
 
 | Capability | Summary |
@@ -68,6 +98,8 @@
 pip install -e ".[dev]"
 network-guardian                                   # interactive CLI
 python run_full_system.py                          # full 9-component system (v35: +UEBA per-device baselines + lateral movement detection)
+python start_all.py --public-defense               # public/hotspot primary defense mode (full stack)
+NG_PUBLIC_DEFENSE=1 python start_all.py            # same as above via env flag
 python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
 NG_MODE=saas JWT_SECRET=dev-secret STRIPE_WEBHOOK_SECRET=whsec_local python _start_dashboard.py
 python scripts/validate_saas_stack.py --mode sqlite
@@ -75,6 +107,7 @@ python scripts/validate_saas_stack.py --mode sqlite
 python scripts/validate_saas_stack.py --mode postgres --postgres-url postgresql://127.0.0.1:55432/postgres
 $env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
 PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
+NG_BOOTSTRAP_ADMIN_PASSWORD='set-a-strong-password' python _start_dashboard.py  # first-run bootstrap password override
 pwsh ./Invoke-SecurityPosture.ps1                  # Windows read-only posture audit (PowerShell 5.1+)
 python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)
 python password_manager.py                         # credential vault + team user management CLI

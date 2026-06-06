@@ -4,8 +4,10 @@
 import urllib.request
 import urllib.error
 import json
+import os
 
-BASE = "http://127.0.0.1:8081"
+PORT = os.environ.get("NG_DASHBOARD_PORT", "8080")
+BASE = f"http://127.0.0.1:{PORT}"
 
 # Login
 data = json.dumps({"username": "admin", "password": "<password>"}).encode()

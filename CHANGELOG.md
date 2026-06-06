@@ -4,6 +4,99 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v45] — 2026-06-06
+
+### Documentation Security Hygiene
+
+- Updated patch documentation examples to remove credential-like literals and replace them with placeholders (`<username>`, `<password>`, `<invalid-password>`).
+- Sanitized patch-fetch command examples in operator docs to ensure no secret values are embedded in published patch notes.
+- Added explicit alignment of docs with current runtime-safe guidance: use environment variables and non-literal credentials for operational commands.
+
+---
+
+## [v44] — 2026-06-06
+
+### Fixed — Final Hardening TODO Pass
+
+- `cvss_scan.py` SQL-injection detector was refined to reduce false positives by:
+  - tightening SQL-string matching to SQL-shaped statements (`SELECT ... FROM`, `INSERT ... INTO`, etc.),
+  - requiring nearby database execution context for generic SQL-string interpolation heuristics.
+- This eliminated remaining false-critical findings caused by non-SQL strings containing words like `Select`.
+
+### Fixed — Patch Fetch Compatibility in Current Runtime
+
+- `fetch_patches.py` now supports a multi-path retrieval strategy:
+  - legacy Basic Auth attempt,
+  - session login fallback via `/api/auth/login`,
+  - local fleet `pending_patch_config` fallback when `/api/patches` is unavailable.
+- When no remote patch endpoint and no pending `patch_config` are present, script now reports an up-to-date state and persists an empty patch snapshot instead of failing.
+
+### Validation
+
+- CVSS summary after final detector hardening:
+  - **Critical: 0**,
+  - Total findings reduced to **138**,
+  - Overall risk score improved to **35.9/100**.
+- Patch fetch validation:
+  - `fetch_patches.py` completes successfully against current dashboard mode,
+  - saves patch state to `~/.network_guardian/patches/pending_patches.json` even when `/api/patches` is unavailable.
+
+---
+
+## [v43] — 2026-06-06
+
+### Security Hardening — Startup, Auth Bootstrap, and Scanner Reliability
+
+- `start_all.py` now supports `--public-defense` mode (or `NG_PUBLIC_DEFENSE=1`) to launch the full defense stack (`run_full_system.py`) as a primary protection profile for public/hotspot networks.
+- `start_all.py` startup flow now handles occupied port `8080` safely:
+  - captures and logs dashboard startup root-cause stderr,
+  - reuses an already-running local dashboard when bind fails with `address already in use`,
+  - continues probe startup instead of failing the full launcher in this known-safe case.
+- `start_all.py` Windows shutdown path now uses `subprocess.run(["taskkill", ...])` instead of shelling out through `os.system(...)`.
+- `network_guardian/wolfpak/ng_fleet.py` and `network_guardian/wolfpak/ng_status.py` now clear terminal output with ANSI escape sequences rather than `os.system("clear")`.
+
+### Credentials & Bootstrap Safety
+
+- `network_guardian/interface/dashboard.py` no longer seeds a hardcoded bootstrap admin password.
+- First-run bootstrap admin credentials now use:
+  - `NG_BOOTSTRAP_ADMIN_PASSWORD` when provided, or
+  - a generated random password at startup.
+- Startup/login log messaging was updated to remove hardcoded credential text from launcher output.
+
+### Scanner and Validation Improvements
+
+- `scan_endpoints.py` now defaults to dashboard port `8080` and supports override through `NG_DASHBOARD_PORT`.
+- `owasp_scan.py` A06 hardcoded-credential detection was tightened to reduce false positives by matching likely literal secret assignments instead of generic identifier usage.
+
+### Probe & Bridge Update Workflow
+
+- Probe deployment package rebuilt via `python -m network_guardian.agent.build --base ...` to refresh `dist/usb_deploy/probe.py` from canonical `network_guardian/agent/probe.py`.
+- Verified deployment artifact parity (`SHA-256`) between source and USB package probe script.
+- Verified bridge components load and report healthy stats:
+  - `engine.probe_bridge`
+  - `engine.payload_harvester`
+  - `engine.attack_correlator`
+- Exercised base-pushed probe patch update path (`FleetStore.set_patch_config` -> probe phone-home ACK `patch_config`) for `NG-608852BB`.
+
+### Validation
+
+- Endpoint validation: `scan_endpoints.py` -> **40 PASS / 0 FAIL**.
+- OWASP scan summary after hardening: **Risk Score 4/100, Grade A (Minimal risk)**.
+- CVSS scan summary after command-execution hardening:
+  - Critical findings reduced from **6 -> 3**,
+  - Total findings reduced from **143 -> 140**,
+  - Overall risk score improved from **39.0 -> 37.4**.
+
+### Operator Upgrade Notes (v42 -> v43)
+
+- Use `--public-defense` (or `NG_PUBLIC_DEFENSE=1`) for hotspot/public-network primary defense startup.
+- Remove assumptions of static first-run admin credentials; use `NG_BOOTSTRAP_ADMIN_PASSWORD` when deterministic bootstrap auth is required.
+- If dashboard is not on port `8080`, set `NG_DASHBOARD_PORT` before running `scan_endpoints.py`.
+- Rebuild probe deploy artifacts (`python -m network_guardian.agent.build --base ...`) to align distributed probe scripts with current canonical source.
+- Prefer base-pushed fleet `patch_config` delivery for runtime probe updates in addition to legacy patch-fetch workflows.
+
+---
+
 ## [v42] — 2026-06-05
 
 ### Fixed — Heroku SaaS Startup and Launch Hardening

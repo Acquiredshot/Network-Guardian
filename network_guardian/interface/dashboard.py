@@ -394,16 +394,26 @@ class Dashboard:
 
         # If no team members exist, prompt admin to create one via CLI
         if not self._team.has_members():
-            self._team.add_member("admin", "Admin", "<password>", role="admin")
+            bootstrap_password = os.environ.get("NG_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
+            generated_password = False
+            if not bootstrap_password:
+                import secrets
+                bootstrap_password = secrets.token_urlsafe(14)
+                generated_password = True
+
+            self._team.add_member("admin", "Admin", bootstrap_password, role="admin")
             logger.warning(
                 "\n" + "=" * 60 + "\n"
                 "  WOLFPAK TEAM ACCOUNTS\n"
                 "  Default admin created:\n"
                 "    Username: admin\n"
-                "    Password: <password>\n\n"
+                "    Password: %s\n\n"
+                "  Password source: %s\n"
                 "  CHANGE THIS PASSWORD IMMEDIATELY after login!\n"
                 "  Team data: %s\n"
                 + "=" * 60,
+                bootstrap_password,
+                "generated at startup" if generated_password else "NG_BOOTSTRAP_ADMIN_PASSWORD",
                 data_dir / "wolfpak_team.json",
             )
         else:

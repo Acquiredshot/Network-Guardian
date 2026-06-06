@@ -173,7 +173,8 @@ def main() -> None:
         try:
             while True:
                 if sys.stdout.isatty():
-                    os.system("clear")
+                    # Clear screen without spawning a shell.
+                    print("\033[2J\033[H", end="")
                 snapshot(client)
                 print(f"  {DIM}Refreshing every {args.interval}s — Ctrl+C to stop{R}\n")
                 time.sleep(args.interval)

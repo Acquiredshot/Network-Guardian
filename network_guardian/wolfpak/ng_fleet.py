@@ -210,7 +210,8 @@ def cmd_watch(client: WolfpakClient, interval: int) -> None:
     try:
         while True:
             if sys.stdout.isatty():
-                os.system("clear")
+                # Clear screen without spawning a shell.
+                print("\033[2J\033[H", end="")
             cmd_list(client)
             print(f"  {DIM}Refreshing every {interval}s — Ctrl+C to stop{R}\n")
             time.sleep(interval)
