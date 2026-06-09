@@ -133,6 +133,10 @@ class SaaSService:
             return self._page_app()
         if request.path == "/health":
             return self._json_response(200, {"status": "ok", "mode": self.config.saas.mode})
+        if request.method == "GET" and request.path == "/robots.txt":
+            return self._robots_txt()
+        if request.method == "GET" and request.path == "/.well-known/security.txt":
+            return self._security_txt()
         if request.method == "POST" and request.path == "/api/v1/auth/signup":
             return self._signup(request)
         if request.method == "POST" and request.path == "/api/v1/auth/login":
@@ -159,6 +163,31 @@ class SaaSService:
 
     def _page_app(self) -> str:
         return self._http_response(200, "text/html", get_saas_app_page())
+
+    def _robots_txt(self) -> str:
+        content = (
+            "User-agent: *\n"
+            "Allow: /\n"
+            "Allow: /app\n"
+            "Allow: /robots.txt\n"
+            "Allow: /.well-known/security.txt\n"
+            "\n"
+            "# Network Guardian Cloud — Wolf-Pak Innovations LLC\n"
+            "# Commercial cybersecurity monitoring platform\n"
+            "# Source: https://github.com/Acquiredshot/Network-Guardian\n"
+        )
+        return self._http_response(200, "text/plain", content)
+
+    def _security_txt(self) -> str:
+        content = (
+            "# Security contact for Network Guardian Cloud\n"
+            "# Wolf-Pak Innovations LLC\n"
+            "Contact: https://github.com/Acquiredshot/Network-Guardian/issues\n"
+            "Preferred-Languages: en\n"
+            "Canonical: https://network-guardian-cc8900c70290.herokuapp.com/.well-known/security.txt\n"
+            "Policy: https://github.com/Acquiredshot/Network-Guardian/blob/main/LICENSE\n"
+        )
+        return self._http_response(200, "text/plain", content)
 
     def _signup(self, request: Request) -> str:
         payload = self._json_body(request)
