@@ -137,6 +137,8 @@ class SaaSService:
             return self._robots_txt()
         if request.method == "GET" and request.path == "/.well-known/security.txt":
             return self._security_txt()
+        if request.method == "GET" and request.path == "/google9d4cc8c07d77fbd5.html":
+            return self._google_site_verification()
         if request.method == "POST" and request.path == "/api/v1/auth/signup":
             return self._signup(request)
         if request.method == "POST" and request.path == "/api/v1/auth/login":
@@ -188,6 +190,44 @@ class SaaSService:
             "Policy: https://github.com/Acquiredshot/Network-Guardian/blob/main/LICENSE\n"
         )
         return self._http_response(200, "text/plain", content)
+
+    def _google_site_verification(self) -> str:
+        content = (
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIIFwDCCBKigAwIBAgIQA26J066WsSFuqAQvM3d+fTANBgkqhkiG9w0BAQsFADA8\n"
+            "MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRwwGgYDVQQDExNBbWF6b24g\n"
+            "UlNBIDIwNDggTTAxMB4XDTI1MTIzMTAwMDAwMFoXDTI3MDEyODIzNTk1OVowGjEY\n"
+            "MBYGA1UEAwwPKi5oZXJva3VhcHAuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\n"
+            "MIIBCgKCAQEAtpxGjV+0MkX581xWTOP5ZtVybq9NpcZRgWCEIhoT6nvgzPngJRzF\n"
+            "WmyXDgxfkck7bK9YjamN0x/Fd5BOvgBXsMK6YHWF7vzYpNRiFAgY9GntDXMTOEBw\n"
+            "a7uYlqtzDv5H8lK8a4fNiXvHVNsAl9yGdy2TFi14ERGF6A/jIJyfGumCmvaE8Lxp\n"
+            "xEt/OM7dzsmrXYomfuF40l5yuOY133FBisY4khmxCv0/6yaC2OV2zj/+ai3xZNd1\n"
+            "DreAA3vwOCZrS60hsPrtdzYCj0ufeZ67ssUAP/1txOCvljtfXVIry3ZMQgTxpS6k\n"
+            "rphejwErKbSuPYVfLpbhMGNCbIzaHReGMwIDAQABo4IC3jCCAtowHwYDVR0jBBgw\n"
+            "FoAUgbgOY4qJEhjl+js7UJWf5uWQE4UwHQYDVR0OBBYEFAR2gFKdrscWphA/N2Or\n"
+            "QejD+BrpMBoGA1UdEQQTMBGCDyouaGVyb2t1YXBwLmNvbTATBgNVHSAEDDAKMAgG\n"
+            "BmeBDAECATAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwOwYD\n"
+            "VR0fBDQwMjAwoC6gLIYqaHR0cDovL2NybC5yMm0wMS5hbWF6b250cnVzdC5jb20v\n"
+            "cjJtMDEuY3JsMHUGCCsGAQUFBwEBBGkwZzAtBggrBgEFBQcwAYYhaHR0cDovL29j\n"
+            "c3AucjJtMDEuYW1hem9udHJ1c3QuY29tMDYGCCsGAQUFBzAChipodHRwOi8vY3J0\n"
+            "LnIybTAxLmFtYXpvbnRydXN0LmNvbS9yMm0wMS5jZXIwDAYDVR0TAQH/BAIwADCC\n"
+            "AX4GCisGAQQB1nkCBAIEggFuBIIBagFoAHYATGPcmOWcHauI9h6KPd6uj6tEozd7\n"
+            "X5uUw/uhnPzBviYAAAGbcmvPJgAABAMARzBFAiEA73K87UIOW6uuhjCsZOGBZydD\n"
+            "ZTnBH9H6djSjfjECf/ECICy71zD+MtDHq2BRMowUyiBRvP6g92N5ApQxN1V8afeq\n"
+            "AHYAHJ9oLOn68EVpUPgbloqH3dsyENhM5siy44JSSsTPWZ8AAAGbcmvPTwAABAMA\n"
+            "RzBFAiA1AEqFSVosWrxOR01zvzUU6YIDRWKKx75GIl6XZ7jsQwIhAIFjduZfi+rD\n"
+            "MKlGMvXJM52/Y/ziXnHMwiLExM1e9V9qAHYAYEyar3p/d18B1Ab8kg3ImesLHH34\n"
+            "yVIb+voXdzuXi8kAAAGbcmvQBwAABAMARzBFAiEAm2ajyq6Yn9gsRVnyjEUQhHTl\n"
+            "wEwAzm/SNhO+1aStPJ8CICV46gc1oHa+u8U+zUDPr7AkLWpsPBIfxy7fx/P3s21q\n"
+            "MA0GCSqGSIb3DQEBCwUAA4IBAQC5XU69oRXTht0tMDRWD8T3V/GWuNF97iCdSArm\n"
+            "ETMEREEJ9Ny8TOAstDuox1itrjnyzMJ9SOVGRI2TYqVWLfgxaWM/COsiT6uP45XW\n"
+            "EtnNmuQY+uWtpwAPYhn07cwm/dyPXCnit6t+/qWdCySCJdzqv8P7uc+z3bfB6edl\n"
+            "HwjzmBXqCT3G/JJhG/+uSAI1OWYCjLAJOnyILv5QQaUw8qlaK4rXtsiqESmUjwtm\n"
+            "dvoFGgmgBy9Rxo+sz4MLSgJE4D+2mNGEizT2zI144E50/O8cDOGsTbfLE3DAvy34\n"
+            "eYmy66maBvNW3wTl6qXFegWOdSGTMITepgdqdkoc/jUlmLqv\n"
+            "-----END CERTIFICATE-----\n"
+        )
+        return self._http_response(200, "text/html", content)
 
     def _signup(self, request: Request) -> str:
         payload = self._json_body(request)
