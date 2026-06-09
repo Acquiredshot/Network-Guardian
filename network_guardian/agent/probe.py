@@ -60,6 +60,166 @@ from network_guardian.agent.threat_analyzer import ProbeThrottleAnalyzer, Threat
 
 logger = logging.getLogger("ng-probe")
 
+# ---------------------------------------------------------------------------
+# Probe-side flood self-protection
+# (stdlib only — no psutil — so it runs in frozen/PyInstaller builds)
+# Mirrors the FloodGuardAgent thresholds so alerts are consistent.
+# ---------------------------------------------------------------------------
+
+_PROBE_FLOOD_SYN_THRESHOLD        = 60    # TCP connections per remote IP
+_PROBE_FLOOD_PROBE_PORT_THRESHOLD = 30    # unique destination ports per remote IP
+_PROBE_FLOOD_TABLE_WARNING        = 800   # total active connections on this host
+
+
+def _netstat_connections() -> list[tuple[str, int]]:
+    """Return a list of (remote_ip, remote_port) for established/time-wait TCP
+    connections using only stdlib subprocess.  Works on Windows, macOS, Linux.
+    Returns an empty list if netstat fails (graceful degradation).
+    """
+    conns: list[tuple[str, int]] = []
+    try:
+        os_name = platform.system().lower()
+        if os_name == "windows":
+            r = subprocess.run(
+                ["netstat", "-n", "-p", "TCP"],
+                capture_output=True, text=True, timeout=8,
+            )
+        else:
+            r = subprocess.run(
+                ["netstat", "-tn"],
+                capture_output=True, text=True, timeout=8,
+            )
+        for line in r.stdout.splitlines():
+            # Both Windows and *nix: columns 4/5 hold local:port remote:port
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            # Grab the foreign-address column (index 2 on Windows, 4 on *nix)
+            try:
+                remote_col = parts[2] if os_name == "windows" else parts[4]
+            except IndexError:
+                continue
+            # Split host:port — handle IPv6 [::1]:port too
+            if remote_col.startswith("["):
+                m = re.match(r'\[([^\]]+)\]:(\d+)', remote_col)
+                if m:
+                    conns.append((m.group(1), int(m.group(2))))
+            elif ":" in remote_col:
+                last_colon = remote_col.rfind(":")
+                ip   = remote_col[:last_colon]
+                port_s = remote_col[last_colon + 1:]
+                if port_s.isdigit():
+                    conns.append((ip, int(port_s)))
+    except Exception:
+        pass
+    return conns
+
+
+class _ProbeFloodGuard:
+    """Lightweight flood detector for the field probe.
+
+    Uses stdlib netstat (no psutil) to count active TCP connections,
+    then applies the same SYN-flood and probe-saturation thresholds
+    as ``FloodGuardAgent``.  Results feed directly into threat_alerts
+    so they appear in the dashboard and trigger OS notifications.
+    """
+
+    def __init__(self, config: dict | None = None) -> None:
+        cfg = config or {}
+        self._syn_thresh   = cfg.get("flood_syn_threshold",   _PROBE_FLOOD_SYN_THRESHOLD)
+        self._probe_thresh = cfg.get("flood_probe_port_threshold", _PROBE_FLOOD_PROBE_PORT_THRESHOLD)
+        self._table_warn   = cfg.get("flood_table_warning",   _PROBE_FLOOD_TABLE_WARNING)
+
+    def scan(self) -> list[dict]:
+        """Scan current TCP connections; return list of flood threat dicts."""
+        alerts: list[dict] = []
+        conns = _netstat_connections()
+        total = len(conns)
+
+        per_ip_count: dict[str, int] = {}
+        per_ip_ports: dict[str, set[int]] = {}
+        for ip, port in conns:
+            if ip in ("0.0.0.0", "::", "127.0.0.1", "::1", "*"):
+                continue
+            per_ip_count[ip] = per_ip_count.get(ip, 0) + 1
+            per_ip_ports.setdefault(ip, set()).add(port)
+
+        # Connection-table exhaustion warning
+        if total >= self._table_warn:
+            alerts.append({
+                "threat_type":   "connection_table_exhaustion",
+                "severity":      "critical",
+                "description":   (
+                    f"Connection table near exhaustion: {total} active TCP connections "
+                    f"(threshold={self._table_warn}).  Router NAT table may be saturated."
+                ),
+                "affected_items": [f"{total} total connections"],
+                "remediation":   (
+                    "Stop any active scan/flood tools immediately.  "
+                    "Run flood_watchdog.py or harden_machine.ps1 to block flood sources."
+                ),
+                "source_ips":    [],
+                "total_conns":   total,
+            })
+
+        flood_ips: list[str] = []
+        probe_ips: list[str] = []
+
+        for ip, count in per_ip_count.items():
+            unique_ports = len(per_ip_ports.get(ip, set()))
+
+            if count >= self._syn_thresh:
+                flood_ips.append(ip)
+                alerts.append({
+                    "threat_type":   "syn_flood",
+                    "severity":      "critical",
+                    "description":   (
+                        f"SYN/TCP flood detected from {ip}: {count} simultaneous "
+                        f"connections (threshold={self._syn_thresh})."
+                    ),
+                    "affected_items": [f"{ip} × {count} connections"],
+                    "remediation":   (
+                        f"Block {ip} immediately with firewall or IPS."
+                    ),
+                    "source_ips":  [ip],
+                    "count":       count,
+                })
+
+            if unique_ports >= self._probe_thresh:
+                probe_ips.append(ip)
+                alerts.append({
+                    "threat_type":   "probe_packet_saturation",
+                    "severity":      "high",
+                    "description":   (
+                        f"Probe packet saturation from {ip}: contacted {unique_ports} "
+                        f"unique destination ports (threshold={self._probe_thresh}).  "
+                        "Aggressive port scan — can exhaust router NAT tables."
+                    ),
+                    "affected_items": [f"{ip} → {unique_ports} ports"],
+                    "remediation":   (
+                        f"Rate-limit or block {ip} to protect the router."
+                    ),
+                    "source_ips":  [ip],
+                    "count":       unique_ports,
+                })
+
+        # Summary banner if multiple flood sources
+        if len(flood_ips) + len(probe_ips) > 2:
+            all_hostile = list(dict.fromkeys(flood_ips + probe_ips))
+            alerts.append({
+                "threat_type":   "multi_source_flood",
+                "severity":      "critical",
+                "description":   (
+                    f"Multi-source flood attack: {len(all_hostile)} hostile IPs detected "
+                    f"({', '.join(all_hostile[:5])}{'…' if len(all_hostile) > 5 else ''})."
+                ),
+                "affected_items": all_hostile[:10],
+                "remediation":   "Engage SmartFirewall and FloodGuard immediately.",
+                "source_ips":    all_hostile,
+            })
+
+        return alerts
+
 _AGENT_DIR = Path.home() / ".ng_agent"
 
 # ---------------------------------------------------------------------------
@@ -720,6 +880,8 @@ class AgentReport:
     diagnostics: dict = field(default_factory=dict)  # ReAct diagnostic intelligence
     threat_alerts: list[dict] = field(default_factory=list)  # Threats discovered by local analysis
     threat_reports: list[dict] = field(default_factory=list)  # Detailed auto-generated reports
+    flood_alerts: list[dict] = field(default_factory=list)    # Flood/DoS self-protection alerts
+    flood_total_connections: int = 0                           # Total active TCP connections at scan time
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -901,6 +1063,46 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
     except Exception as e:
         logger.warning("Threat analysis failed: %s", e)
 
+    # -------------------------------------------------------------------
+    # Flood self-protection scan (probe hardening v44)
+    # Detects when *this probe host* is being targeted by packet flooding.
+    # Uses stdlib netstat — no psutil required — so it runs in frozen builds.
+    # -------------------------------------------------------------------
+    flood_alerts: list[dict] = []
+    flood_total_conns = 0
+    try:
+        _patch_cfg: dict = {}
+        try:
+            react_inst = _get_react_agent()
+            _patch_cfg = getattr(react_inst, "_patch_config", {})
+        except Exception:
+            pass
+        flood_guard = _ProbeFloodGuard(config=_patch_cfg)
+        flood_alerts = flood_guard.scan()
+        # Count total connections from netstat (re-use the already-run data via a fresh call;
+        # cheap because _ProbeFloodGuard.scan() already called _netstat_connections once).
+        flood_total_conns = len(_netstat_connections())
+        if flood_alerts:
+            logger.warning(
+                "FLOOD GUARD: %d flood alert(s) detected on probe host "
+                "(total_conns=%d)", len(flood_alerts), flood_total_conns,
+            )
+            for fa in flood_alerts:
+                logger.warning(
+                    "  [%s] %s", fa.get("severity", "?").upper(),
+                    fa.get("description", ""),
+                )
+            # Merge into main threat_alerts so they appear in dashboard and
+            # trigger OS notifications via the existing banner machinery.
+            threat_alerts = threat_alerts + flood_alerts
+            _emit_threat_banners(flood_alerts)
+        else:
+            logger.debug(
+                "Flood guard scan clean — %d active connections", flood_total_conns,
+            )
+    except Exception as e:
+        logger.warning("Flood guard scan failed: %s", e)
+
     # Run ReAct diagnostic cycle
     diagnostics = {}
     threat_reports: list[dict] = []
@@ -928,6 +1130,8 @@ async def build_report(identity: AgentIdentity, do_discovery: bool = True,
         diagnostics=diagnostics,
         threat_alerts=threat_alerts,
         threat_reports=threat_reports,
+        flood_alerts=flood_alerts,
+        flood_total_connections=flood_total_conns,
     )
 
 

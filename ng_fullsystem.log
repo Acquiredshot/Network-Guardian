@@ -1,0 +1,55 @@
+2026-06-07 18:08:27,550 [INFO] network_guardian.full_system: ================================================================================
+2026-06-07 18:08:27,551 [INFO] network_guardian.full_system:   Network Guardian ù Full System Initialization
+2026-06-07 18:08:27,551 [INFO] network_guardian.full_system: ================================================================================
+2026-06-07 18:08:27,551 [INFO] network_guardian.full_system: [1/6] Creating core engine...
+2026-06-07 18:08:27,551 [INFO] network_guardian.full_system:       \u2713 Engine created
+2026-06-07 18:08:27,551 [INFO] network_guardian.full_system: [2/6] Initializing Smart Firewall Agent...
+2026-06-07 18:08:27,718 [INFO] network_guardian.agent.probe_attack_correlator: Loaded 2 cached discoveries
+2026-06-07 18:08:27,724 [INFO] network_guardian.agent.probe_attack_correlator: Loaded 10 cached correlations
+2026-06-07 18:08:27,744 [INFO] network_guardian.full_system:       \u2713 Firewall running (auto_block=True)
+2026-06-07 18:08:27,744 [INFO] network_guardian.full_system: [3/6] Initializing Probe-Firewall Bridge...
+2026-06-07 18:08:27,744 [INFO] network_guardian.full_system:       \u2713 Bridge ready (subscribed to probe events)
+2026-06-07 18:08:27,744 [INFO] network_guardian.full_system: [4/6] Initializing Payload Harvester...
+2026-06-07 18:08:27,752 [INFO] network_guardian.agent.payload_harvester: Loaded 3 harvested rules from disk
+2026-06-07 18:08:27,752 [INFO] network_guardian.full_system:       \u2713 Harvester ready (3 existing rules)
+2026-06-07 18:08:27,752 [INFO] network_guardian.full_system: [5/6] Initializing Attack Correlator...
+2026-06-07 18:08:27,752 [INFO] network_guardian.full_system:       \u2713 Correlator ready
+2026-06-07 18:08:27,752 [INFO] network_guardian.full_system: [6/6] Initializing Defensive Scanner...
+2026-06-07 18:08:27,764 [INFO] network_guardian.agent.probe_defensive_scanner: Loaded 7 previous scan results
+2026-06-07 18:08:27,764 [INFO] network_guardian.full_system:       \u2713 Scanner ready
+2026-06-07 18:08:27,764 [INFO] network_guardian.full_system: [7/9] Initializing MCP/API Protocol Parser...
+2026-06-07 18:08:27,769 [INFO] network_guardian.full_system:       \u2713 MCP parser ready (JSON-RPC / MCP / GraphQL / multi-agent)
+2026-06-07 18:08:27,769 [INFO] network_guardian.full_system: [8/9] Initializing Dual-Pass Evaluation Pipeline...
+2026-06-07 18:08:27,774 [INFO] network_guardian.full_system:       \u2713 Dual-pass evaluator ready (pre + post workers)
+2026-06-07 18:08:27,774 [INFO] network_guardian.full_system: [9/9] Initializing Isolation & Sandboxing Engine...
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:       \u2713 Sandbox ready (suspicious\u226540 isolation\u226570)
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+================================================================================
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:   System Ready ù All Components Online
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: ================================================================================
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+\U0001f4ca DASHBOARD ACCESS:
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:    URL: http://127.0.0.1:8080
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:    Login: admin / wolfpak!
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+\U0001f4c8 REAL-TIME MONITORING (in another terminal):
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:    python3 monitor_data.py monitor
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+\U0001f4e4 DATA EXPORT (after testing):
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:    python3 export_test_data.py
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+\U0001f9ea PROBE INTEGRATION TEST (in another terminal):
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system:    python3 probe_integration_test.py
+2026-06-07 18:08:27,782 [INFO] network_guardian.full_system: 
+================================================================================
+2026-06-07 18:09:22,791 [INFO] network_guardian.full_system: [Cycle 12] FW: 3 attackers, 0 events | Correlations: 10 | Rules: 3 | Discoveries: 3
+2026-06-07 18:09:22,791 [INFO] network_guardian.full_system: [Cycle 12] MCP: 0 parsed, 0 threats, 0 blocked | Eval pre:0/post:0 (blocked 0) | Sandbox: 0 sessions, 0 isolated
+2026-06-07 18:10:22,801 [INFO] network_guardian.full_system: [Cycle 24] FW: 3 attackers, 0 events | Correlations: 10 | Rules: 3 | Discoveries: 3
+2026-06-07 18:10:22,801 [INFO] network_guardian.full_system: [Cycle 24] MCP: 0 parsed, 0 threats, 0 blocked | Eval pre:0/post:0 (blocked 0) | Sandbox: 0 sessions, 0 isolated
+2026-06-07 18:11:22,810 [INFO] network_guardian.full_system: [Cycle 36] FW: 3 attackers, 0 events | Correlations: 10 | Rules: 3 | Discoveries: 3
+2026-06-07 18:11:22,810 [INFO] network_guardian.full_system: [Cycle 36] MCP: 0 parsed, 0 threats, 0 blocked | Eval pre:0/post:0 (blocked 0) | Sandbox: 0 sessions, 0 isolated
+2026-06-07 18:12:22,819 [INFO] network_guardian.full_system: [Cycle 48] FW: 3 attackers, 0 events | Correlations: 10 | Rules: 3 | Discoveries: 3
+2026-06-07 18:12:22,819 [INFO] network_guardian.full_system: [Cycle 48] MCP: 0 parsed, 0 threats, 0 blocked | Eval pre:0/post:0 (blocked 0) | Sandbox: 0 sessions, 0 isolated
+2026-06-07 18:13:22,825 [INFO] network_guardian.full_system: [Cycle 60] FW: 3 attackers, 0 events | Correlations: 10 | Rules: 3 | Discoveries: 3
+2026-06-07 18:13:22,825 [INFO] network_guardian.full_system: [Cycle 60] MCP: 0 parsed, 0 threats, 0 blocked | Eval pre:0/post:0 (blocked 0) | Sandbox: 0 sessions, 0 isolated
+2026-06-07 18:13:52,109 [INFO] network_guardian.full_system: 

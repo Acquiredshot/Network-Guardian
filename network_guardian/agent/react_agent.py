@@ -323,6 +323,45 @@ _SUSPICIOUS_LISTEN_PORTS = {
 # Known malicious port ranges
 _C2_PORT_RANGES = [(4440, 4450), (5550, 5560), (6660, 6670)]
 
+# ---------------------------------------------------------------------------
+# Flood / probe-saturation detection — synced with FloodGuardAgent thresholds
+# ---------------------------------------------------------------------------
+
+_FLOOD_SYN_THRESHOLD        = 60    # new TCP conns per IP within window
+_FLOOD_UDP_THRESHOLD        = 120   # UDP packets per IP within window
+_FLOOD_PROBE_PORT_THRESHOLD = 30    # unique destination ports per IP
+_FLOOD_TABLE_WARNING        = 800   # total connections before exhaustion warning
+_FLOOD_WINDOW_SECONDS       = 10.0  # sliding window length
+
+
+def _probe_connection_counts() -> tuple[dict[str, int], dict[str, set[int]], int]:
+    """Sample active connections via psutil (or return empty on ImportError).
+
+    Returns:
+        per_ip_count  — {ip: connection_count}
+        per_ip_ports  — {ip: set_of_destination_ports}
+        total         — total active connections on this host
+    """
+    per_ip: dict[str, int] = {}
+    per_ports: dict[str, set[int]] = {}
+    total = 0
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind="inet"):
+            raddr = getattr(conn, "raddr", None)
+            if not raddr or not getattr(raddr, "ip", None):
+                continue
+            ip = raddr.ip
+            port = getattr(raddr, "port", 0)
+            if ip.startswith("127.") or ip == "::1":
+                continue
+            per_ip[ip] = per_ip.get(ip, 0) + 1
+            per_ports.setdefault(ip, set()).add(port)
+            total += 1
+    except Exception:
+        pass
+    return per_ip, per_ports, total
+
 
 # ---------------------------------------------------------------------------
 # Probe ReAct Agent
@@ -1264,7 +1303,65 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
                     f"DNS servers changed to {', '.join(new_dns)} — possible DNS hijacking."
                 )
 
-        # 6. Baseline drift calculation
+        # 6. Flood / probe-saturation self-protection
+        _syn_thresh   = self._patch_config.get("flood_syn_threshold",   _FLOOD_SYN_THRESHOLD)
+        _udp_thresh   = self._patch_config.get("flood_udp_threshold",   _FLOOD_UDP_THRESHOLD)
+        _probe_thresh = self._patch_config.get("flood_probe_threshold", _FLOOD_PROBE_PORT_THRESHOLD)
+        _table_warn   = self._patch_config.get("flood_table_warning",   _FLOOD_TABLE_WARNING)
+
+        per_ip_count, per_ip_ports, total_conns = _probe_connection_counts()
+
+        if total_conns >= _table_warn:
+            threats.append(ThreatEvent(
+                timestamp=now, severity="high",
+                category="dos",
+                title=f"Connection table near exhaustion: {total_conns} active connections",
+                detail=(
+                    f"{total_conns} total active connections detected (warning threshold={_table_warn}). "
+                    "Router NAT table may be saturated — stop active flood/scan tools immediately."
+                ),
+            ))
+            recommendations.append(
+                f"URGENT: {total_conns} connections active. Probe packet flooding may knock the "
+                "router offline. Run harden_machine.ps1 or flood_watchdog.py to mitigate."
+            )
+
+        for ip, count in per_ip_count.items():
+            unique_ports = len(per_ip_ports.get(ip, set()))
+
+            if count >= _syn_thresh:
+                threats.append(ThreatEvent(
+                    timestamp=now, severity="critical",
+                    category="dos",
+                    title=f"SYN/TCP flood from {ip}: {count} connections",
+                    detail=(
+                        f"Source IP {ip} has {count} simultaneous connections "
+                        f"(threshold={_syn_thresh}). Possible SYN flood or port scanner."
+                    ),
+                    source_ip=ip,
+                ))
+                recommendations.append(
+                    f"Block {ip} immediately — {count} TCP connections exceeds flood threshold."
+                )
+
+            if unique_ports >= _probe_thresh:
+                threats.append(ThreatEvent(
+                    timestamp=now, severity="high",
+                    category="reconnaissance",
+                    title=f"Probe saturation from {ip}: {unique_ports} unique ports",
+                    detail=(
+                        f"Source IP {ip} contacted {unique_ports} unique destination ports "
+                        f"(threshold={_probe_thresh}). Active port scan detected — "
+                        "this traffic pattern can exhaust router NAT tables."
+                    ),
+                    source_ip=ip,
+                ))
+                recommendations.append(
+                    f"{ip} is performing an aggressive port scan ({unique_ports} ports). "
+                    "Rate-limit or block to protect the router."
+                )
+
+        # 7. Baseline drift calculation
         net_drift = self._calc_network_drift(obs)
         proc_drift = self._calc_process_drift(obs)
 

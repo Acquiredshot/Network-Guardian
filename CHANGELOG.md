@@ -4,6 +4,101 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v46] — 2026-06-08
+
+### Added — Flood & Probe-Packet Hardening + Probe Self-Protection
+
+Root cause: a pen-test tool running on the same LAN was saturating the home router's
+NAT connection table with probe packets, knocking the router offline for all devices.
+Network Guardian now detects and auto-blocks this attack class **both at the engine level
+and inside every deployed field probe**.
+
+#### New Components
+
+- **`network_guardian/agent/flood_guard.py`** — `FloodGuardAgent` — ReAct-style agent
+  that monitors per-IP connection rates via psutil with a 10-second sliding window.
+  Detects SYN floods, UDP floods, ICMP floods, probe packet saturation (pen-test router
+  exhaustion), and total connection table exhaustion.  Auto-escalates IPS blocks:
+  - Offence 1 → 1-hour block
+  - Offence 2 → 6-hour block
+  - Offence 3+ → permanent block
+  Publishes `flood.detected` and `flood.table_exhaustion` events on the event bus.
+
+- **`flood_watchdog.py`** — Standalone watchdog script (referenced by `harden_machine.ps1`
+  but previously missing). Monitors connections via psutil / netstat fallback, notifies
+  the dashboard API to request IPS blocks, and optionally adds Windows Firewall rules
+  (requires admin). Launch: `python flood_watchdog.py --threshold 60 --interval 5`
+
+#### Enhanced IDS Signatures (7 new rules)
+
+| SID  | Name                      | Category | Severity |
+|------|---------------------------|----------|----------|
+| 4002 | UDP Flood                 | DOS      | CRITICAL |
+| 4003 | ICMP Flood                | DOS      | HIGH     |
+| 4004 | Probe Packet Saturation   | DOS      | HIGH     |
+| 4005 | NTP Amplification Attack  | DOS      | HIGH     |
+| 4006 | DNS Amplification Attack  | DOS      | HIGH     |
+| 4007 | ARP Flood                 | DOS      | HIGH     |
+
+#### IPS Policy Hardening
+
+- `ThreatCategory.DOS` block duration: **600s → 3600s** (10 min → 1 hour)
+
+#### Engine Integration
+
+- `FloodGuardAgent` auto-started in `Engine.start()` alongside SmartFirewall and Triage
+- `Engine.flood_guard` property added (lazy-initialized, same pattern as other agents)
+- `Engine.stop()` gracefully awaits `flood_guard.stop()`
+
+#### SmartFirewallAgent — Adaptive Threat Intelligence
+
+- **FloodGuard integration** — subscribed to `flood.detected` and `flood.table_exhaustion` events;
+  SmartFirewall now learns from every flood detection in real time
+- **Per-IP adaptive confidence threshold** — known flood sources get a 30% lower detection
+  threshold so injection attempts are caught at lower evidence; hostile-subnet IPs get the same
+- **Hostile subnet tracking** — when ≥3 IPs in the same /24 flood, the subnet is flagged;
+  all traffic from that subnet gets elevated scrutiny automatically
+- **Multi-vector detection** — an IP that both floods *and* injects is identified as a
+  compound attacker and immediately escalated to a **permanent block**
+- **Attack velocity tuning** — the agent tracks new-attacker rate and event density over 60s
+  windows and auto-tunes globally: HIGH-ATTACK → 0.55, ELEVATED → 0.62, RECOVERY → back to 0.70
+- **Table exhaustion emergency mode** — when FloodGuard raises `flood.table_exhaustion`,
+  confidence drops to 0.50 for 5 minutes then auto-recovers
+- `adaptive_status()` method and `adaptive` key added to `get_stats()` / dashboard API
+
+#### Field Probe Hardening (probe self-protection)
+
+- **`_ProbeFloodGuard`** class added to `network_guardian/agent/probe.py` — lightweight
+  stdlib-only flood detector (no psutil) that runs inside frozen/PyInstaller probe builds.
+  Uses `netstat -tn` to count TCP connections per remote IP, applying the same thresholds
+  as `FloodGuardAgent` (`SYN_FLOOD=60`, `PROBE_SATURATION=30`, `TABLE_EXHAUSTION=800`).
+  Detects SYN/TCP flood, probe packet saturation, connection table exhaustion, and
+  multi-source flood attacks; all emit OS notifications and console banners.
+
+- **`AgentReport.flood_alerts`** and **`AgentReport.flood_total_connections`** fields added —
+  probe reports now include flood status in every phone-home payload.
+
+- **`ProbeReActAgent` flood detection** (`react_agent.py`) — the ReAct intelligence layer
+  now performs flood analysis in its `reason()` phase using psutil (degrades gracefully).
+  All thresholds remotely tunable via `patch_config` keys:
+  `flood_syn_threshold`, `flood_udp_threshold`, `flood_probe_threshold`, `flood_table_warning`.
+
+- **`ProbeAgent.publish_flood_detection()`** and **`ProbeAgent.publish_table_exhaustion()`**
+  added to `network_guardian/agent/probe_agent.py` — field probe flood detections publish
+  to the same `flood.detected` / `flood.table_exhaustion` topics consumed by SmartFirewall.
+
+#### Test Fixes
+
+- Fixed 36 occurrences of `asyncio.get_event_loop().run_until_complete()` →
+  `asyncio.run()` in `tests/test_wifi_stealth.py` (Python 3.13 compatibility).
+
+#### Validation
+
+- IDS rule count: 15 → **22** (7 new flood signatures)
+- Full test suite: **622 passed, 0 failed** (was 586 passed, 36 failed before fix)
+
+---
+
 ## [v45] — 2026-06-06
 
 ### Documentation Security Hygiene
@@ -40,6 +135,113 @@ All notable changes to this project are documented here.
 - Patch fetch validation:
   - `fetch_patches.py` completes successfully against current dashboard mode,
   - saves patch state to `~/.network_guardian/patches/pending_patches.json` even when `/api/patches` is unavailable.
+
+---
+
+
+## [v44] — 2026-06-08
+
+### Added — Flood & Probe-Packet Hardening + Probe Self-Protection
+
+Root cause: a pen-test tool running on the same LAN was saturating the home router's
+NAT connection table with probe packets, knocking the router offline for all devices.
+Network Guardian now detects and auto-blocks this attack class **both at the engine level
+and inside every deployed field probe**.
+
+#### New Components
+
+- **`network_guardian/agent/flood_guard.py`** — `FloodGuardAgent` — ReAct-style agent
+  that monitors per-IP connection rates via psutil with a 10-second sliding window.
+  Detects SYN floods, UDP floods, ICMP floods, probe packet saturation (pen-test router
+  exhaustion), and total connection table exhaustion.  Auto-escalates IPS blocks:
+  - Offence 1 → 1-hour block
+  - Offence 2 → 6-hour block
+  - Offence 3+ → permanent block
+  Publishes `flood.detected` and `flood.table_exhaustion` events on the event bus.
+
+- **`flood_watchdog.py`** — Standalone watchdog script (referenced by `harden_machine.ps1`
+  but previously missing). Monitors connections via psutil / netstat fallback, notifies
+  the dashboard API to request IPS blocks, and optionally adds Windows Firewall rules
+  (requires admin). Launch: `python flood_watchdog.py --threshold 60 --interval 5`
+
+#### Enhanced IDS Signatures (7 new rules)
+
+| SID  | Name                      | Category | Severity |
+|------|---------------------------|----------|----------|
+| 4002 | UDP Flood                 | DOS      | CRITICAL |
+| 4003 | ICMP Flood                | DOS      | HIGH     |
+| 4004 | Probe Packet Saturation   | DOS      | HIGH     |
+| 4005 | NTP Amplification Attack  | DOS      | HIGH     |
+| 4006 | DNS Amplification Attack  | DOS      | HIGH     |
+| 4007 | ARP Flood                 | DOS      | HIGH     |
+
+#### IPS Policy Hardening
+
+- `ThreatCategory.DOS` block duration: **600s → 3600s** (10 min → 1 hour)
+
+#### Engine Integration
+
+- `FloodGuardAgent` auto-started in `Engine.start()` alongside SmartFirewall and Triage
+- `Engine.flood_guard` property added (lazy-initialized, same pattern as other agents)
+- `Engine.stop()` gracefully awaits `flood_guard.stop()`
+
+#### Validation
+
+- IDS rule count: 15 → **22** (7 new flood signatures)
+- FloodGuard starts cleanly with the engine; logs confirm: `[FloodGuard] Started`
+- `flood_watchdog.py` runs standalone with `--threshold` / `--interval` / `--port` / `--firewall` flags
+
+#### SmartFirewallAgent — Adaptive Threat Intelligence
+
+- **FloodGuard integration** — subscribed to `flood.detected` and `flood.table_exhaustion` events;
+  SmartFirewall now learns from every flood detection in real time
+- **Per-IP adaptive confidence threshold** — known flood sources get a 30% lower detection
+  threshold so injection attempts are caught at lower evidence; hostile-subnet IPs get the same
+- **Hostile subnet tracking** — when ≥3 IPs in the same /24 flood, the subnet is flagged;
+  all traffic from that subnet gets elevated scrutiny automatically
+- **Multi-vector detection** — an IP that both floods *and* injects is identified as a
+  compound attacker and immediately escalated to a **permanent block**
+- **Attack velocity tuning** — the agent tracks new-attacker rate and event density over 60s
+  windows and auto-tunes globally: HIGH-ATTACK → 0.55, ELEVATED → 0.62, RECOVERY → back to 0.70
+- **Table exhaustion emergency mode** — when FloodGuard raises `flood.table_exhaustion`,
+  confidence drops to 0.50 for 5 minutes then auto-recovers
+- `adaptive_status()` method and `adaptive` key added to `get_stats()` / dashboard API
+
+#### Field Probe Hardening (probe self-protection)
+
+- **`_ProbeFloodGuard`** class added to `network_guardian/agent/probe.py` — lightweight
+  stdlib-only flood detector (no psutil) that runs inside frozen/PyInstaller probe builds.
+  Uses `netstat -tn` to count TCP connections per remote IP, applying the same thresholds
+  as `FloodGuardAgent` (`SYN_FLOOD=60`, `PROBE_SATURATION=30`, `TABLE_EXHAUSTION=800`).
+  Detects:
+  - SYN/TCP flood → `severity: critical` alert
+  - Probe packet saturation → `severity: high` alert
+  - Connection table exhaustion → `severity: critical` alert + remediation guidance
+  - Multi-source flood (≥3 hostile IPs) → summary `severity: critical` alert
+
+- **`AgentReport.flood_alerts`** and **`AgentReport.flood_total_connections`** fields added —
+  probe reports now include flood status in every phone-home payload; the base station
+  dashboard displays it alongside existing threat alerts.
+
+- **`ProbeReActAgent` flood detection** (`react_agent.py`) — the ReAct intelligence layer
+  running inside each probe now performs flood analysis in its `reason()` phase:
+  - `_probe_connection_counts()` helper: psutil-backed (gracefully degrades if unavailable)
+  - Connection-table exhaustion threat (≥800 connections)
+  - Per-IP SYN flood threat (≥60 connections from one IP)
+  - Per-IP probe saturation threat (≥30 unique destination ports from one IP)
+  - All three thresholds are remotely tunable via `patch_config` keys:
+    `flood_syn_threshold`, `flood_udp_threshold`, `flood_probe_threshold`, `flood_table_warning`
+
+- **`ProbeAgent.publish_flood_detection()`** and **`ProbeAgent.publish_table_exhaustion()`**
+  added to `network_guardian/agent/probe_agent.py` — when a field probe detects flooding
+  on its host it publishes to the same `flood.detected` / `flood.table_exhaustion` topics
+  consumed by `SmartFirewallAgent`'s adaptive engine, feeding base-station cross-correlation
+  and hostile-subnet intelligence.
+
+- **Remote threshold updates** — flood thresholds pushed from the base station via the
+  existing `patch_config` phone-home ACK mechanism are automatically consumed by both
+  `ProbeReActAgent` and `_ProbeFloodGuard` on the next scan cycle, keeping all deployed
+  probes in sync with the latest hardening rules without a restart.
 
 ---
 

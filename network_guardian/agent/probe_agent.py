@@ -181,6 +181,69 @@ class ProbeAgent:
         except Exception as e:
             logger.warning(f"Failed to publish scan complete: {e}")
 
+    async def publish_flood_detection(
+        self,
+        source_ip: str,
+        flood_type: str,
+        count: int,
+        threshold: int,
+        agent_id: str = "",
+    ) -> None:
+        """Publish a flood detection observed by this field probe.
+
+        Routes to the same ``flood.detected`` topic consumed by the
+        SmartFirewallAgent adaptive engine so the base station can
+        cross-correlate and update hostile-subnet intelligence.
+        """
+        if not self._event_bus:
+            return
+
+        try:
+            await self._event_bus.publish(Event(
+                topic="flood.detected",
+                data={
+                    "source_ip":  source_ip,
+                    "flood_type": flood_type,
+                    "count":      count,
+                    "threshold":  threshold,
+                    "agent_id":   agent_id,
+                    "origin":     "probe",
+                },
+            ))
+            logger.warning(
+                "Probe flood detection published: %s from %s (count=%d)",
+                flood_type, source_ip, count,
+            )
+        except Exception as e:
+            logger.warning("Failed to publish flood detection: %s", e)
+
+    async def publish_table_exhaustion(
+        self,
+        total_connections: int,
+        threshold: int,
+        agent_id: str = "",
+    ) -> None:
+        """Publish a connection-table exhaustion warning from this field probe."""
+        if not self._event_bus:
+            return
+
+        try:
+            await self._event_bus.publish(Event(
+                topic="flood.table_exhaustion",
+                data={
+                    "total_connections": total_connections,
+                    "threshold":         threshold,
+                    "agent_id":          agent_id,
+                    "origin":            "probe",
+                },
+            ))
+            logger.warning(
+                "Probe table-exhaustion warning published: %d connections (threshold=%d)",
+                total_connections, threshold,
+            )
+        except Exception as e:
+            logger.warning("Failed to publish table exhaustion: %s", e)
+
     def set_event_bus(self, event_bus: "EventBus") -> None:
         """Set the event bus for publishing."""
         self._event_bus = event_bus

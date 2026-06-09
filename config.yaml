@@ -1,0 +1,20 @@
+# Network Guardian default configuration
+
+log_level: INFO
+
+scan:
+  timeout: 5.0
+  max_concurrent: 50
+  port_range: "1-1024"
+  ping_count: 3
+
+monitor:
+  poll_interval: 30.0
+  anomaly_threshold: 2.0
+  retention_hours: 168
+  alert_cooldown: 300.0
+
+security:
+  encrypt_reports: true
+  max_login_attempts: 5
+  session_timeout: 3600

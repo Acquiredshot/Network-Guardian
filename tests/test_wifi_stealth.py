@@ -376,26 +376,26 @@ class TestRouterAdmin:
         assert router_admin.router_ip == "192.168.1.1"
 
     def test_hide_ssid_unconfigured(self, router_admin):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router_admin.hide_ssid()
         )
         assert not result["success"]
         assert "not configured" in result["error"].lower()
 
     def test_show_ssid_unconfigured(self, router_admin):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router_admin.show_ssid()
         )
         assert not result["success"]
 
     def test_get_visibility_unconfigured(self, router_admin):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router_admin.get_ssid_visibility()
         )
         assert result["state"] == SSIDState.UNKNOWN.value
 
     def test_detect_type_unconfigured(self, router_admin):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router_admin.detect_router_type()
         )
         assert result == "unknown"
@@ -656,7 +656,7 @@ class TestRouterAdmin:
         router_admin._detected_type = "nighthawk"
         with patch("network_guardian.cloaking.urllib.request.urlopen",
                    side_effect=urllib.error.URLError("refused")):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router_admin.hide_ssid("all")
             )
         # Should have tried Nighthawk (auth failed)
@@ -668,7 +668,7 @@ class TestRouterAdmin:
         router_admin._detected_type = "nighthawk"
         with patch("network_guardian.cloaking.urllib.request.urlopen",
                    side_effect=urllib.error.URLError("refused")):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router_admin.show_ssid("all")
             )
         assert not result["success"]
@@ -694,7 +694,7 @@ class TestWiFiStealthSystem:
     def test_scan_increments_stats(self, stealth):
         with patch.object(stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=[]):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 stealth.scan_networks()
             )
         assert stealth.stats["scans"] == 1
@@ -706,7 +706,7 @@ class TestWiFiStealthSystem:
         ]
         with patch.object(stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=fake_nets):
-            nets = asyncio.get_event_loop().run_until_complete(
+            nets = asyncio.run(
                 stealth.scan_networks()
             )
         assert len(nets) == 2
@@ -716,7 +716,7 @@ class TestWiFiStealthSystem:
         fake = WiFiNetwork(ssid="MyHome", signal=90)
         with patch.object(stealth._scanner, "get_connected_network",
                           new_callable=AsyncMock, return_value=fake):
-            net = asyncio.get_event_loop().run_until_complete(
+            net = asyncio.run(
                 stealth.get_connected_network()
             )
         assert net.ssid == "MyHome"
@@ -725,7 +725,7 @@ class TestWiFiStealthSystem:
     def test_get_connected_none(self, stealth):
         with patch.object(stealth._scanner, "get_connected_network",
                           new_callable=AsyncMock, return_value=None):
-            net = asyncio.get_event_loop().run_until_complete(
+            net = asyncio.run(
                 stealth.get_connected_network()
             )
         assert net is None
@@ -733,7 +733,7 @@ class TestWiFiStealthSystem:
     def test_detect_gateway(self, stealth):
         with patch.object(stealth._gateway_detector, "detect",
                           new_callable=AsyncMock, return_value="192.168.1.1"):
-            gw = asyncio.get_event_loop().run_until_complete(
+            gw = asyncio.run(
                 stealth.detect_gateway()
             )
         assert gw == "192.168.1.1"
@@ -741,7 +741,7 @@ class TestWiFiStealthSystem:
     def test_configure_router(self, stealth):
         with patch.object(stealth._router_admin, "detect_router_type",
                           new_callable=AsyncMock, return_value="generic"):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.configure_router("192.168.1.1", "admin", "pass")
             )
         assert result["success"]
@@ -753,7 +753,7 @@ class TestWiFiStealthSystem:
                           new_callable=AsyncMock, return_value="10.0.0.1"):
             with patch.object(stealth._router_admin, "detect_router_type",
                               new_callable=AsyncMock, return_value="openwrt"):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.run(
                     stealth.configure_router(None, "root", "pw")
                 )
         assert result["success"]
@@ -763,7 +763,7 @@ class TestWiFiStealthSystem:
     def test_configure_router_no_gateway(self, stealth):
         with patch.object(stealth._gateway_detector, "detect",
                           new_callable=AsyncMock, return_value=None):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.configure_router(None, "admin", "pass")
             )
         assert not result["success"]
@@ -772,7 +772,7 @@ class TestWiFiStealthSystem:
     def test_hide_without_router_config(self, stealth):
         with patch.object(stealth._gateway_detector, "detect",
                           new_callable=AsyncMock, return_value="192.168.0.1"):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.hide_network()
             )
         assert not result["success"]
@@ -783,7 +783,7 @@ class TestWiFiStealthSystem:
         with patch.object(stealth._router_admin, "hide_ssid",
                           new_callable=AsyncMock,
                           return_value={"success": True, "message": "Hidden"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.hide_network()
             )
         assert result["success"]
@@ -795,7 +795,7 @@ class TestWiFiStealthSystem:
         with patch.object(stealth._router_admin, "hide_ssid",
                           new_callable=AsyncMock,
                           return_value={"success": False, "error": "Timeout"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.hide_network()
             )
         assert not result["success"]
@@ -807,7 +807,7 @@ class TestWiFiStealthSystem:
         with patch.object(stealth._router_admin, "show_ssid",
                           new_callable=AsyncMock,
                           return_value={"success": True, "message": "Visible"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.show_network()
             )
         assert result["success"]
@@ -815,7 +815,7 @@ class TestWiFiStealthSystem:
         assert stealth.stats["show_ops"] == 1
 
     def test_show_without_config(self, stealth):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             stealth.show_network()
         )
         assert not result["success"]
@@ -826,7 +826,7 @@ class TestWiFiStealthSystem:
         other_nets = [WiFiNetwork(ssid="Neighbor", signal=50)]
         with patch.object(stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=other_nets):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.verify_stealth()
             )
         assert result["verified"]
@@ -838,7 +838,7 @@ class TestWiFiStealthSystem:
         nets = [WiFiNetwork(ssid="MyHome", signal=90)]
         with patch.object(stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=nets):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.verify_stealth()
             )
         assert result["verified"]
@@ -849,7 +849,7 @@ class TestWiFiStealthSystem:
         stealth._home_ssid = None
         with patch.object(stealth._scanner, "get_connected_network",
                           new_callable=AsyncMock, return_value=None):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 stealth.verify_stealth()
             )
         assert not result["verified"]
@@ -860,7 +860,7 @@ class TestWiFiStealthSystem:
                           new_callable=AsyncMock, return_value=fake_net):
             with patch.object(stealth._gateway_detector, "detect",
                               new_callable=AsyncMock, return_value="192.168.1.1"):
-                status = asyncio.get_event_loop().run_until_complete(
+                status = asyncio.run(
                     stealth.stealth_status()
                 )
         assert status["stealth_active"] is False
@@ -872,7 +872,7 @@ class TestWiFiStealthSystem:
                           new_callable=AsyncMock, return_value=None):
             with patch.object(stealth._gateway_detector, "detect",
                               new_callable=AsyncMock, return_value=None):
-                status = asyncio.get_event_loop().run_until_complete(
+                status = asyncio.run(
                     stealth.stealth_status()
                 )
         assert status["connected_network"] is None
@@ -913,7 +913,7 @@ class TestWiFiRemoteCommands:
         return GuardianCommandRouter(engine)
 
     def test_wifi_no_args(self, router):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router._cmd_wifi([])
         )
         assert "WiFi Stealth Commands" in result
@@ -924,7 +924,7 @@ class TestWiFiRemoteCommands:
         fake_nets = [WiFiNetwork(ssid="TestNet", signal=75, security="WPA2", channel=6)]
         with patch.object(router.engine.wifi_stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=fake_nets):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["scan"])
             )
         assert "1 network(s)" in result
@@ -934,7 +934,7 @@ class TestWiFiRemoteCommands:
     def test_wifi_scan_empty(self, router):
         with patch.object(router.engine.wifi_stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=[]):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["scan"])
             )
         assert "No WiFi networks found" in result
@@ -949,7 +949,7 @@ class TestWiFiRemoteCommands:
                               "router_configured": False,
                               "connected_network": {"ssid": "MyHome", "signal": 90},
                           }):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["status"])
             )
         assert "Stealth: OFF" in result
@@ -960,7 +960,7 @@ class TestWiFiRemoteCommands:
         with patch.object(router.engine.wifi_stealth, "hide_network",
                           new_callable=AsyncMock,
                           return_value={"success": False, "error": "Router not configured"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["hide"])
             )
         assert "not configured" in result.lower()
@@ -969,7 +969,7 @@ class TestWiFiRemoteCommands:
         with patch.object(router.engine.wifi_stealth, "hide_network",
                           new_callable=AsyncMock,
                           return_value={"success": True, "message": "SSID broadcast disabled"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["hide"])
             )
         assert "HIDDEN" in result
@@ -979,7 +979,7 @@ class TestWiFiRemoteCommands:
         with patch.object(router.engine.wifi_stealth, "show_network",
                           new_callable=AsyncMock,
                           return_value={"success": True, "message": "SSID broadcast enabled"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["show"])
             )
         assert "VISIBLE" in result
@@ -988,13 +988,13 @@ class TestWiFiRemoteCommands:
         with patch.object(router.engine.wifi_stealth, "verify_stealth",
                           new_callable=AsyncMock,
                           return_value={"message": "'MyHome' is NOT visible to nearby devices ✓"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["verify"])
             )
         assert "NOT visible" in result
 
     def test_wifi_router_missing_args(self, router):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router._cmd_wifi(["router"])
         )
         assert "Usage" in result
@@ -1003,13 +1003,13 @@ class TestWiFiRemoteCommands:
         with patch.object(router.engine.wifi_stealth, "configure_router",
                           new_callable=AsyncMock,
                           return_value={"success": True, "message": "Router configured: admin@192.168.1.1 (type: generic)"}):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._cmd_wifi(["router", "192.168.1.1", "admin", "pass"])
             )
         assert "Router configured" in result
 
     def test_wifi_unknown_subcommand(self, router):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             router._cmd_wifi(["foobar"])
         )
         assert "WiFi Stealth Commands" in result
@@ -1022,7 +1022,7 @@ class TestWiFiRemoteCommands:
         """Ensure 'wifi' is a recognized command."""
         with patch.object(router.engine.wifi_stealth._scanner, "scan_networks",
                           new_callable=AsyncMock, return_value=[]):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 router._dispatch("wifi", ["scan"])
             )
         assert "No WiFi" in result or "network" in result.lower()

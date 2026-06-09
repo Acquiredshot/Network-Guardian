@@ -162,7 +162,7 @@ _DEFAULT_POLICY: dict[ThreatCategory, tuple[ResponseAction, int]] = {
     # category → (action, block_duration_seconds)  0 = permanent
     ThreatCategory.PORT_SCAN:            (ResponseAction.RATE_LIMIT, 300),
     ThreatCategory.BRUTE_FORCE:          (ResponseAction.BLOCK, 1800),
-    ThreatCategory.DOS:                  (ResponseAction.BLOCK, 600),
+    ThreatCategory.DOS:                  (ResponseAction.BLOCK, 3600),   # 1 hour (was 10 min)
     ThreatCategory.MALWARE:              (ResponseAction.BLOCK, 0),
     ThreatCategory.DATA_EXFIL:           (ResponseAction.BLOCK, 3600),
     ThreatCategory.INJECTION:            (ResponseAction.BLOCK, 3600),

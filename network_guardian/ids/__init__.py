@@ -188,13 +188,55 @@ _DEFAULT_RULES: list[SignatureRule] = [
         severity=Severity.HIGH,
         description="Cross-site scripting payload detected.",
     ),
-    # -- Denial of Service --
+    # -- Denial of Service & Flood Attacks --
     SignatureRule(
         sid=4001, name="SYN Flood",
         pattern=r"SYN\s+flood|syn_flood|too\s+many\s+SYN",
         category=ThreatCategory.DOS,
         severity=Severity.CRITICAL,
         description="SYN flood denial-of-service attack detected.",
+    ),
+    SignatureRule(
+        sid=4002, name="UDP Flood",
+        pattern=r"udp\s+flood|udp_flood|udp.*(?:amplif|reflec|storm)|high.rate.*udp",
+        category=ThreatCategory.DOS,
+        severity=Severity.CRITICAL,
+        description="UDP flood or amplification attack detected.",
+    ),
+    SignatureRule(
+        sid=4003, name="ICMP Flood",
+        pattern=r"icmp\s+flood|ping\s+flood|icmp.*(?:storm|saturat)|echo.*flood",
+        category=ThreatCategory.DOS,
+        severity=Severity.HIGH,
+        description="ICMP/ping flood attack detected.",
+    ),
+    SignatureRule(
+        sid=4004, name="Probe Packet Saturation",
+        pattern=r"(?:nmap|masscan|zmap|unicornscan).*(?:-T[45]|--min-rate|aggressive)|probe.*saturat|connection.table.*exhaust",
+        category=ThreatCategory.DOS,
+        severity=Severity.HIGH,
+        description="Aggressive probe scan that can exhaust router NAT connection tables.",
+    ),
+    SignatureRule(
+        sid=4005, name="NTP Amplification Attack",
+        pattern=r"ntp.*(?:monlist|amplif|reflec)|port\s*123.*flood",
+        category=ThreatCategory.DOS,
+        severity=Severity.HIGH,
+        description="NTP monlist amplification/reflection DDoS attack.",
+    ),
+    SignatureRule(
+        sid=4006, name="DNS Amplification Attack",
+        pattern=r"dns.*(?:amplif|reflec|flood)|any.*dns.*query.*flood",
+        category=ThreatCategory.DOS,
+        severity=Severity.HIGH,
+        description="DNS amplification/reflection attack detected.",
+    ),
+    SignatureRule(
+        sid=4007, name="ARP Flood",
+        pattern=r"arp.*flood|gratuitous.*arp.*(?:storm|flood|rapid)|arp.*(?:storm|saturat)",
+        category=ThreatCategory.DOS,
+        severity=Severity.HIGH,
+        description="ARP flood saturating local network segment.",
     ),
     # -- Malware / C2 --
     SignatureRule(

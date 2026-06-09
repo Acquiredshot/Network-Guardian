@@ -19,6 +19,7 @@ from network_guardian.core.events import EventBus
 from network_guardian.core.plugins import PluginRegistry
 
 if TYPE_CHECKING:
+    from network_guardian.agent.flood_guard import FloodGuardAgent
     from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
     from network_guardian.agent.web_browsing_agent import SafeWebBrowsingAgent
     from network_guardian.agent.probe import ProbeAgent
@@ -87,6 +88,7 @@ class Engine:
         self._isolation_sandbox: IsolationSandboxEngine | None = None
         self._device_baseline_manager: DeviceBaselineManager | None = None
         self._lateral_movement_detector: LateralMovementDetector | None = None
+        self._flood_guard: FloodGuardAgent | None = None
 
         self._running = False
 
@@ -333,6 +335,18 @@ class Engine:
             )
         return self._lateral_movement_detector
 
+    @property
+    def flood_guard(self) -> "FloodGuardAgent":
+        """Flood / probe-saturation detection and auto-blocking agent."""
+        if self._flood_guard is None:
+            from network_guardian.agent.flood_guard import FloodGuardAgent
+            self._flood_guard = FloodGuardAgent(
+                ids=self.ids,
+                ips=self.ips,
+                event_bus=self.event_bus,
+            )
+        return self._flood_guard
+
     # -- Lifecycle -------------------------------------------------------
 
     async def start(self) -> None:
@@ -344,6 +358,8 @@ class Engine:
             await self._node_graph.start_all()
         # Auto-start the Smart Firewall injection agent
         self.smart_firewall.start()
+        # Auto-start flood / probe-saturation protection
+        self.flood_guard.start()
         # Auto-start the Triage Agent (Orchestration Central Brain)
         self.triage.start()
         # Auto-start semantic stream analysis and sandboxing pipeline
@@ -357,6 +373,8 @@ class Engine:
         """Gracefully stop all subsystems."""
         logger.info("Engine shutting down...")
         self._running = False
+        if self._flood_guard is not None:
+            await self._flood_guard.stop()
         if self._isolation_sandbox is not None:
             await self._isolation_sandbox.stop()
         if self._dual_pass_evaluator is not None:

@@ -581,12 +581,42 @@ class SmartFirewallAgent:
         self._total_scanned: int = 0
         self._total_blocked: int = 0
 
+        # ----------------------------------------------------------------
+        # Adaptive threat intelligence
+        # ----------------------------------------------------------------
+
+        # IPs confirmed as flood sources by FloodGuard — lower confidence
+        # threshold for these IPs so injection attempts are caught sooner.
+        self._known_flood_ips: set[str] = set()
+
+        # Subnet → set of offending IPs; when ≥3 IPs in /24 are bad,
+        # the whole subnet is flagged as hostile for elevated scrutiny.
+        self._hostile_subnets: dict[str, set[str]] = defaultdict(set)
+
+        # Multi-vector tracking: IPs that have both flooded AND injected
+        # get a permanent block on the second vector regardless of offense count.
+        self._multi_vector_ips: set[str] = set()
+
+        # Adaptive confidence baseline — auto-tunes downward (more sensitive)
+        # during elevated attack periods, recovers toward 0.70 when quiet.
+        self._adaptive_baseline: float = 0.70
+        self._last_adaptation: float = time.monotonic()
+        self._adaptation_interval: float = 60.0     # re-evaluate every 60s
+        self._attack_events_window: deque = deque(maxlen=100)  # timestamps
+
+        # New unique attacking IPs per minute — velocity spike triggers
+        # global sensitivity increase.
+        self._new_attacker_timestamps: deque = deque(maxlen=500)
+
         # Subscribe to IDS alerts from the event bus
         if self._event_bus:
             self._event_bus.subscribe("ids.alert", self._on_ids_alert)
             self._event_bus.subscribe("probe.discovery.open_port", self._on_probe_discovery)
             self._event_bus.subscribe("probe.exploitation.success", self._on_probe_exploitation)
             self._event_bus.subscribe("bridge.payload_learned", self._on_payload_learned)
+            # ↓ New: learn from FloodGuard detections
+            self._event_bus.subscribe("flood.detected", self._on_flood_detected)
+            self._event_bus.subscribe("flood.table_exhaustion", self._on_table_exhaustion)
 
     # ------------------------------------------------------------------
     # Public API
@@ -949,6 +979,7 @@ class SmartFirewallAgent:
             "last_report_at":        (
                 self._last_report.generated_at if self._last_report else None
             ),
+            "adaptive":              self.adaptive_status(),
         }
 
     def dashboard_summary(self) -> dict:
@@ -1078,8 +1109,10 @@ class SmartFirewallAgent:
                 inverse *= (1.0 - r.confidence)
             combined_confidence = round(1.0 - inverse, 4)
 
-            # Drop detections below the configured confidence threshold
-            if combined_confidence < self._confidence_threshold:
+            # Use per-IP effective threshold (adaptive — lower for flood sources
+            # and IPs in hostile subnets)
+            effective_threshold = self._effective_threshold(source_ip)
+            if combined_confidence < effective_threshold:
                 continue
 
             worst = max(unique_rules, key=lambda r: self._SEVERITY_ORDER.get(r.severity, 0))
@@ -1133,7 +1166,40 @@ class SmartFirewallAgent:
         # Check already blocked
         if self._ips.is_blocked(det.source_ip):
             det.action_taken = "already_blocked"
+            # Still count as an attack event for adaptive tuning
+            self._attack_events_window.append(time.monotonic())
             return False
+
+        # Track new attacker velocity
+        if det.source_ip not in self._ip_history:
+            self._new_attacker_timestamps.append(time.monotonic())
+        self._attack_events_window.append(time.monotonic())
+
+        # Cross-register: if this IP was a flood source, mark multi-vector
+        if det.source_ip in self._known_flood_ips and det.source_ip not in self._multi_vector_ips:
+            self._multi_vector_ips.add(det.source_ip)
+            logger.warning(
+                "[SmartFirewall][ADAPT] MULTI-VECTOR: %s previously flooded, "
+                "now injecting — forcing permanent block",
+                det.source_ip,
+            )
+            # Override block duration to permanent for multi-vector attackers
+            from network_guardian.ips import BlockReason
+            from network_guardian.models.network import Severity as Sev
+            await self._ips.block_ip(
+                det.source_ip,
+                reason=BlockReason.AUTO_IDS,
+                severity=Sev.CRITICAL,
+                duration=None,   # permanent
+                alert_id=det.detection_id,
+                description="SmartFirewall: multi-vector flood+injection — permanent block",
+            )
+            det.action_taken = "blocked"
+            det.block_duration = None
+            self._total_blocked += 1
+            self._update_reputation(det.source_ip, det)
+            await self._publish_detection_event(det)
+            return True
 
         duration = self._block_duration(det.source_ip)
         from network_guardian.ips import BlockReason
@@ -1260,6 +1326,183 @@ class SmartFirewallAgent:
         except Exception as exc:
             logger.debug("SmartFirewallAgent._on_payload_learned error: %s", exc)
 
+    async def _on_flood_detected(self, event: Any) -> None:
+        """Adapt when FloodGuard detects a flood from a source IP.
+
+        Strategy:
+          1. Mark the IP as a known flood source — halve its confidence
+             threshold so any subsequent injection attempt triggers at
+             lower evidence.
+          2. Track the /24 subnet; if ≥3 IPs in the same subnet have
+             flooded, flag the subnet as hostile.
+          3. If this IP has *also* had injection detections (multi-vector
+             attack), escalate immediately to permanent block.
+          4. Update the attack-event velocity counter to drive adaptive
+             baseline tuning.
+        """
+        try:
+            data   = event.data if hasattr(event, "data") else event
+            source = data.get("source_ip", "")
+            if not source or source in self._allowlist:
+                return
+
+            # 1 — Mark as flood source
+            is_new = source not in self._known_flood_ips
+            self._known_flood_ips.add(source)
+            self._attack_events_window.append(time.monotonic())
+            if is_new:
+                self._new_attacker_timestamps.append(time.monotonic())
+
+            # 2 — Subnet tracking
+            subnet = self._ip_to_subnet(source)
+            if subnet:
+                self._hostile_subnets[subnet].add(source)
+                if len(self._hostile_subnets[subnet]) >= 3:
+                    logger.warning(
+                        "[SmartFirewall][ADAPT] Subnet %s/24 flagged as hostile "
+                        "(%d flood sources)",
+                        subnet, len(self._hostile_subnets[subnet]),
+                    )
+
+            # 3 — Multi-vector: flood + prior injection = permanent block
+            if source in self._ip_history and self._ip_history[source]:
+                if source not in self._multi_vector_ips:
+                    self._multi_vector_ips.add(source)
+                    logger.warning(
+                        "[SmartFirewall][ADAPT] MULTI-VECTOR attack from %s "
+                        "(flood + injection) — escalating to permanent block",
+                        source,
+                    )
+                    if self._ips and self.auto_block:
+                        from network_guardian.ips import BlockReason
+                        from network_guardian.models.network import Severity as Sev
+                        await self._ips.block_ip(
+                            source,
+                            reason=BlockReason.AUTO_IDS,
+                            severity=Sev.CRITICAL,
+                            duration=None,   # permanent
+                            description="SmartFirewall: multi-vector flood+injection — permanent block",
+                        )
+
+            # 4 — Trigger adaptive threshold re-evaluation immediately
+            await self._adapt_thresholds()
+
+        except Exception as exc:
+            logger.debug("SmartFirewallAgent._on_flood_detected error: %s", exc)
+
+    async def _on_table_exhaustion(self, event: Any) -> None:
+        """When FloodGuard reports connection-table exhaustion, enter
+        high-sensitivity mode: drop confidence threshold to 0.50 and
+        tighten rate-block threshold for 5 minutes."""
+        try:
+            logger.warning(
+                "[SmartFirewall][ADAPT] Connection-table exhaustion detected — "
+                "entering high-sensitivity mode (confidence→0.50)"
+            )
+            # Emergency threshold drop
+            self._adaptive_baseline = 0.50
+            self._confidence_threshold = 0.50
+            # Schedule recovery after 5 minutes
+            asyncio.ensure_future(self._recover_after(300.0))
+        except Exception as exc:
+            logger.debug("SmartFirewallAgent._on_table_exhaustion error: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Adaptive threshold engine
+    # ------------------------------------------------------------------
+
+    async def _adapt_thresholds(self) -> None:
+        """Re-evaluate and tune the confidence threshold based on attack velocity.
+
+        High velocity (many attack events recently) → lower threshold (more sensitive).
+        Low velocity (quiet period)                  → recover toward 0.70 baseline.
+        """
+        now    = time.monotonic()
+        if now - self._last_adaptation < self._adaptation_interval:
+            return
+        self._last_adaptation = now
+
+        # Count attack events in the last 60 seconds
+        cutoff       = now - 60.0
+        recent_count = sum(1 for t in self._attack_events_window if t >= cutoff)
+
+        # Count new unique attacker IPs in the last 60 seconds (velocity)
+        new_ips_rate = sum(1 for t in self._new_attacker_timestamps if t >= cutoff)
+
+        if recent_count >= 20 or new_ips_rate >= 5:
+            # Under active attack — be very sensitive
+            new_threshold = 0.55
+            mode = "HIGH-ATTACK"
+        elif recent_count >= 10 or new_ips_rate >= 3:
+            # Elevated activity
+            new_threshold = 0.62
+            mode = "ELEVATED"
+        else:
+            # Quiet — recover toward normal
+            new_threshold = min(0.70, self._confidence_threshold + 0.02)
+            mode = "RECOVERY"
+
+        if abs(new_threshold - self._confidence_threshold) >= 0.01:
+            logger.info(
+                "[SmartFirewall][ADAPT] Threshold %s: %.2f → %.2f "
+                "(events/60s=%d, new_ips/60s=%d)",
+                mode, self._confidence_threshold, new_threshold,
+                recent_count, new_ips_rate,
+            )
+            self._confidence_threshold = new_threshold
+
+    async def _recover_after(self, delay: float) -> None:
+        """Restore normal sensitivity after *delay* seconds."""
+        await asyncio.sleep(delay)
+        self._adaptive_baseline     = 0.70
+        self._confidence_threshold  = 0.70
+        logger.info("[SmartFirewall][ADAPT] High-sensitivity mode expired — threshold restored to 0.70")
+
+    @staticmethod
+    def _ip_to_subnet(ip: str) -> str | None:
+        """Return the /24 network prefix for an IPv4 address (e.g. '1.2.3')."""
+        parts = ip.split(".")
+        if len(parts) == 4:
+            return ".".join(parts[:3])
+        return None
+
+    def _effective_threshold(self, source_ip: str) -> float:
+        """Return the per-IP effective detection threshold.
+
+        Known flood sources and IPs in hostile subnets get a 30% lower
+        threshold so injection attempts are caught at lower confidence.
+        """
+        base = self._confidence_threshold
+        subnet = self._ip_to_subnet(source_ip)
+
+        is_flood_source   = source_ip in self._known_flood_ips
+        is_hostile_subnet = bool(subnet and len(self._hostile_subnets.get(subnet, set())) >= 3)
+        has_prior_offense = bool(self._ip_history.get(source_ip))
+
+        if is_flood_source or is_hostile_subnet:
+            base = max(0.40, base * 0.70)   # 30% more sensitive
+        if has_prior_offense:
+            base = max(0.35, base * 0.90)   # additional 10% for repeat offenders
+        return base
+
+    def adaptive_status(self) -> dict:
+        """Return adaptive intelligence state for the dashboard."""
+        now    = time.monotonic()
+        cutoff = now - 60.0
+        return {
+            "confidence_threshold":   round(self._confidence_threshold, 3),
+            "adaptive_baseline":      round(self._adaptive_baseline, 3),
+            "known_flood_ips":        len(self._known_flood_ips),
+            "hostile_subnets":        {
+                f"{k}.0/24": len(v)
+                for k, v in self._hostile_subnets.items()
+                if len(v) >= 2
+            },
+            "multi_vector_ips":       len(self._multi_vector_ips),
+            "attack_events_60s":      sum(1 for t in self._attack_events_window  if t >= cutoff),
+            "new_attackers_60s":      sum(1 for t in self._new_attacker_timestamps if t >= cutoff),
+        }
+
 
     # ------------------------------------------------------------------
     # Internal: autonomous loop
@@ -1271,6 +1514,9 @@ class SmartFirewallAgent:
         while self._running:
             try:
                 await self.run_cycle()
+                # Periodically re-evaluate adaptive thresholds even without
+                # new flood events (handles recovery during quiet periods)
+                await self._adapt_thresholds()
                 now = time.monotonic()
                 if now - _last_evict >= _evict_every:
                     self._evict_stale_trackers()
