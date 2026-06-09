@@ -60,6 +60,30 @@ incident_reports/*.md
 users_db.json
 access_log.json
 
+# JARVIS runtime logs (may contain operator commands and probe IPs)
+jarvis_crash.log
+jarvis_*.log
+
+# Agent auth token (contains time-limited fleet credentials)
+.ng_agent/
+.ng_agent_auth.json
+
+# Network Guardian runtime data dir (fleet.json, baselines, injection db)
+.network_guardian/
+
+# Fleet key and agent registration keys (never push — distribute out-of-band)
+fleet_key.txt
+agent_key.txt
+*_agent_key.txt
+
+# Heroku / deployment secrets
+.heroku/
+Procfile.local
+
+# Local config overrides (may contain private IPs, passwords)
+config.local.yaml
+config.override.yaml
+
 # Business & test documents (internal use only)
 BUSINESS_REQUIREMENTS_DOCUMENT.md
 FUNCTIONALITY_TEST_REPORT.md
@@ -72,3 +96,11 @@ pdf_reports/
 
 # Scan/export data — contains network topology, attacker IPs, firewall rules (sensitive)
 export/
+
+# pywin32 / COM / SAPI generated cache
+win32com/
+win32/
+
+# Crash / core dumps
+*.dmp
+crash_*.txt

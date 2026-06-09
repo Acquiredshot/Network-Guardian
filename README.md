@@ -1,25 +1,53 @@
 # Network Guardian
 
-> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.11, zero heavy ML deps.
+> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, LangGraph + DeepSeek-R1 chain-of-thought triage, J.A.R.V.I.S. conversational terminal shell with live telemetry access and field probe command, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.13, zero heavy ML deps.
 
 **Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (credentials provided separately)
 
 ---
 
-## Recent Updates (2026-06-06)
+## Recent Updates (2026-06-09)
 
-- Added **Public Defense Mode** for hotspot/public-network operation:
-  - `python start_all.py --public-defense`
-  - or `NG_PUBLIC_DEFENSE=1 python start_all.py`
-- Hardened launcher/process paths to remove shell-based command execution in key runtime tooling.
-- Startup now safely handles occupied dashboard port `8080` by reusing an existing local dashboard when appropriate.
-- Endpoint scanner reliability fix: now targets port `8080` by default with `NG_DASHBOARD_PORT` override.
-- Bootstrap auth hardening: first-run admin password is no longer hardcoded; use `NG_BOOTSTRAP_ADMIN_PASSWORD` or let the dashboard generate one.
-- Probe deployment refresh: rebuilt `dist/usb_deploy/probe.py` from canonical probe source and verified artifact parity.
+- **[v49] JARVIS Probe Commander** — `probe_commander.py` gives JARVIS full awareness of all active field probes. `probes` command: reads registered agents from `fleet.json`, async health-checks each probe IP (ping + port scan + HTTP banner), and sweeps the subnet for unregistered NG instances. `probe health` command pings all known agents. Read-only guard-rail — no mutations.
+- **[v49] JARVIS Live Data Access** — Free-form questions to JARVIS now receive a real-time telemetry snapshot (threat level, metrics, fleet, firewall history, all probe statuses) injected into the DeepSeek context window. JARVIS answers factual questions directly ("when was the last firewall scan?") instead of returning "I don't have access."
+- **[v49] `cmd_fleet` fix** — Fleet report now shows both passive `devices[]` and registered probe `agents{}` from `fleet.json`. Previously all field agents were invisible in JARVIS fleet output.
+- **[v49] `.gitignore` hardened** — `jarvis_crash.log`, `.ng_agent/`, `.network_guardian/`, `fleet_key.txt`, `agent_key.txt`, `config.local.yaml`, `win32com/`, `*.dmp` added to prevent accidental push of runtime data and fleet credentials.
+- **[v48] J.A.R.V.I.S. Terminal Intelligence Layer** — conversational REPL shell with natural-language command dispatch, live telemetry aggregation, AI-powered triage, voice I/O (SAPI 5), microphone wake-word detection, and NG process lifecycle management. Launch: `python jarvis_gui.py`
+- **[v48] LangGraph + DeepSeek-R1 Reasoning Engine** — four-node `StateGraph` (ingest → reason → plan → summarize) replaces keyword-only intent classification in `TriageAgent` with chain-of-thought reasoning. Activate by setting `DEEPSEEK_API_KEY` in `.env`.
+- **[v47]** Added Google Safe Browsing trust signals + Search Console verification to SaaS landing page.
+- **[v46]** `FloodGuardAgent` — per-IP SYN/UDP/ICMP/probe-saturation detection with auto-escalating IPS blocks; probe self-protection (`_ProbeFloodGuard`) embedded in field probes.
 
 ---
 
-## Operator Upgrade Notes (v42 -> v43)
+## Operator Upgrade Notes (v48 → v49)
+
+1. **No breaking changes** — drop-in enhancement. Existing probes, fleet API, and dashboard are unaffected.
+2. **New JARVIS probe commands:**
+   - `probes` — full probe inventory (registered + subnet sweep for unregistered)
+   - `probe health` — ping-check every registered agent
+3. **Laptop probe visibility:** ensure your field probe uses the server's **LAN IP** as `--base` (not `127.0.0.1`). Once it phones home it will appear in `probes` immediately.
+4. **No new dependencies** — `probe_commander.py` uses Python stdlib only (asyncio, socket, subprocess).
+
+---
+
+## Operator Upgrade Notes (v47 → v48)
+
+1. **DeepSeek AI triage (optional but recommended):**
+   - Get a key at https://platform.deepseek.com and add to `.env`: `DEEPSEEK_API_KEY=sk-<your-key>`
+   - Install: `pip install langgraph langchain-openai langchain-core`
+   - Once set, `TriageAgent` automatically uses chain-of-thought reasoning; falls back to keyword scorer if key is absent.
+2. **JARVIS GUI:**
+   - `python jarvis_gui.py` — full GUI with voice I/O, microphone wake-word, chat interface
+   - `python -m network_guardian.jarvis.jarvis_core` — headless terminal REPL
+   - Set `JARVIS_OPERATOR` env var to personalise greetings (default: `sir`).
+   - Set `JARVIS_MIC_INDEX` to select microphone device (default: 1 for HyperX; use `python -m sounddevice` to list).
+   - Set `NG_DATA_ROOT` to override the data directory read by `TelemetryAggregator` (default: `~/.network_guardian`).
+3. **No breaking changes** — existing probes, fleet API, dashboard routes, and SaaS stack are unaffected.
+4. **Test suite** — run `python -m pytest tests/ -q` to verify all **715 tests pass**.
+
+---
+
+## Operator Upgrade Notes (v42 → v43)
 
 1. Startup mode change:
   - For public/hotspot operation, start with `python start_all.py --public-defense` (or `NG_PUBLIC_DEFENSE=1 python start_all.py`).
@@ -51,6 +79,9 @@
 | **PDF Threat Reports** | ReportLab-generated, branded PDF reports covering the full ReAct chain, threat inventory, actions taken, and recommendations — auto-saved and downloadable from the dashboard |
 | **Threat Reports** | Automatic `ThreatReport` generated on every threat with full CVSS-style scoring, explanations, and recommended response steps |
 | **Incident Reports** | Auto-generated Markdown incident reports saved to `incident_reports/` on every detection event |
+| **LangGraph + DeepSeek-R1 Reasoning** | **v48: NEW** — Four-node LangGraph `StateGraph` (ingest → reason → plan → summarize) using DeepSeek-R1 (`deepseek-reasoner`) via OpenAI-compatible API. Replaces keyword-only intent classification in `TriageAgent` with chain-of-thought reasoning. Outputs structured `intent_class`, `confidence`, `action_plan`, and `recommendations`. Activates when `DEEPSEEK_API_KEY` is set; graceful keyword-scorer fallback otherwise. Re-reasoning loop fires automatically when confidence < 40 %. |
+| **J.A.R.V.I.S. Terminal Shell** | **v48/v49** — `network_guardian/jarvis/` — conversational GUI + REPL providing natural-language dispatch to all telemetry, threat reporting, and AI triage subsystems. v49: voice I/O (SAPI 5 TTS, microphone wake-word "jarvis"), crash-logging, COM threading fix, HyperX mic support. Modules: `jarvis_core` (REPL + intent parser, 80+ NL keywords), `telemetry_aggregator` (OS/fleet/DB reads), `threat_report_engine` (0-100 scorer), `subsystem_bootstrapper` (NG process lifecycle), `jarvis_voice` (SAPI 5 TTS), `jarvis_ear` (wake-word + SR), `jarvis_conversation` (conversational AI brain), `probe_commander` (probe awareness). Launch: `python jarvis_gui.py` |
+| **JARVIS Probe Commander** | **v49: NEW** — `network_guardian/jarvis/probe_commander.py` — read-only probe awareness engine. Reads registered probe agents from `fleet.json` `agents{}` section, async health-checks each (ping + TCP port scan + HTTP banner), and sweeps the /24 subnet for unregistered NG instances. JARVIS commands: `probes` (full scan), `probe health` (ping-only). Guard-rail: strictly read-only. |
 | **ML / AI Engine** | Isolation Forest, One-Class SVM, ARIMA/Holt-Winters forecasting, ROS-style AI node graph, NLP parsing |
 | **Per-Device Behavioral Baseline (UEBA)** | **v35: NEW** — Each IP builds its own rolling Isolation Forest (30-sample warm-up, 200-sample window). Flags deviations from a device's *personal* baseline rather than fleet-wide averages. Persists baselines to `~/.network_guardian/baselines/`. Wired into the node graph as `DeviceBaselineNode`; publishes `ai.device_baseline_alert` events. |
 | **Lateral Movement Detection (UEBA)** | **v35: NEW** — Tracks unique destination fan-out per source IP in rolling 5-minute windows. Raises `ai.lateral_movement_alert` when fan-out spikes ≥ 3σ above per-source baseline OR hits the absolute threshold of 20 unique destinations. Catches ransomware propagation, worm spread, and internal recon in real time. History persisted to `~/.network_guardian/lateral_movement.json`. |
@@ -116,6 +147,11 @@ python -m network_guardian.agent.email_react_agent # autonomous email ReAct agen
 python -m network_guardian.agent.smart_firewall_agent  # standalone injection scanner CLI
 python -m network_guardian.agent.web_browsing_agent    # Safe Web Browsing Agent CLI
 python run_web_browsing_tests.py                       # interactive TUI test monitor (Textual)
+
+# ── J.A.R.V.I.S. (v48) ─────────────────────────────────────────
+python -m network_guardian.jarvis.jarvis_core          # JARVIS conversational terminal shell (NL commands)
+DEEPSEEK_API_KEY=sk-<key> python -m network_guardian.jarvis.jarvis_core  # with DeepSeek-R1 AI triage active
+JARVIS_OPERATOR="Your Name" python -m network_guardian.jarvis.jarvis_core # custom operator name
 ```
 
 ---

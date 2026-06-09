@@ -2,13 +2,139 @@
 
 ## Overview
 
-The patch delivery system provides centralized distribution of security recommendations, system hardening fixes, and vulnerability patches to remote probes and fleet agents. Each patch includes severity levels, CVE identifiers, and pre-built remediation commands ready for deployment.
+The patch delivery system provides centralized distribution of security recommendations,
+system hardening fixes, and vulnerability patches to remote probes and fleet agents.
+Each patch includes severity levels, CVE identifiers, and pre-built remediation commands
+ready for deployment.
 
-Current runtime note (2026-06-06): In addition to `fetch_patches.py`, active probe-side update delivery is supported through base-pushed `patch_config` in fleet report ACKs (`FleetStore.set_patch_config(...)` -> probe applies on next phone-home).
+Current runtime note (2026-06-06): In addition to `fetch_patches.py`, active probe-side
+update delivery is supported through base-pushed `patch_config` in fleet report ACKs
+(`FleetStore.set_patch_config(...)` -> probe applies on next phone-home).
 
 ---
 
-## Capabilities
+## Recent Patch Notes
+
+### [v49] — 2026-06-09 — JARVIS Operational Data Access + Probe Commander
+
+**Type:** Feature / Intelligence Layer  
+**Severity:** Enhancement (no vulnerability)  
+**Components:** `network_guardian/jarvis/probe_commander.py`, `network_guardian/jarvis/jarvis_core.py`, `network_guardian/jarvis/jarvis_conversation.py`, `.gitignore`
+
+#### Changes Delivered
+
+- **`probe_commander.py`** (new) — Read-only probe awareness module. Reads `agents{}`
+  section of `fleet.json` (previously invisible to JARVIS), async-pings registered
+  probe IPs, checks probe ports (8080/8443/5000/4443), and sweeps the /24 subnet for
+  unregistered NG instances. Guard-rail: strictly read-only, no probe commands.
+
+- **`cmd_fleet` fix** — Fleet handler now shows both `devices[]` (passive ARP scans)
+  and `agents{}` (registered probes) from `fleet.json`. Previously all field agents
+  appeared invisible in JARVIS fleet reports.
+
+- **New JARVIS commands** — `probes` / `field agents` / `active probes` for full probe
+  inventory + subnet scan; `probe health` / `check probes` for ping-only health checks.
+
+- **Live telemetry context for conversational AI** — Free-form questions now receive a
+  real-time snapshot (threat level, metrics, fleet, firewall history, probe agent statuses)
+  injected into the DeepSeek prompt. JARVIS answers factual questions directly instead
+  of returning "I don't have access."
+
+- **35+ new natural-language keywords** added to `INTENT_MAP` covering common phrasing
+  variants for all command categories.
+
+- **`.gitignore` hardened** — `jarvis_crash.log`, `.ng_agent/`, `.network_guardian/`,
+  `fleet_key.txt`, `agent_key.txt`, `config.local.yaml`, `win32com/`, `*.dmp` added.
+  Prevents accidental push of runtime data, auth tokens, and fleet credentials.
+
+#### Operator Action Required
+
+None — this is a drop-in enhancement. Existing probes and fleet API are unaffected.
+
+To use the new probe commands in JARVIS:
+```
+probes          # full probe inventory + subnet sweep
+probe health    # ping all registered agents
+```
+
+To ensure your laptop probe shows as online, confirm it points `--base` at the
+server's LAN IP (not `127.0.0.1`) when running `run_persistent_probe.py`.
+
+---
+
+### [v48] — 2026-06-09 — JARVIS + LangGraph/DeepSeek AI Reasoning
+
+**Type:** Feature / AI Integration  
+**Severity:** Enhancement (no vulnerability)  
+**Components:** `network_guardian/jarvis/`, `network_guardian/ai/langgraph_reasoner.py`, `network_guardian/agent/triage_agent.py`
+
+#### Changes Delivered
+
+- **J.A.R.V.I.S. terminal shell** (`network_guardian/jarvis/`) — six-module conversational
+  intelligence layer providing natural-language command dispatch, live telemetry aggregation,
+  AI triage, voice I/O, and NG process lifecycle management.
+
+- **LangGraph reasoning engine** (`network_guardian/ai/langgraph_reasoner.py`) — four-node
+  `StateGraph` (ingest → reason → plan → summarize) using **DeepSeek-R1** (`deepseek-reasoner`)
+  via the OpenAI-compatible API. Replaces keyword-only intent classification in `TriageAgent`
+  with chain-of-thought reasoning, structured `action_plan` output, and automatic re-reasoning
+  when confidence < 40 %.
+
+- **TriageAgent upgrade** — REASON phase now calls `reason_about_intent()` when
+  `DEEPSEEK_API_KEY` is set; full backward compatibility preserved (keyword fallback active
+  when key is absent).
+
+- **62 new tests** in `tests/test_jarvis.py`; **31 new tests** in
+  `tests/test_langgraph_deepseek.py`. Total suite: **715 passed, 0 failed**.
+
+#### Operator Action Required
+
+1. Obtain a DeepSeek API key at https://platform.deepseek.com
+2. Add to `.env`:
+   ```
+   DEEPSEEK_API_KEY=sk-<your-key>
+   ```
+3. Install new dependencies (if not already present):
+   ```bash
+   pip install langgraph langchain-openai langchain-core
+   ```
+4. Launch JARVIS interactive shell:
+   ```bash
+   python -m network_guardian.jarvis.jarvis_core
+   ```
+
+No changes to probe deployment, fleet API, or dashboard routes. Safe to deploy without
+restarting existing probes.
+
+---
+
+### [v47] — 2026-06-08 — Google Safe Browsing Trust Signals
+
+**Type:** Compliance / Trust  
+**Components:** `network_guardian/saas/ui.py`, `network_guardian/saas/service.py`
+
+- Added company identity header, JSON-LD `SoftwareApplication` structured data, meta tags,
+  and full footer to the SaaS landing page to resolve Google Safe Browsing phishing flag.
+- Added `GET /robots.txt`, `GET /.well-known/security.txt`, and Google Search Console
+  HTML verification endpoint.
+- Google Search Console property verified; Safe Browsing review request submitted.
+
+---
+
+### [v46] — 2026-06-08 — Flood & Probe-Packet Hardening
+
+**Type:** Security / DOS Protection  
+**Components:** `network_guardian/agent/flood_guard.py`, `flood_watchdog.py`, probe modules
+
+- `FloodGuardAgent` — per-IP SYN/UDP/ICMP/probe-saturation detection with auto-escalating
+  IPS blocks (1h → 6h → permanent).
+- 7 new IDS signatures (SID 4001–4007).
+- `DOS` block duration: 10 min → 1 hour.
+- Probe self-protection: `_ProbeFloodGuard` (stdlib-only) embedded in field probes.
+
+---
+
+
 
 ### Patch Distribution
 - **Centralized Management** — Define patches once, deliver to all probes

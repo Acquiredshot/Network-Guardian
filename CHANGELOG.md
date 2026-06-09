@@ -4,6 +4,241 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v49] — 2026-06-09
+
+### Added — JARVIS Operational Data Access + Probe Commander
+
+This release gives J.A.R.V.I.S. full read-only operational awareness of live telemetry
+and all active field probes. JARVIS can now answer factual questions about the network
+state ("when was the last firewall scan?"), discover unregistered probes on the subnet,
+and health-check every registered field agent — using the probe/firewall bridge system.
+
+---
+
+#### New Module: `network_guardian/jarvis/probe_commander.py`
+
+A read-only probe awareness engine with three capabilities:
+
+| Function | Purpose |
+|---|---|
+| `list_registered_probes()` | Reads the `agents{}` section of `fleet.json` — the section probes write to when they phone home. Previously invisible to JARVIS. |
+| `health_check_probe(ip)` | Async ping + concurrent TCP port scan (8080/8443/5000/4443) + HTTP banner grab to verify a host is a live NG instance. Returns latency, open ports, and NG-signal detection. |
+| `scan_subnet_for_probes()` | Concurrent ping-sweep of the /24 subnet (up to 254 hosts, 40 parallel). Checks probe ports on every live host not already in fleet. Returns `ProbeRecord` list for unregistered candidates. |
+| `run_full_probe_report()` | Sync blocking wrapper — combines all three. Safe to call from any thread. |
+
+**Guard-rail:** All operations are strictly read-only. No probe commands, no config mutations, no subprocess execution.
+
+---
+
+#### JARVIS New Commands
+
+| Say | Action |
+|---|---|
+| `probes` / `field agents` / `active probes` / `my laptop` | Full scan: registered agents + health check + subnet sweep for unregistered |
+| `probe health` / `check probes` / `ping probe` | Health-only check — pings every registered probe IP |
+| (existing) `fleet` / `devices` | Now also shows `agents{}` section — previously only showed `devices[]` |
+
+**Natural-language aliases added (35+ new keywords across all commands):**
+- `"last firewall scan"`, `"last attack"`, `"when was the last"`, `"scan history"` → `cmd_firewall`
+- `"how many devices"`, `"what devices"`, `"connected devices"` → `cmd_fleet`
+- `"are we safe"`, `"current threat"`, `"security report"` → `cmd_situation`
+- `"system health"`, `"cpu usage"`, `"disk space"` → `cmd_metrics`
+- `"my laptop"`, `"other operators"`, `"remote agent"` → `cmd_probes`
+
+---
+
+#### JARVIS Conversational AI — Live Data Access
+
+The unrecognised-intent path (free-form questions) now:
+
+1. Builds a real-time telemetry snapshot before calling DeepSeek:
+   - Current threat level + score
+   - CPU / RAM / disk / uptime
+   - Fleet device count (online/offline)
+   - Last firewall event (timestamp, type, source IP)
+   - Lateral movement summary (total, HIGH/CRITICAL, last 24h)
+   - **All registered probe agents** (hostname, IP, status, last seen)
+
+2. Injects snapshot into the DeepSeek system prompt so JARVIS answers
+   from real data instead of saying "I don't have access."
+
+3. Updated system prompt removes the old "recommend a command" fallback
+   for fact-based questions — JARVIS answers directly.
+
+---
+
+#### Bug Fixes
+
+- **`cmd_fleet` blind spot fixed** — `fleet.json` stores probe agents under `agents{}`
+  not `devices[]`. The old handler only read `devices[]`, making all registered probes
+  invisible. Fixed: now shows both sections with separate labeled tables.
+
+- **`.gitignore` hardened** — Added:
+  - `jarvis_crash.log` / `jarvis_*.log` (contain operator commands + probe IPs)
+  - `.ng_agent/` (agent auth tokens with time-limited fleet credentials)
+  - `.network_guardian/` (runtime data dir — fleet.json, injection db, baselines)
+  - `fleet_key.txt`, `agent_key.txt` (never push — distribute out-of-band)
+  - `config.local.yaml`, `config.override.yaml` (may contain private IPs)
+  - `win32com/`, `win32/`, `*.dmp` (pywin32 cache + crash dumps)
+
+---
+
+## [v48] — 2026-06-09
+
+### Added — J.A.R.V.I.S. Terminal Intelligence Layer + LangGraph / DeepSeek-R1 AI Reasoning
+
+This release integrates a full conversational terminal shell (**J.A.R.V.I.S.**) into the
+Network Guardian platform and replaces the keyword-based TriageAgent intent classifier
+with a **LangGraph state-machine + DeepSeek-R1 chain-of-thought reasoning engine**.
+All 715 tests pass; 62 new JARVIS-specific tests added.
+
+---
+
+#### New Sub-package: `network_guardian/jarvis/`
+
+Six new modules form the JARVIS terminal intelligence layer:
+
+| Module | Purpose |
+|---|---|
+| `jarvis_core.py` | Master REPL shell — 10 command handlers, longest-match NL intent parser, `JarvisCore` programmatic API |
+| `telemetry_aggregator.py` | Live OS metrics (psutil), fleet.json, injection_history.db (SQLite), lateral_movement.json reader |
+| `threat_report_engine.py` | 0-100 threat scorer + formatted situation-report generator (`NOMINAL/ELEVATED/HIGH/CRITICAL`) |
+| `subsystem_bootstrapper.py` | NG process lifecycle manager — auto-detects project root, resolves port 8080 collisions, launches/stops `start_all.py` |
+| `jarvis_voice.py` | SAPI 5 TTS engine — `win32com` → PowerShell → silent fallback chain; `JarvisVoice`, `JarvisScript` persona lines |
+| `jarvis_ear.py` | Microphone input — SpeechRecognition + Vosk offline / Google online / deaf fallback; `WakeWordDetector` |
+
+**JARVIS REPL commands (natural language accepted):**
+
+| Keywords | Action |
+|---|---|
+| `situation / status / threat / health` | Full threat + telemetry briefing |
+| `triage / analyze / deep scan / ai scan` | **DeepSeek-R1 chain-of-thought triage** — live telemetry → LangGraph → structured action plan |
+| `start / activate / defenses / deploy` | Launch Network Guardian via SubsystemBootstrapper |
+| `stop / halt / shutdown` | Gracefully halt all NG subsystems |
+| `fleet / devices / nodes / network map` | Show registered fleet from `fleet.json` |
+| `firewall / injection / sql / attacks` | Query SQL injection history database |
+| `lateral / movement / pivot` | Review lateral movement event log |
+| `metrics / cpu / memory / disk` | Live OS hardware performance snapshot |
+| `help / ?` | Command reference |
+| `exit / quit / bye` | Terminate session |
+
+**Start the JARVIS shell:**
+```bash
+python -m network_guardian.jarvis.jarvis_core
+```
+
+---
+
+#### New Module: `network_guardian/ai/langgraph_reasoner.py`
+
+Replaces keyword-only intent classification in `TriageAgent` with a full
+**LangGraph state-machine + DeepSeek-R1** chain-of-thought reasoning pipeline.
+
+**Graph topology:**
+```
+[ingest_node] → [reason_node] → conditional(_should_re_reason) → [plan_node] → [summarize_node] → END
+```
+
+**Nodes:**
+
+| Node | Role |
+|---|---|
+| `ingest_node` | Normalises threat observations and system-state snapshot into graph state |
+| `reason_node` | Calls DeepSeek-R1 (`deepseek-reasoner`) via OpenAI-compatible API; parses `<think>…</think>` chain-of-thought; returns `intent_class`, `confidence`, `action_plan`, `recommendations` |
+| `plan_node` | Validates DeepSeek plan; applies per-`intent_class` fallback actions when plan is empty |
+| `summarize_node` | Assembles final findings list from all reasoning artefacts |
+
+**Re-reasoning loop:** if `confidence < 0.40` and only one iteration has occurred,
+the graph automatically re-calls the reason node for a second pass before planning.
+
+**Public API:**
+```python
+from network_guardian.ai.langgraph_reasoner import reason_about_intent
+
+result = await reason_about_intent(
+    intent="scan for lateral movement",
+    system_state=telemetry.full_snapshot(),
+    observations={},
+    api_key=os.environ["DEEPSEEK_API_KEY"],
+)
+# result keys: intent_class, confidence, deepseek_reasoning, action_plan, recommendations, findings
+```
+
+**Activation:** set `DEEPSEEK_API_KEY` in `.env`. Falls back gracefully to the existing
+keyword scorer if the key is absent or the API is unreachable.
+
+---
+
+#### Modified: `network_guardian/agent/triage_agent.py`
+
+- **REASON phase** — when `DEEPSEEK_API_KEY` is set, calls `reason_about_intent()` and maps the
+  returned `intent_class` string to `IntentClass` enum; uses DeepSeek's structured `action_plan` directly.
+- **LEARN phase** — DeepSeek `recommendations` are prepended to keyword-built recommendations list.
+- Keyword scorer retained as fallback; zero behaviour change if env var is absent.
+
+---
+
+#### New Tests: `tests/test_jarvis.py` (62 tests)
+
+| Class | Coverage |
+|---|---|
+| `TestTelemetryAggregator` | OS metrics, fleet read, injection DB, lateral movement, full snapshot (10 tests) |
+| `TestThreatReportEngine` | Threat scoring, label validation, report line generation, high-injection escalation (6 tests) |
+| `TestSubsystemBootstrapper` | Root auto-detection, env var override, environment validation (6 tests) |
+| `TestParseIntent` | 23 NL→intent mappings, empty/unknown inputs, longest-match win, completeness (28 tests) |
+| `TestJarvisCore` | dispatch(), help output, situation, exit (5 tests) |
+| `TestJarvisTriage` | DeepSeek mocked result, fallback without key, LG unavailable, exception handling, low confidence (5 tests) |
+| `TestJarvisIntegration` | Full situation flow, report/print parity, snapshot integrity (3 tests) |
+
+---
+
+#### New Tests: `tests/test_langgraph_deepseek.py` (31 tests)
+
+Covers all four graph nodes, re-reasoning conditional, full graph runs, TriageAgent
+integration path, and graph structure validation. All LLM calls mocked via
+`unittest.mock.patch("network_guardian.ai.langgraph_reasoner._make_llm")`.
+
+---
+
+#### Environment Variables Added
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | — | Activates LangGraph + DeepSeek-R1 reasoning |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Override DeepSeek API endpoint |
+| `DEEPSEEK_MODEL` | `deepseek-reasoner` | Override model name |
+| `DEEPSEEK_TIMEOUT` | `60` | API call timeout (seconds) |
+| `JARVIS_OPERATOR` | `Network Guardian Operator` | Operator name used in JARVIS greetings |
+| `NG_ROOT` | auto-detected | Override NG project root for SubsystemBootstrapper |
+| `NG_DATA_ROOT` | `~/.network_guardian` | Override data directory for TelemetryAggregator |
+| `NG_PORT` | `8080` | Port managed by SubsystemBootstrapper |
+
+---
+
+#### Dependencies Added
+
+```
+langgraph
+langchain-openai
+langchain-core
+```
+
+Install: `pip install langgraph langchain-openai langchain-core`
+(Already present in the virtual environment.)
+
+---
+
+#### Test Suite Summary
+
+| Suite | Before | After |
+|---|---|---|
+| Total tests | 653 | **715** |
+| JARVIS tests | 0 | **62** |
+| LangGraph/DeepSeek tests | 0 | **31** |
+| Failures | 0 | **0** |
+
+---
+
 ## [v47] — 2026-06-08
 
 ### Added — Google Safe Browsing Trust Signals & Search Console Verification

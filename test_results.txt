@@ -1,0 +1,94 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Cortez\Network Guardian\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Cortez\Network Guardian
+configfile: pyproject.toml
+plugins: anyio-4.13.0, langsmith-0.8.11, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 62 items
+
+tests/test_jarvis.py::TestTelemetryAggregator::test_get_os_metrics_returns_expected_keys PASSED [  1%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_read_fleet_returns_devices PASSED [  3%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_fleet_summary_returns_dict PASSED [  4%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_read_injection_history_returns_rows PASSED [  6%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_injection_summary_contains_count FAILED [  8%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_read_lateral_movement_returns_events PASSED [  9%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_lateral_summary_mentions_high PASSED [ 11%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_full_snapshot_keys FAILED [ 12%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_empty_data_root_returns_gracefully PASSED [ 14%]
+tests/test_jarvis.py::TestTelemetryAggregator::test_injection_history_respects_limit PASSED [ 16%]
+tests/test_jarvis.py::TestThreatReportEngine::test_compute_threat_level_returns_tuple PASSED [ 17%]
+tests/test_jarvis.py::TestThreatReportEngine::test_threat_label_values PASSED [ 19%]
+tests/test_jarvis.py::TestThreatReportEngine::test_build_report_lines_returns_list PASSED [ 20%]
+tests/test_jarvis.py::TestThreatReportEngine::test_report_contains_section_headers PASSED [ 22%]
+tests/test_jarvis.py::TestThreatReportEngine::test_high_injection_count_raises_threat PASSED [ 24%]
+tests/test_jarvis.py::TestThreatReportEngine::test_print_summary_does_not_raise PASSED [ 25%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_resolve_ng_root_returns_path PASSED [ 27%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_resolve_ng_root_via_env PASSED [ 29%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_is_running_false_when_not_started PASSED [ 30%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_validate_environment_missing_root_raises PASSED [ 32%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_validate_environment_missing_script_raises PASSED [ 33%]
+tests/test_jarvis.py::TestSubsystemBootstrapper::test_validate_environment_passes_with_script PASSED [ 35%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[situation-cmd_situation] PASSED [ 37%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[show me the status-cmd_situation] PASSED [ 38%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[what threat is there-cmd_situation] PASSED [ 40%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[start the defenses-cmd_start] PASSED [ 41%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[activate-cmd_start] PASSED [ 43%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[stop-cmd_stop] PASSED [ 45%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[halt all systems-cmd_stop] PASSED [ 46%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[fleet report-cmd_fleet] PASSED [ 48%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[show me the network map-cmd_fleet] PASSED [ 50%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[firewall logs-cmd_firewall] PASSED [ 51%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[sql injection history-cmd_firewall] PASSED [ 53%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[lateral movement scan-cmd_lateral] PASSED [ 54%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[cpu metrics-cmd_metrics] PASSED [ 56%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[check memory usage-cmd_metrics] PASSED [ 58%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[performance-cmd_metrics] PASSED [ 59%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[triage the network-cmd_triage] PASSED [ 61%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[analyze threats-cmd_triage] PASSED [ 62%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[deep scan-cmd_triage] PASSED [ 64%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[help-cmd_help] PASSED [ 66%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[?-cmd_help] PASSED [ 67%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[exit-cmd_exit] PASSED [ 69%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[quit-cmd_exit] PASSED [ 70%]
+tests/test_jarvis.py::TestParseIntent::test_known_intents[bye-cmd_exit] PASSED [ 72%]
+tests/test_jarvis.py::TestParseIntent::test_empty_string_returns_none PASSED [ 74%]
+tests/test_jarvis.py::TestParseIntent::test_unknown_text_returns_none PASSED [ 75%]
+tests/test_jarvis.py::TestParseIntent::test_longest_match_wins PASSED    [ 77%]
+tests/test_jarvis.py::TestParseIntent::test_intent_map_completeness PASSED [ 79%]
+tests/test_jarvis.py::TestJarvisCore::test_dispatch_known_command_returns_true PASSED [ 80%]
+tests/test_jarvis.py::TestJarvisCore::test_dispatch_unknown_returns_false PASSED [ 82%]
+tests/test_jarvis.py::TestJarvisCore::test_dispatch_help_prints_output PASSED [ 83%]
+tests/test_jarvis.py::TestJarvisCore::test_dispatch_situation PASSED     [ 85%]
+tests/test_jarvis.py::TestJarvisCore::test_dispatch_exit_raises_systemexit PASSED [ 87%]
+tests/test_jarvis.py::TestJarvisTriage::test_triage_prints_ai_result PASSED [ 88%]
+tests/test_jarvis.py::TestJarvisTriage::test_triage_falls_back_without_api_key PASSED [ 90%]
+tests/test_jarvis.py::TestJarvisTriage::test_triage_falls_back_when_lg_unavailable PASSED [ 91%]
+tests/test_jarvis.py::TestJarvisTriage::test_triage_handles_reasoner_exception PASSED [ 93%]
+tests/test_jarvis.py::TestJarvisTriage::test_triage_low_confidence_displayed PASSED [ 95%]
+tests/test_jarvis.py::TestJarvisIntegration::test_full_situation_flow PASSED [ 96%]
+tests/test_jarvis.py::TestJarvisIntegration::test_report_lines_match_print_summary PASSED [ 98%]
+tests/test_jarvis.py::TestJarvisIntegration::test_snapshot_matches_telemetry_reads FAILED [100%]
+
+================================== FAILURES ===================================
+________ TestTelemetryAggregator.test_injection_summary_contains_count ________
+tests\test_jarvis.py:135: in test_injection_summary_contains_count
+    assert s.get("total") == 2
+E   AssertionError: assert None == 2
+E    +  where None = <built-in method get of dict object at 0x0000013ABFFDAE40>('total')
+E    +    where <built-in method get of dict object at 0x0000013ABFFDAE40> = {'blocked_count': 2, 'top_attack_types': [('XSS', 1), ('SQLi', 1)], 'top_source_ips': [('10.0.0.2', 1), ('10.0.0.1', 1)], 'total_fetched': 2}.get
+_______________ TestTelemetryAggregator.test_full_snapshot_keys _______________
+tests\test_jarvis.py:152: in test_full_snapshot_keys
+    assert key in snap, f"Snapshot missing key: {key}"
+E   AssertionError: Snapshot missing key: injection_history
+E   assert 'injection_history' in {'fleet': {'high_risk_ips': [], 'offline': 0, 'online': 0, 'total': 2, ...}, 'injection': {'blocked_count': 2, 'top_attack_types': [('XSS', 1), ('SQLi', 1)], 'top_source_ips': [('10.0.0.2', 1), ('10.0.0.1', 1)], 'total_fetched': 2}, 'lateral': {'critical': 0, 'high': 1, 'low': 0, 'medium': 0, ...}, 'os_metrics': {'boot_time': '2026-06-08 21:14:18', 'cpu_percent': 14.4, 'disk_free': '80.6 GB', 'disk_percent': 91.3, ...}, ...}
+_________ TestJarvisIntegration.test_snapshot_matches_telemetry_reads _________
+tests\test_jarvis.py:465: in test_snapshot_matches_telemetry_reads
+    assert snap_inj is not None or len(inj) == 0
+E   assert (None is not None or 2 == 0)
+E    +  where 2 = len([{'attack_type': 'XSS', 'blocked': 1, 'id': 2, 'payload_snippet': '<script>alert(1)</script>', ...}, {'attack_type': 'SQLi', 'blocked': 1, 'id': 1, 'payload_snippet': "' OR 1=1", ...}])
+=========================== short test summary info ===========================
+FAILED tests/test_jarvis.py::TestTelemetryAggregator::test_injection_summary_contains_count
+FAILED tests/test_jarvis.py::TestTelemetryAggregator::test_full_snapshot_keys
+FAILED tests/test_jarvis.py::TestJarvisIntegration::test_snapshot_matches_telemetry_reads
+======================== 3 failed, 59 passed in 11.47s ========================

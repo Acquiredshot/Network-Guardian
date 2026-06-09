@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from collections import deque
@@ -67,6 +68,18 @@ if TYPE_CHECKING:
     from network_guardian.core.events import EventBus
 
 logger = logging.getLogger("network_guardian.agent.triage")
+
+# ---------------------------------------------------------------------------
+# LangGraph + DeepSeek reasoner — optional; activated when DEEPSEEK_API_KEY
+# is set or explicitly passed to TriageAgent.triage().
+# ---------------------------------------------------------------------------
+
+try:
+    from network_guardian.ai.langgraph_reasoner import reason_about_intent as _lg_reason
+    _LANGGRAPH_AVAILABLE = True
+except ImportError:  # langgraph not installed
+    _LANGGRAPH_AVAILABLE = False
+    _lg_reason = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -373,13 +386,67 @@ class TriageAgent:
         state_snap = self._state.to_dict()
 
         # ── REASON ───────────────────────────────────────────────────────
-        intent_class, confidence = _classify_intent(intent)
-        _step("REASON", f"Classified as {intent_class.value} (confidence={confidence:.1%})", {
-            "intent_class": intent_class.value,
-            "confidence": confidence,
-        })
+        # Prefer LangGraph + DeepSeek when available; fallback to keyword scorer.
+        deepseek_key = (
+            context.get("deepseek_api_key")
+            or os.getenv("DEEPSEEK_API_KEY", "")
+        )
+        lg_result: dict | None = None
+        if _LANGGRAPH_AVAILABLE and deepseek_key:
+            try:
+                _step("REASON", "Invoking LangGraph + DeepSeek reasoner…")
+                lg_result = await _lg_reason(
+                    intent=intent,
+                    system_state=state_snap,
+                    observations=context,
+                    api_key=deepseek_key,
+                )
+                lg_class_str = lg_result.get("intent_class", "UNKNOWN").upper()
+                try:
+                    intent_class = IntentClass(lg_class_str)
+                except ValueError:
+                    intent_class = IntentClass.UNKNOWN
+                confidence = float(lg_result.get("confidence", 0.5))
+                _step("REASON",
+                      f"DeepSeek classified as {intent_class.value} "
+                      f"(confidence={confidence:.1%})",
+                      {
+                          "intent_class": intent_class.value,
+                          "confidence": confidence,
+                          "deepseek_reasoning": lg_result.get("deepseek_reasoning", "")[:500],
+                          "engine": "langgraph+deepseek",
+                      })
+            except Exception as _lg_exc:
+                logger.warning("[TRIAGE] LangGraph reasoner failed (%s) — falling back to keywords", _lg_exc)
+                lg_result = None
+                intent_class, confidence = _classify_intent(intent)
+                _step("REASON",
+                      f"[keyword fallback] Classified as {intent_class.value} "
+                      f"(confidence={confidence:.1%})",
+                      {"intent_class": intent_class.value, "confidence": confidence})
+        else:
+            intent_class, confidence = _classify_intent(intent)
+            engine_label = "keyword" if not _LANGGRAPH_AVAILABLE else "keyword (no DEEPSEEK_API_KEY)"
+            _step("REASON", f"[{engine_label}] Classified as {intent_class.value} (confidence={confidence:.1%})", {
+                "intent_class": intent_class.value,
+                "confidence": confidence,
+            })
 
-        plan = self._build_plan(intent_class, intent, context)
+        # Build execution plan — honour DeepSeek's plan when available
+        if lg_result and lg_result.get("action_plan"):
+            plan = [
+                GoalStep(
+                    step_id=uuid.uuid4().hex[:8],
+                    agent=s["agent"],
+                    action=s["action"],
+                    kwargs=s.get("kwargs", {}),
+                )
+                for s in lg_result["action_plan"]
+                if isinstance(s, dict) and s.get("agent") and s.get("action")
+            ] or self._build_plan(intent_class, intent, context)
+        else:
+            plan = self._build_plan(intent_class, intent, context)
+
         _step("REASON", f"Execution plan built: {len(plan)} step(s)", {
             "steps": [s.to_dict() for s in plan],
         })
@@ -437,6 +504,10 @@ class TriageAgent:
 
         # ── LEARN ─────────────────────────────────────────────────────────
         recommendations = self._build_recommendations(intent_class, findings)
+        # Prepend DeepSeek recommendations when available (they are more specific)
+        if lg_result and lg_result.get("recommendations"):
+            ds_recs = [r for r in lg_result["recommendations"] if r not in recommendations]
+            recommendations = ds_recs + recommendations
         self._update_threat_level()
         task.status = "completed" if outcome != "failed" else "failed"
         self._state.last_updated = datetime.now(timezone.utc).isoformat()
