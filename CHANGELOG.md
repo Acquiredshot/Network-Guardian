@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v47] — 2026-06-08
+
+### Added — Google Safe Browsing Trust Signals & Search Console Verification
+
+Root cause: Google Safe Browsing automated scanner flagged the bare credential
+forms on the SaaS landing page as potential phishing content (no company identity,
+no structured data, no contextual trust signals).
+
+#### SaaS Landing Page (`network_guardian/saas/ui.py`)
+
+- **Company identity header** — Wolf-Pak Innovations LLC branding with shield SVG
+  icon renders above all page content so automated scanners see immediate context.
+- **Trust-signal bar** — plain-English description of the platform's legitimate
+  purpose (`commercial network intrusion-detection platform developed by Wolf-Pak
+  Innovations LLC`) with a direct GitHub source-code link.
+- **JSON-LD structured data** — `SoftwareApplication` schema embedded in `<head>`;
+  provides Google's crawler with machine-readable proof of software product identity,
+  author, license URL, and source repository.
+- **`<meta>` tags** — `name`, `description`, `author`, Open Graph `og:title` /
+  `og:description` / `og:type` added.
+- **Form hardening** — `autocomplete` attributes, `minlength="12"` on password
+  fields, Terms of Service and Privacy Policy note under signup form.
+- **Full footer** — copyright notice, Wolf-Pak Innovations LLC, license link,
+  EULA link, GitHub link, and a Safe Browsing transparency-report link.
+- **Pricing cards** — `/mo` suffix added to all tier prices.
+
+#### SaaS Service (`network_guardian/saas/service.py`)
+
+- **`GET /robots.txt`** — returns `User-agent: * / Allow: /` with company identity
+  comment; gives search crawlers explicit crawl permission.
+- **`GET /.well-known/security.txt`** — RFC 9116 security contact pointing to
+  GitHub Issues; signals responsible-disclosure policy to security scanners.
+- **`GET /google9d4cc8c07d77fbd5.html`** — Google Search Console HTML-file
+  verification endpoint; returns the required `google-site-verification:` token.
+  Must remain deployed permanently for ongoing Search Console verification.
+
+#### Google Search Console
+
+- Property `https://network-guardian-cc8900c70290.herokuapp.com/` added and
+  verified via HTML-file method (2026-06-08).
+- Safe Browsing review request submitted via Search Console → Security Issues.
+
+---
+
 ## [v46] — 2026-06-08
 
 ### Added — Flood & Probe-Packet Hardening + Probe Self-Protection
