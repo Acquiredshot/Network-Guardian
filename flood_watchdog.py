@@ -148,6 +148,32 @@ def _add_windows_firewall_rule(ip: str) -> bool:
         return False
 
 
+def _add_macos_pf_rule(ip: str) -> bool:
+    """
+    Block an IP on macOS using pfctl's ng_flood_block table.
+    Requires admin/sudo. The table must be anchored in /etc/pf.conf or
+    an active anchor to persist across reboots; this call adds to the
+    in-memory table so the block is effective immediately.
+    """
+    if platform.system() != "Darwin":
+        return False
+    try:
+        subprocess.run(
+            ["pfctl", "-t", "ng_flood_block", "-T", "add", ip],
+            check=True, capture_output=True, timeout=10,
+        )
+        logger.info("macOS pfctl: blocked inbound from %s via ng_flood_block table", ip)
+        return True
+    except FileNotFoundError:
+        logger.debug("pfctl not found — skipping macOS firewall rule")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.debug(
+            "Could not add pfctl rule (need sudo? table not defined in pf.conf?): %s", e
+        )
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Main watchdog loop
 # ---------------------------------------------------------------------------
@@ -190,9 +216,10 @@ def run(threshold: int, interval: float, dashboard_port: int, use_firewall: bool
                         dashboard_port, ip,
                     )
 
-                # Optional Windows Firewall rule (requires admin elevation)
+                # Optional native firewall rule (requires admin elevation)
                 if use_firewall:
-                    _add_windows_firewall_rule(ip)
+                    if not _add_windows_firewall_rule(ip):
+                        _add_macos_pf_rule(ip)
 
                 blocked_ips.add(ip)
 
@@ -226,7 +253,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--firewall", action="store_true",
-        help="Also add Windows Firewall inbound block rules (requires admin elevation)",
+        help="Also add a native OS firewall block rule for flood sources "
+             "(Windows: netsh advfirewall; macOS: pfctl — both require admin elevation)",
     )
     args = parser.parse_args()
 

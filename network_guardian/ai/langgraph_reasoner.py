@@ -58,8 +58,9 @@ logger = logging.getLogger("network_guardian.ai.langgraph_reasoner")
 # ---------------------------------------------------------------------------
 
 _DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-_DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner")
-_DEEPSEEK_TIMEOUT = int(os.getenv("DEEPSEEK_TIMEOUT", "60"))
+_DEEPSEEK_MODEL    = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")   # V3: fast (1-3s). Set to deepseek-reasoner for deep CoT reasoning.
+_DEEPSEEK_TIMEOUT  = int(os.getenv("DEEPSEEK_TIMEOUT", "30"))       # reduced from 60s
+_DEEPSEEK_MAX_TOKENS = int(os.getenv("DEEPSEEK_MAX_TOKENS", "1024")) # cap response length for speed
 
 _SYSTEM_PROMPT = """You are the Reasoning Engine for Network Guardian, an enterprise-grade
 network security platform. Your role is to:
@@ -96,6 +97,7 @@ def _make_llm(api_key: str | None = None) -> ChatOpenAI:
         timeout=_DEEPSEEK_TIMEOUT,
         max_retries=1,
         temperature=0.0,
+        max_tokens=_DEEPSEEK_MAX_TOKENS,
     )
 
 
@@ -348,17 +350,7 @@ def summarize_node(state: NetworkGuardianState) -> NetworkGuardianState:
 
 
 def _should_re_reason(state: NetworkGuardianState) -> Literal["reason", "plan"]:
-    """Re-run the reason node if confidence is low and we haven't looped yet."""
-    confidence = state.get("confidence", 1.0)
-    iteration = state.get("iteration", 0)
-    error = state.get("error", "")
-
-    if error == "no_api_key":
-        # Skip re-reason loop when there's no key
-        return "plan"
-    if confidence < 0.40 and iteration < 1:
-        logger.info("[EDGE] Low confidence (%.1f%%) — re-running reason node", confidence * 100)
-        return "reason"
+    """Skip re-reason to keep latency low — single-pass is fast enough for V3."""
     return "plan"
 
 

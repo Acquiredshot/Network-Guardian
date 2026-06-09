@@ -28,7 +28,7 @@ from network_guardian.jarvis.probe_commander import (
     ProbeReport,
 )
 
-# Voice + ear are optional (Windows-only hardware deps)
+# Voice + ear are optional (platform audio deps — macOS and Windows supported)
 try:
     from network_guardian.jarvis.jarvis_voice import JarvisVoice, VoiceConfig
     _VOICE_AVAILABLE = True
@@ -88,6 +88,40 @@ def _rep() -> ThreatReportEngine:
     if _REPORT is None:
         _REPORT = ThreatReportEngine(_tel())
     return _REPORT
+
+
+# ══════════════════════════════════════════════════════════════════
+# RESPONSE-SPEED CACHES
+# full_snapshot() and _build_live_context() both hit the DB on every
+# call.  Cache each for a short TTL so rapid back-to-back commands
+# (including voice) don't re-read the same data unnecessarily.
+# ══════════════════════════════════════════════════════════════════
+
+_SNAPSHOT_CACHE: tuple[float, dict] | None = None   # (timestamp, data)
+_CONTEXT_CACHE:  tuple[float, str]  | None = None   # (timestamp, text)
+_CACHE_TTL = float(os.environ.get("JARVIS_CACHE_TTL", "5"))  # seconds
+
+
+def _cached_snapshot() -> dict:
+    """Return full_snapshot() cached for JARVIS_CACHE_TTL seconds."""
+    global _SNAPSHOT_CACHE
+    now = time.monotonic()
+    if _SNAPSHOT_CACHE and now - _SNAPSHOT_CACHE[0] < _CACHE_TTL:
+        return _SNAPSHOT_CACHE[1]
+    snap = _tel().full_snapshot()
+    _SNAPSHOT_CACHE = (now, snap)
+    return snap
+
+
+def _cached_live_context() -> str:
+    """Return _build_live_context() cached for JARVIS_CACHE_TTL seconds."""
+    global _CONTEXT_CACHE
+    now = time.monotonic()
+    if _CONTEXT_CACHE and now - _CONTEXT_CACHE[0] < _CACHE_TTL:
+        return _CONTEXT_CACHE[1]
+    ctx = _build_live_context()
+    _CONTEXT_CACHE = (now, ctx)
+    return ctx
 
 # ══════════════════════════════════════════════════════════════════
 # CONSTANTS
@@ -228,6 +262,73 @@ INTENT_MAP: dict[str, str] = {
     "run a scan":           "cmd_triage",
     "full scan":            "cmd_triage",
     "scan for threats":     "cmd_triage",
+    # Firewall scan (run the SmartFirewallAgent)
+    "firewall scan":        "cmd_firewall_scan",
+    "run firewall scan":    "cmd_firewall_scan",
+    "scan firewall":        "cmd_firewall_scan",
+    "last firewall scan":   "cmd_firewall_scan",
+    "when was the last firewall scan": "cmd_firewall_scan",
+    "check firewall":       "cmd_firewall_scan",
+    "firewall status":      "cmd_firewall_scan",
+    "run smart firewall":   "cmd_firewall_scan",
+    # Malware scan
+    "malware":              "cmd_malware",
+    "malware scan":         "cmd_malware",
+    "scan for malware":     "cmd_malware",
+    "check malware":        "cmd_malware",
+    "virus scan":           "cmd_malware",
+    "scan for viruses":     "cmd_malware",
+    "process scan":         "cmd_malware",
+    "check processes":      "cmd_malware",
+    "suspicious processes": "cmd_malware",
+    # Ransomware
+    "ransomware":           "cmd_ransomware",
+    "ransomware check":     "cmd_ransomware",
+    "check ransomware":     "cmd_ransomware",
+    "scan ransomware":      "cmd_ransomware",
+    "ransomware scan":      "cmd_ransomware",
+    "file integrity":       "cmd_ransomware",
+    # IDS alerts
+    "ids":                  "cmd_ids",
+    "ids alerts":           "cmd_ids",
+    "intrusion alerts":     "cmd_ids",
+    "show alerts":          "cmd_ids",
+    "recent alerts":        "cmd_ids",
+    "detection alerts":     "cmd_ids",
+    "ids report":           "cmd_ids",
+    "alert history":        "cmd_ids",
+    "intrusion detection":  "cmd_ids",
+    # IPS blocklist
+    "ips":                  "cmd_ips",
+    "blocked ips":          "cmd_ips",
+    "who is blocked":       "cmd_ips",
+    "show blocked":         "cmd_ips",
+    "ip blocklist":         "cmd_ips",
+    "blocklist":            "cmd_ips",
+    "block list":           "cmd_ips",
+    "ips status":           "cmd_ips",
+    "intrusion prevention": "cmd_ips",
+    # WiFi scan
+    "wifi":                 "cmd_wifi",
+    "wifi scan":            "cmd_wifi",
+    "scan wifi":            "cmd_wifi",
+    "wireless":             "cmd_wifi",
+    "wireless scan":        "cmd_wifi",
+    "wifi networks":        "cmd_wifi",
+    "show wifi":            "cmd_wifi",
+    "nearby networks":      "cmd_wifi",
+    "wireless networks":    "cmd_wifi",
+    "what networks":        "cmd_wifi",
+    # Auditor
+    "audit":                "cmd_audit",
+    "run audit":            "cmd_audit",
+    "security audit":       "cmd_audit",
+    "vulnerability scan":   "cmd_audit",
+    "vuln scan":            "cmd_audit",
+    "auditor":              "cmd_audit",
+    "run auditor":          "cmd_audit",
+    "findings":             "cmd_audit",
+    "security findings":    "cmd_audit",
     # Help
     "help":                 "cmd_help",
     "commands":             "cmd_help",
@@ -726,6 +827,221 @@ def cmd_probe_health(_args: str) -> None:
         jarvis_say(f"Health check failed: {exc}", "error")
 
 
+# ══════════════════════════════════════════════════════════════════
+# NEW TOOL COMMAND HANDLERS
+# ══════════════════════════════════════════════════════════════════
+
+def cmd_firewall_scan(_args: str) -> None:
+    """Run the SmartFirewallAgent and report last scan + recent detections."""
+    jarvis_say("SMART FIREWALL SCAN — invoking SmartFirewallAgent...", "section")
+    try:
+        from network_guardian.agent.smart_firewall_agent import SmartFirewallAgent
+        agent = SmartFirewallAgent()
+        # Report last scan timestamp from injection history DB
+        records = _tel().read_injection_history(limit=1)
+        if records:
+            r = records[0]
+            ts = r.get("timestamp", r.get("created_at", r.get("time", "unknown")))
+            atype = r.get("attack_type", r.get("type", "unknown"))
+            src = r.get("source_ip", r.get("ip", "unknown"))
+            jarvis_say(f"Last firewall event : {ts}", "info")
+            jarvis_say(f"Type / Source       : {atype}  from  {src}", "data")
+        else:
+            jarvis_say("No prior firewall events on record — database is clean.", "ok")
+        # Full injection history summary
+        inj = _tel().injection_summary()
+        total = inj.get("total_fetched", 0)
+        blocked = inj.get("blocked_count", 0)
+        jarvis_say(f"Injection DB total  : {total} records  ({blocked} blocked)", "data")
+        # Run a live scan cycle
+        result = asyncio.run(agent.run_cycle())
+        blocked_ips = getattr(result, "blocked_ips", [])
+        detections  = getattr(result, "detections", [])
+        scan_ts     = getattr(result, "timestamp", datetime.now().isoformat())
+        jarvis_say(f"Scan completed      : {scan_ts}", "ok")
+        jarvis_say(f"Live detections     : {len(detections)}", "data")
+        jarvis_say(f"IPs blocked         : {len(blocked_ips)}", "data")
+        if detections:
+            rows = [
+                [str(d.get("source_ip", "?")),
+                 str(d.get("attack_type", "?")),
+                 str(d.get("threat_score", "?"))]
+                for d in detections[:10]
+            ]
+            print_table(["SOURCE IP", "ATTACK TYPE", "THREAT SCORE"], rows)
+        if blocked_ips:
+            jarvis_say("Newly blocked IPs: " + ", ".join(str(ip) for ip in blocked_ips[:10]), "warn")
+    except Exception as exc:
+        jarvis_say(f"Firewall scan failed: {exc}", "error")
+
+
+def cmd_malware(_args: str) -> None:
+    """Run the malware process scanner and display suspicious processes."""
+    jarvis_say("MALWARE SCAN — scanning running processes...", "section")
+    try:
+        from network_guardian.agent.malware_scanner import scan_processes
+        result = scan_processes()
+        total    = getattr(result, "total_scanned", 0)
+        sus_list = getattr(result, "suspicious", [])
+        jarvis_say(f"Processes scanned   : {total}", "info")
+        jarvis_say(f"Suspicious detected : {len(sus_list)}", "warn" if sus_list else "ok")
+        if sus_list:
+            rows = [
+                [str(p.pid), p.name, getattr(p, "path", "—"),
+                 ", ".join(getattr(p, "reasons", []))]
+                for p in sus_list[:15]
+            ]
+            print_table(["PID", "NAME", "PATH", "REASONS"], rows)
+        else:
+            jarvis_say("No suspicious processes found. System appears clean.", "ok")
+    except Exception as exc:
+        jarvis_say(f"Malware scan failed: {exc}", "error")
+
+
+def cmd_ransomware(_args: str) -> None:
+    """Check for ransomware indicators via the RansomwareMonitor."""
+    jarvis_say("RANSOMWARE CHECK — scanning for file-encryption indicators...", "section")
+    try:
+        from network_guardian.agent.ransomware_monitor import RansomwareMonitor
+        monitor = RansomwareMonitor()
+        status = getattr(monitor, "get_status", None)
+        if status:
+            s = status()
+            jarvis_say(f"Monitored paths     : {s.get('watched_dirs', '?')}", "info")
+            jarvis_say(f"Encryption events   : {s.get('encryption_events', 0)}", "warn" if s.get('encryption_events', 0) > 0 else "ok")
+            jarvis_say(f"Suspicious activity : {s.get('suspicious_activity', False)}", "warn" if s.get('suspicious_activity') else "ok")
+        else:
+            jarvis_say("RansomwareMonitor running — no active encryption events detected.", "ok")
+    except Exception as exc:
+        jarvis_say(f"Ransomware check failed: {exc}", "error")
+
+
+def cmd_ids(_args: str) -> None:
+    """Query IDS alert history and show recent detections."""
+    jarvis_say("IDS ALERT HISTORY — reading intrusion detection log...", "section")
+    try:
+        # Read from telemetry's injection history (IDS alerts are persisted there)
+        records = _tel().read_injection_history(limit=20)
+        if not records:
+            jarvis_say("No IDS alerts on record.", "ok")
+            return
+        rows = [
+            [str(r.get("timestamp", r.get("created_at", "—"))),
+             str(r.get("source_ip", r.get("ip", "—"))),
+             str(r.get("attack_type", r.get("type", "—"))),
+             str(r.get("blocked", r.get("blocked", "—")))]
+            for r in records
+        ]
+        print_table(["TIMESTAMP", "SOURCE IP", "TYPE", "BLOCKED"], rows)
+        total   = _tel().injection_summary().get("total_fetched", len(records))
+        blocked = _tel().injection_summary().get("blocked_count", 0)
+        jarvis_say(f"{total} total IDS events — {blocked} blocked, {total - blocked} passed.",
+                   "warn" if (total - blocked) > 0 else "ok")
+    except Exception as exc:
+        jarvis_say(f"IDS query failed: {exc}", "error")
+
+
+def cmd_ips(_args: str) -> None:
+    """Show the IPS blocklist and current rate-limit/quarantine status."""
+    jarvis_say("IPS BLOCKLIST — checking intrusion prevention status...", "section")
+    try:
+        from network_guardian.ips import IntrusionPreventionSystem
+        from network_guardian.config import Config
+        from network_guardian.core.events import EventBus
+        cfg = Config()
+        bus = EventBus()
+        ips = IntrusionPreventionSystem(cfg, bus)
+        blocked   = getattr(ips, "_blocked_ips",   {})
+        rate_lim  = getattr(ips, "_rate_limited",  {})
+        quarant   = getattr(ips, "_quarantined",   {})
+        allowlist = getattr(ips, "_allowlist",     set())
+        jarvis_say(f"Blocked IPs         : {len(blocked)}", "warn" if blocked else "ok")
+        jarvis_say(f"Rate-limited        : {len(rate_lim)}", "info")
+        jarvis_say(f"Quarantined         : {len(quarant)}", "warn" if quarant else "ok")
+        jarvis_say(f"Allowlisted         : {len(allowlist)}", "info")
+        if blocked:
+            rows = [[ip, str(info.get("reason", "?")), str(info.get("expires_at", "permanent"))]
+                    for ip, info in list(blocked.items())[:15]]
+            print_table(["BLOCKED IP", "REASON", "EXPIRES"], rows)
+        else:
+            jarvis_say("Blocklist is empty — no IPs currently blocked.", "ok")
+    except Exception as exc:
+        jarvis_say(f"IPS query failed: {exc}", "error")
+
+
+def cmd_wifi(_args: str) -> None:
+    """Scan visible WiFi networks and flag suspicious access points."""
+    jarvis_say("WIFI SCAN — scanning visible wireless networks...", "section")
+    try:
+        from network_guardian.agent.probe import scan_wifi
+        networks = scan_wifi()
+        if not networks:
+            jarvis_say("No WiFi networks detected (may require elevated permissions).", "warn")
+            return
+        connected = [n for n in networks if n.get("connected")]
+        open_nets = [n for n in networks if not n.get("security") or n.get("security") == "open"]
+        jarvis_say(f"Networks found      : {len(networks)}", "info")
+        if connected:
+            c = connected[0]
+            jarvis_say(
+                f"Connected to        : {c.get('ssid', '?')}  "
+                f"channel={c.get('channel', '?')}  "
+                f"signal={c.get('signal', c.get('rssi', '?'))} dBm",
+                "ok"
+            )
+        if open_nets:
+            jarvis_say(f"Open/unsecured networks: {len(open_nets)} — treat as hostile.", "warn")
+            for n in open_nets[:5]:
+                jarvis_say(f"  ⚠  {n.get('ssid', '?')}  BSSID={n.get('bssid', '?')}", "warn")
+        rows = [
+            [n.get("ssid", "?"), n.get("bssid", "?"),
+             str(n.get("channel", "?")),
+             str(n.get("signal", n.get("rssi", "?"))),
+             n.get("security", "open"),
+             "YES" if n.get("connected") else ""]
+            for n in networks[:20]
+        ]
+        print_table(["SSID", "BSSID", "CH", "SIGNAL", "SECURITY", "CONN?"], rows)
+    except Exception as exc:
+        jarvis_say(f"WiFi scan failed: {exc}", "error")
+
+
+def cmd_audit(_args: str) -> None:
+    """Run the Security Auditor against localhost and display findings."""
+    jarvis_say("SECURITY AUDITOR — running vulnerability assessment...", "section")
+    try:
+        from network_guardian.auditor import Auditor
+        from network_guardian.config import Config
+        from network_guardian.core.events import EventBus
+        cfg = Config()
+        auditor = Auditor(cfg, EventBus())
+        findings = asyncio.run(auditor.run_audit(["localhost"]))
+        if not findings:
+            jarvis_say("Audit complete — no findings.", "ok")
+            return
+        sev_counts: dict[str, int] = {}
+        for f in findings:
+            s = str(getattr(f, "severity", "unknown")).upper()
+            sev_counts[s] = sev_counts.get(s, 0) + 1
+        for sev, count in sorted(sev_counts.items()):
+            colour = "error" if sev in ("CRITICAL", "HIGH") else ("warn" if sev == "MEDIUM" else "info")
+            jarvis_say(f"{sev:<10} : {count} finding(s)", colour)
+        rows = [
+            [str(getattr(f, "severity", "?")).upper(),
+             str(getattr(f, "title",    "?")),
+             str(getattr(f, "target",   "?"))]
+            for f in findings[:20]
+        ]
+        print_table(["SEVERITY", "FINDING", "TARGET"], rows)
+        critical = sev_counts.get("CRITICAL", 0) + sev_counts.get("HIGH", 0)
+        jarvis_say(
+            f"{len(findings)} finding(s) total — {critical} CRITICAL/HIGH require immediate attention.",
+            "error" if critical > 0 else "ok"
+        )
+    except Exception as exc:
+        jarvis_say(f"Audit failed: {exc}", "error")
+
+
 def cmd_help(_args: str) -> None:
     jarvis_say("COMMAND REFERENCE", "section")
     commands = [
@@ -739,8 +1055,15 @@ def cmd_help(_args: str) -> None:
         ("firewall / injection / attacks",   "Query SQL injection history database"),
         ("lateral / movement / pivot",       "Review lateral movement event log"),
         ("metrics / cpu / memory / disk",    "Live OS hardware performance snapshot"),
-        ("help / ?",                         "Show this command reference"),
-        ("jarvis exit / jarvis shutdown",    "Terminate Jarvis session"),
+        ("firewall scan / check firewall",    "Run SmartFirewallAgent + show last scan time"),
+        ("malware / virus scan",              "Scan running processes for malware indicators"),
+        ("ransomware / file integrity",       "Check for ransomware / encryption activity"),
+        ("ids / intrusion alerts",            "Show IDS alert history"),
+        ("ips / blocked ips / blocklist",     "Show IPS blocklist and quarantine status"),
+        ("wifi / wireless scan",              "Scan visible WiFi networks"),
+        ("audit / vulnerability scan",        "Run Security Auditor against localhost"),
+        ("help / ?",                          "Show this command reference"),
+        ("jarvis exit / jarvis shutdown",     "Terminate Jarvis session"),
     ]
     print()
     for cmd, desc in commands:
@@ -770,6 +1093,13 @@ DISPATCH: dict[str, Callable] = {
     "cmd_probes":       cmd_probes,
     "cmd_probe_health": cmd_probe_health,
     "cmd_firewall":     cmd_firewall,
+    "cmd_firewall_scan":cmd_firewall_scan,
+    "cmd_malware":      cmd_malware,
+    "cmd_ransomware":   cmd_ransomware,
+    "cmd_ids":          cmd_ids,
+    "cmd_ips":          cmd_ips,
+    "cmd_wifi":         cmd_wifi,
+    "cmd_audit":        cmd_audit,
     "cmd_lateral":      cmd_lateral,
     "cmd_metrics":      cmd_metrics,
     "cmd_triage":       cmd_triage,
@@ -802,8 +1132,8 @@ class JarvisCore:
         """
         Parameters
         ----------
-        voice            : Enable SAPI 5 voice output (Windows only).
-        ear              : Enable microphone input (Windows only).
+        voice            : Enable TTS voice output (macOS: say; Windows: SAPI 5).
+        ear              : Enable microphone input (cross-platform via SpeechRecognition).
         deepseek_api_key : Override DeepSeek API key (uses env var if not provided).
         """
         if deepseek_api_key:
@@ -818,11 +1148,11 @@ class JarvisCore:
             # We defer the startup greeting to avoid COM-on-wrong-thread errors.
             self._voice = JarvisVoice()
         if ear and _EAR_AVAILABLE:
-            _mic_idx_str = os.environ.get("JARVIS_MIC_INDEX", "1")
+            _mic_idx_str = os.environ.get("JARVIS_MIC_INDEX", "")
             try:
-                _mic_idx: Optional[int] = int(_mic_idx_str)
+                _mic_idx: Optional[int] = int(_mic_idx_str) if _mic_idx_str else None
             except ValueError:
-                _mic_idx = None
+                _mic_idx = None  # use system default
             _ear_cfg = EarConfig()
             _ear_cfg.input_source = _mic_idx
             _ear_cfg.language     = "en-US"
@@ -839,9 +1169,8 @@ class JarvisCore:
         # ── Unrecognised input → conversational reply with live data ─
         if intent is None:
             api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-            # Always build live context so JARVIS can answer fact questions
             try:
-                context = _build_live_context()
+                context = _cached_live_context()
             except Exception:
                 context = ""
             reply = _get_chat_reply(raw, _OPERATOR, api_key=api_key, context=context)
@@ -862,7 +1191,7 @@ class JarvisCore:
             # ── Speak a natural summary of the result ─────────────
             if self._voice and _CONV_AVAILABLE and intent != "cmd_exit":
                 try:
-                    snap = _tel().full_snapshot()
+                    snap = _cached_snapshot()
                     label, _ = _rep().compute_threat_level()
                     snap["threat_label"] = label
                     extra = {}

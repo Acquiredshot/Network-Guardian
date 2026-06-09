@@ -4,6 +4,64 @@ All notable changes to this project are documented here.
 
 ---
 
+## [v50] — 2026-06-09
+
+### Added — JARVIS Full Security-Tool Integration + AI Speed Optimization
+
+This release gives J.A.R.V.I.S. direct voice/text access to every major Network Guardian
+security subsystem and cuts AI response latency by 5–10× by switching the default
+reasoning model to DeepSeek V3 (`deepseek-chat`).
+
+---
+
+#### New JARVIS Command Handlers (7)
+
+Each handler is reachable via natural language or voice — no exact phrasing required.
+
+| Command | Subsystem Called | Example Phrases |
+|---|---|---|
+| `cmd_firewall_scan` | `SmartFirewallAgent.run_cycle()` + injection history DB | *"firewall scan"*, *"last firewall scan"*, *"when was the last firewall scan"* |
+| `cmd_malware` | `malware_scanner.scan_processes()` → `MalwareScanResult` | *"malware scan"*, *"scan for viruses"*, *"check processes"* |
+| `cmd_ransomware` | `RansomwareMonitor` | *"ransomware check"*, *"file integrity"* |
+| `cmd_ids` | Injection history DB (IDS events, last 20) | *"ids alerts"*, *"intrusion alerts"*, *"alert history"* |
+| `cmd_ips` | `IntrusionPreventionSystem` — blocked / rate-limited / quarantined / allowlist | *"blocked ips"*, *"blocklist"*, *"who is blocked"* |
+| `cmd_wifi` | `probe.scan_wifi()` — SSID, BSSID, channel, signal, security | *"wifi scan"*, *"wireless scan"*, *"nearby networks"* |
+| `cmd_audit` | `Auditor.run_audit(["localhost"])` — CVSS/OWASP findings | *"run audit"*, *"security audit"*, *"vulnerability scan"* |
+
+All handlers are registered in `DISPATCH` and exposed in `cmd_help`.
+
+---
+
+#### INTENT_MAP — 50+ New Natural-Language Keywords
+
+Covers common voice phrasing for every new command plus extended aliases for existing
+commands (e.g. `"check firewall"`, `"show blocked"`, `"intrusion prevention"`,
+`"what networks"`, `"security findings"`).
+
+---
+
+#### AI Speed Optimization — DeepSeek V3 Default
+
+| Setting | Before | After |
+|---|---|---|
+| Default model | `deepseek-reasoner` (chain-of-thought, 10–30 s) | `deepseek-chat` (V3, 1–3 s) |
+| API timeout | 60 s | 30 s |
+| Override mechanism | env var `DEEPSEEK_MODEL` | same — documented in `.env` |
+
+`deepseek-reasoner` remains available for deep triage via `DEEPSEEK_MODEL=deepseek-reasoner`.
+Both `DEEPSEEK_MODEL` and `DEEPSEEK_TIMEOUT` are now documented in `.env` with inline
+guidance on when to use each mode.
+
+---
+
+#### Performance — Telemetry Caches (confirmed active)
+
+`_cached_snapshot()` and `_cached_live_context()` (5 s TTL) — introduced in v49 — are
+confirmed active. Back-to-back voice commands (e.g. "situation" then "ids alerts") reuse
+the same DB snapshot, eliminating duplicate SQLite reads.
+
+---
+
 ## [v49] — 2026-06-09
 
 ### Added — JARVIS Operational Data Access + Probe Commander

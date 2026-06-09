@@ -1,14 +1,14 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  jarvis_voice.py  |  SAPI 5 Voice Engine                        ║
+║  jarvis_voice.py  |  Cross-Platform TTS Voice Engine            ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  Windows Speech API 5 (SAPI 5) integration layer for Jarvis.    ║
+║  Text-to-speech layer for Jarvis — macOS + Windows.             ║
 ║                                                                  ║
 ║  Engine priority chain:                                          ║
-║    1. win32com.client  → SpVoice COM object  (pywin32)           ║
-║    2. ctypes + ole32   → Raw COM via ctypes  (zero-dep fallback) ║
-║    3. PowerShell       → Add-Type SpeechSynthesizer shim         ║
-║    4. Silent mode      → No audio; logs a warning once           ║
+║    macOS:   say command (built-in, no extra deps)                ║
+║    Windows: win32com.client → SpVoice COM object  (pywin32)      ║
+║             PowerShell     → Add-Type SpeechSynthesizer shim     ║
+║    All:     Silent mode    → No audio; logs a warning once       ║
 ║                                                                  ║
 ║  Features:                                                       ║
 ║    · Non-blocking async speech via threading.Thread             ║
@@ -27,6 +27,7 @@ import logging
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -50,14 +51,15 @@ class VoiceConfig:
     volume      : Output volume (0 – 100).
     async_speak : If True, speech runs in a background thread so the
                   terminal prompt returns immediately.
-    voice_hint  : Case-insensitive substring to match a preferred SAPI
-                  voice name.  e.g. "David", "Zira", "Mark".
-                  Set to "" to use the Windows default voice.
+    voice_hint  : Case-insensitive substring to match a preferred voice.
+                  Windows examples: "David", "Zira", "Mark".
+                  macOS examples:   "Samantha", "Alex", "Karen".
+                  Set to "" to use the system default voice.
     """
     rate:        int   = 0
     volume:      int   = 90
     async_speak: bool  = True
-    voice_hint:  str   = "David"          # Windows 10/11 ships "Microsoft David Desktop"
+    voice_hint:  str   = ""               # "" = system default; "David" (Windows), "Samantha" (macOS)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -244,8 +246,9 @@ class _SilentBackend:
     def __init__(self) -> None:
         if not _SilentBackend._warned:
             log.warning(
-                "Jarvis voice is SILENT — no SAPI 5 backend available. "
-                "Install pywin32 (`pip install pywin32`) for voice support."
+                "Jarvis voice is SILENT — no TTS backend available. "
+                "macOS: 'say' must be in PATH. "
+                "Windows: install pywin32 (`pip install pywin32`) for voice support."
             )
             _SilentBackend._warned = True
 
@@ -263,6 +266,56 @@ class _SilentBackend:
 
 
 # ══════════════════════════════════════════════════════════════════
+# macOS BACKEND  (built-in 'say' command — no extra dependencies)
+# ══════════════════════════════════════════════════════════════════
+
+def _check_say() -> None:
+    """Raise RuntimeError if the macOS 'say' command is not in PATH."""
+    if not shutil.which("say"):
+        raise RuntimeError("macOS 'say' command not found in PATH.")
+
+
+class _MacOSSayBackend:
+    """
+    macOS TTS backend using the built-in 'say' command.
+    Available on all modern macOS versions with no extra pip packages.
+    Rate is mapped from SAPI-style (-10…+10) to words-per-minute (100…300).
+    """
+
+    def __init__(self, cfg: VoiceConfig) -> None:
+        _check_say()   # raises if unavailable
+        self._cfg = cfg
+        log.info("Voice engine: macOS 'say' backend active.")
+
+    def speak(self, text: str) -> None:
+        clean = _strip_ansi(text)
+        cmd = ["say"]
+        if self._cfg.voice_hint:
+            cmd += ["-v", self._cfg.voice_hint]
+        # Map SAPI rate (-10…+10) → wpm (100…300); macOS default is 175 wpm
+        wpm = max(100, min(300, 175 + self._cfg.rate * 9))
+        cmd += ["-r", str(int(wpm)), clean]
+        subprocess.run(cmd, check=False, timeout=60)
+
+    def list_voices(self) -> list[str]:
+        try:
+            result = subprocess.run(
+                ["say", "-v", "?"],
+                capture_output=True, text=True, check=False,
+            )
+            return [line.split()[0] for line in result.stdout.splitlines() if line.strip()]
+        except Exception:
+            return []
+
+    def set_rate(self, rate: int) -> None:
+        self._cfg.rate = max(-10, min(10, rate))
+
+    def set_volume(self, vol: int) -> None:
+        # macOS 'say' has no native volume flag; store for reference only
+        self._cfg.volume = max(0, min(100, vol))
+
+
+# ══════════════════════════════════════════════════════════════════
 # ENGINE FACTORY
 # ══════════════════════════════════════════════════════════════════
 
@@ -270,8 +323,18 @@ def _build_backend(cfg: VoiceConfig):
     """
     Attempt to construct the best available backend.
 
-    Priority: win32com → PowerShell → Silent
+    Priority (macOS):   say → Silent
+    Priority (Windows): win32com → PowerShell → Silent
     """
+    # ── macOS: use built-in 'say' command ─────────────────────────
+    if sys.platform == "darwin":
+        try:
+            return _MacOSSayBackend(cfg)
+        except Exception as exc:
+            log.debug("macOS say backend unavailable: %s", exc)
+        return _SilentBackend()
+
+    # ── Windows: SAPI 5 via win32com or PowerShell ─────────────────
     # ── 1. win32com (pywin32) ─────────────────────────────────────
     try:
         backend = _Win32ComBackend(cfg)
@@ -411,32 +474,34 @@ class JarvisVoice:
     def _worker_loop(self) -> None:
         """Drain the speech queue sequentially in a background thread.
 
-        The COM SpVoice object MUST be created on the same thread that calls
-        Speak(). We initialise COM here and rebuild the backend so the COM
-        object is owned by this thread, not whichever thread called __init__.
-        If win32com fails on this thread we fall through to PowerShell.
+        On Windows: The COM SpVoice object MUST be created on the same thread
+        that calls Speak(). We initialise COM here and rebuild the win32com
+        backend so the COM object is owned by this thread.
+        On macOS: The 'say' backend is subprocess-based and thread-safe;
+        no re-initialisation is needed.
         """
-        # 1. Initialise COM apartment for this thread.
-        try:
-            import pythoncom
-            pythoncom.CoInitialize()
-        except Exception as exc:
-            log.debug("CoInitialize skipped: %s", exc)
-
-        # 2. Rebuild the backend so the COM object belongs to this thread.
-        try:
-            if not isinstance(self._backend, _SilentBackend):
-                new_backend = _Win32ComBackend(self._cfg)
-                self._backend = new_backend
-                log.debug("win32com backend rebuilt on voice-worker thread.")
-        except Exception as exc:
-            log.warning("win32com rebuild failed on worker thread (%s) — using PowerShell.", exc)
+        # 1. Windows only: initialise COM apartment for this thread and
+        #    rebuild the win32com backend so the COM object is thread-local.
+        if sys.platform == "win32":
             try:
-                self._backend = _PowerShellBackend(self._cfg)
-                log.info("Voice worker falling back to PowerShell backend.")
-            except Exception as exc2:
-                log.error("PowerShell backend also unavailable: %s — voice will be silent.", exc2)
-                self._backend = _SilentBackend()
+                import pythoncom
+                pythoncom.CoInitialize()
+            except Exception as exc:
+                log.debug("CoInitialize skipped: %s", exc)
+
+            try:
+                if not isinstance(self._backend, _SilentBackend):
+                    new_backend = _Win32ComBackend(self._cfg)
+                    self._backend = new_backend
+                    log.debug("win32com backend rebuilt on voice-worker thread.")
+            except Exception as exc:
+                log.warning("win32com rebuild failed on worker thread (%s) — using PowerShell.", exc)
+                try:
+                    self._backend = _PowerShellBackend(self._cfg)
+                    log.info("Voice worker falling back to PowerShell backend.")
+                except Exception as exc2:
+                    log.error("PowerShell backend also unavailable: %s — voice will be silent.", exc2)
+                    self._backend = _SilentBackend()
 
         # 3. Drain queue.
         while True:

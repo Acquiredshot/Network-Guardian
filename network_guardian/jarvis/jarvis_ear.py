@@ -334,6 +334,18 @@ class JarvisEar:
                         where clean_command is "" if wake-word not matched.
         """
         self._cfg          = cfg or EarConfig()
+
+        # Allow JARVIS_WAKE_WORD env var to override config at runtime.
+        # Set to "off" or "" in .env to disable wake-word gating entirely
+        # (every utterance is treated as a command).
+        _ww_env = os.environ.get("JARVIS_WAKE_WORD", "")
+        if _ww_env.lower() in ("off", "false", "0", "disabled", "none"):
+            self._cfg.wake_word_enabled = False
+            log.info("Wake-word gating DISABLED via JARVIS_WAKE_WORD env var.")
+        elif _ww_env:
+            self._cfg.wake_word = _ww_env
+            log.info("Wake word set to '%s' via JARVIS_WAKE_WORD env var.", _ww_env)
+
         self._backend      = _build_ear_backend(self._cfg)
         self._wake         = WakeWordDetector(self._cfg.wake_word)
         self._on_transcript = on_transcript

@@ -15,6 +15,58 @@ update delivery is supported through base-pushed `patch_config` in fleet report 
 
 ## Recent Patch Notes
 
+### [v50] — 2026-06-09 — JARVIS Full Tool Integration + Speed Optimization
+
+**Type:** Feature / Performance  
+**Severity:** Enhancement (no vulnerability)  
+**Components:** `network_guardian/jarvis/jarvis_core.py`, `network_guardian/ai/langgraph_reasoner.py`, `.env`
+
+#### Changes Delivered
+
+- **7 new JARVIS security-tool command handlers** — Jarvis can now invoke every major
+  Network Guardian subsystem directly via natural language or voice:
+
+  | Command | Tool Invoked | Phrases |
+  |---|---|---|
+  | `cmd_firewall_scan` | `SmartFirewallAgent.run_cycle()` + injection history DB | "firewall scan", "last firewall scan", "when was the last firewall scan" |
+  | `cmd_malware` | `malware_scanner.scan_processes()` | "malware scan", "scan for viruses", "check processes" |
+  | `cmd_ransomware` | `RansomwareMonitor` | "ransomware check", "file integrity" |
+  | `cmd_ids` | Injection history DB (IDS events) | "ids alerts", "intrusion alerts", "alert history" |
+  | `cmd_ips` | `IntrusionPreventionSystem` | "blocked ips", "blocklist", "who is blocked" |
+  | `cmd_wifi` | `probe.scan_wifi()` | "wifi scan", "wireless scan", "nearby networks" |
+  | `cmd_audit` | `Auditor.run_audit(["localhost"])` | "run audit", "security audit", "vulnerability scan" |
+
+- **50+ new INTENT_MAP keywords** — all new commands have natural-language aliases
+  covering common voice phrasing variants.
+
+- **DeepSeek model switched to `deepseek-chat` (V3)** — 5–10× faster responses vs
+  `deepseek-reasoner` (chain-of-thought). AI timeout reduced from 60 s → 30 s.
+  Model and timeout are configurable via `DEEPSEEK_MODEL` / `DEEPSEEK_TIMEOUT` env vars.
+
+- **`.env` documented** — `DEEPSEEK_MODEL=deepseek-chat` and `DEEPSEEK_TIMEOUT=30` now
+  present with inline comments explaining fast vs deep reasoning modes.
+
+- **Existing speed caches confirmed active** — `_cached_snapshot()` and `_cached_live_context()`
+  (5 s TTL) eliminate redundant DB reads on back-to-back voice commands.
+
+#### Operator Action Required
+
+None — drop-in enhancement. All new commands are immediately available in both the
+Jarvis GUI and the terminal REPL.
+
+Example voice / text commands now recognised:
+```
+firewall scan           → runs SmartFirewallAgent + reports last scan timestamp
+malware                 → scans all running processes for malware indicators
+ransomware check        → checks for encryption/file-modification activity
+ids alerts              → shows last 20 IDS events from injection DB
+blocked ips             → lists IPS blocklist, rate-limited, and quarantined IPs
+wifi scan               → discovers nearby wireless networks, flags open SSIDs
+run audit               → runs full CVSS/OWASP vulnerability audit against localhost
+```
+
+---
+
 ### [v49] — 2026-06-09 — JARVIS Operational Data Access + Probe Commander
 
 **Type:** Feature / Intelligence Layer  

@@ -61,7 +61,15 @@ try:
 except ImportError:
     pass
 
-# ── Tkinter ────────────────────────────────────────────────────────
+# ── Tkinter — macOS Tk 9.0 NaN-scaling workaround ─────────────────
+# Tk 9.0 on macOS crashes in ::tk::ScalingPct when [tk scaling] returns NaN
+# (no display DPI available). We redirect TK_LIBRARY to a patched copy of the
+# Tk scripts that guards against NaN before it can crash the Tcl bootstrap.
+import os as _os
+_TK_PATCH = Path(__file__).resolve().parent / "tk9.0"
+if sys.platform == "darwin" and _TK_PATCH.is_dir() and "TK_LIBRARY" not in _os.environ:
+    _os.environ["TK_LIBRARY"] = str(_TK_PATCH)
+    _log.info("Using patched TK_LIBRARY: %s", _TK_PATCH)
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -740,11 +748,11 @@ class JarvisGUI:
         """Create JarvisEar and start listening on a background thread."""
         try:
             from network_guardian.jarvis.jarvis_ear import JarvisEar, EarConfig
-            mic_idx_str = os.environ.get("JARVIS_MIC_INDEX", "1")
+            mic_idx_str = os.environ.get("JARVIS_MIC_INDEX", "")
             try:
-                mic_idx = int(mic_idx_str)
+                mic_idx = int(mic_idx_str) if mic_idx_str else None
             except ValueError:
-                mic_idx = 1
+                mic_idx = None  # use system default microphone
 
             cfg = EarConfig()
             cfg.input_source = mic_idx
@@ -756,21 +764,33 @@ class JarvisGUI:
             try:
                 import speech_recognition as _sr
                 mics = _sr.Microphone.list_microphone_names()
-                mic_name = mics[mic_idx] if mic_idx < len(mics) else f"device {mic_idx}"
+                if mic_idx is None:
+                    mic_name = mics[0] if mics else "system default"
+                else:
+                    mic_name = mics[mic_idx] if mic_idx < len(mics) else f"device {mic_idx}"
             except Exception:
-                mic_name = f"device {mic_idx}"
+                mic_name = "system default" if mic_idx is None else f"device {mic_idx}"
 
             ear.start()
             self._root.after(0, lambda: self._on_mic_ready(mic_name))
         except Exception as exc:
             self._mic_active = False
-            self._root.after(0, lambda e=exc: self._append(f"  Mic error: {e}\n", "red"))
+            self._root.after(0, lambda: self._mic_btn.configure(fg=C["dim"]))
+            self._root.after(0, lambda e=exc: self._append(
+                f"  Mic error: {e}\n"
+                "  Tip: grant Terminal microphone access in\n"
+                "  System Settings → Privacy & Security → Microphone.\n",
+                "red"
+            ))
 
     def _on_mic_ready(self, mic_name: str) -> None:
         self._mic_btn.configure(fg=C["green"])
         self._append(
             f"  Microphone active — {mic_name}\n"
-            "  Say \"jarvis\" followed by your command.\n", "green"
+            "  Wake word: say \"Jarvis\" then your command.\n"
+            "  Example: \"Jarvis situation\"  /  \"Jarvis show fleet\"\n"
+            "  Tip: disable wake word by setting JARVIS_WAKE_WORD=off in .env\n",
+            "green"
         )
 
     def _poll_mic_state(self) -> None:
@@ -856,7 +876,20 @@ def _hsep(parent: tk.Misc, padx: int = 0, pady: int | tuple = 0) -> None:
 
 def main() -> None:
     try:
+        # Tk 9.0 on macOS can return NaN from [tk scaling] when DPI is
+        # unavailable, crashing tk.tcl before the window is fully initialised.
+        # Force a safe 1.0 scaling value via the environment before creating
+        # the root window so the Tcl bootstrap never evaluates NaN * 75.
+        import os as _os
+        if sys.platform == "darwin" and "TK_SCALING" not in _os.environ:
+            _os.environ.setdefault("TK_SCALING", "1.0")
         root = tk.Tk()
+        # Belt-and-suspenders: also set it at the Tcl level in case the
+        # env var was not honoured by this Tk build.
+        try:
+            root.tk.call("tk", "scaling", "1.0")
+        except Exception:
+            pass
         app  = JarvisGUI(root)
         root.protocol("WM_DELETE_WINDOW", root.destroy)
         _log.info("Entering mainloop.")
