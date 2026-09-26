@@ -147,6 +147,39 @@ class TeamStore:
         self._save()
         logger.info("Team member added: %s (%s)", username, role)
 
+    def ensure_default_admin(self, username: str = "admin", display_name: str = "Admin",
+                            password: str | None = None, *, force_reset: bool = False) -> str:
+        """Ensure the default admin account exists and has the expected bootstrap password."""
+        username = username.lower().strip()
+        if not username:
+            raise ValueError("Username required")
+        candidate = (password or os.environ.get("NG_BOOTSTRAP_ADMIN_PASSWORD", "")).strip() or "Admin123!"
+        if len(candidate) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        members = self._data.setdefault("members", {})
+        member = members.get(username)
+        should_reset = (
+            member is None
+            or force_reset
+            or member.get("role") != "admin"
+            or not _verify_password(candidate, member.get("password_hash", ""), member.get("salt", ""))
+        )
+        if should_reset:
+            pw_hash, salt = _hash_password(candidate)
+            now = int(time.time())
+            members[username] = {
+                "display_name": display_name or username,
+                "password_hash": pw_hash,
+                "salt": salt,
+                "created_at": member.get("created_at", now) if member else now,
+                "password_set_at": now,
+                "role": "admin",
+                "active": True,
+            }
+            self._save()
+            logger.warning("Default admin credentials reset for %s", username)
+        return candidate
+
     def remove_member(self, username: str) -> bool:
         username = username.lower().strip()
         if username in self._data.get("members", {}):

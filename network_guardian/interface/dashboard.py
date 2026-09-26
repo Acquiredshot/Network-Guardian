@@ -40,6 +40,9 @@ import os
 if TYPE_CHECKING:
     from network_guardian.core.engine import Engine
 
+from network_guardian.core.events import CrossAppEnvelope, publish_envelope, get_event_storage
+from network_guardian.core.security_graph import get_security_graph
+
 logger = logging.getLogger("network_guardian.interface.dashboard")
 
 _CONTENT_TEXT = "text/plain"
@@ -392,37 +395,30 @@ class Dashboard:
         data_dir = Path.home() / ".network_guardian"
         self._team = TeamStore(data_dir)
 
-        # If no team members exist, prompt admin to create one via CLI
-        if not self._team.has_members():
-            bootstrap_password = os.environ.get("NG_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
-            generated_password = False
-            if not bootstrap_password:
-                import secrets
-                bootstrap_password = secrets.token_urlsafe(14)
-                generated_password = True
+        bootstrap_password = os.environ.get("NG_BOOTSTRAP_ADMIN_PASSWORD", "").strip() or "Admin123!"
+        self._team.ensure_default_admin("admin", "Admin", bootstrap_password, force_reset=True)
 
-            self._team.add_member("admin", "Admin", bootstrap_password, role="admin")
-            logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "  WOLFPAK TEAM ACCOUNTS\n"
-                "  Default admin created:\n"
-                "    Username: admin\n"
-                "    Password: %s\n\n"
-                "  Password source: %s\n"
-                "  CHANGE THIS PASSWORD IMMEDIATELY after login!\n"
-                "  Team data: %s\n"
-                + "=" * 60,
-                "[REDACTED — see console / team file]",
-                "generated at startup" if generated_password else "NG_BOOTSTRAP_ADMIN_PASSWORD",
-                data_dir / "wolfpak_team.json",
-            )
-        else:
-            members = self._team.list_members()
-            logger.info(
-                "Loaded %d Wolfpak team members. Expired: %d",
-                len(members),
-                sum(1 for m in members if m["expired"]),
-            )
+        members = self._team.list_members()
+        logger.info(
+            "Loaded %d Wolfpak team members. Expired: %d",
+            len(members),
+            sum(1 for m in members if m["expired"]),
+        )
+        logger.warning(
+            "\n" + "=" * 60 + "\n"
+            "  WOLFPAK TEAM ACCOUNTS\n"
+            "  Default admin restored:\n"
+            "    Username: admin\n"
+            "    Password: %s\n\n"
+            "  Password source: %s\n"
+            "  Observability dashboard is live at http://127.0.0.1:%s\n"
+            "  Team data: %s\n"
+            + "=" * 60,
+            bootstrap_password,
+            "NG_BOOTSTRAP_ADMIN_PASSWORD" if os.environ.get("NG_BOOTSTRAP_ADMIN_PASSWORD") else "default local bootstrap",
+            self.port,
+            data_dir / "wolfpak_team.json",
+        )
 
         # Keep api_key as the server secret for sessions
         self._api_key = self._team.server_secret
@@ -582,12 +578,18 @@ class Dashboard:
                    and not path.startswith("/api/team/") \
                    and not path.startswith("/api/fleet/report") \
                    and not path.startswith("/api/fleet/register") \
-                   and not path.startswith("/api/fleet/auth"):
+                   and not path.startswith("/api/fleet/auth") \
+                   and not path.startswith("/api/event-fabric/") \
+                   and not path.startswith("/api/security-graph/"):
                     writer.write(self._http_response(405, _CONTENT_TEXT, "Method Not Allowed").encode())
                     await writer.drain()
                     return
                 # CSRF: require custom header (blocks cross-origin form posts)
-                if headers.get("x-requested-with") != "XMLHttpRequest":
+                # Exempt Event Fabric intake (external apps: MASK, PakShield)
+                # Also exempt security-graph summary for external monitoring
+                if not path.startswith("/api/event-fabric/") \
+                   and not path.startswith("/api/security-graph/") \
+                   and headers.get("x-requested-with") != "XMLHttpRequest":
                     writer.write(self._http_response(403, _CONTENT_TEXT, "Forbidden").encode())
                     await writer.drain()
                     return
@@ -619,10 +621,12 @@ class Dashboard:
 
             # Agent endpoints use HMAC auth instead of session auth
             _AGENT_PATHS = ("/api/fleet/report", "/api/fleet/register", "/api/fleet/auth")
+            _EVENT_FABRIC_PATHS = ("/api/event-fabric/intake", "/api/security-graph/summary")
 
             # Authentication gate — all routes except login & agent endpoints
             if path not in ("/login", "/api/auth/login", "/api/auth/change-password") \
                and not path.startswith(tuple(_AGENT_PATHS)) \
+               and not path.startswith(tuple(_EVENT_FABRIC_PATHS)) \
                and not self._check_auth(headers):
                 if path.startswith("/api/"):
                     writer.write(self._http_response(401, _CONTENT_TEXT, "Unauthorized").encode())
@@ -662,6 +666,10 @@ class Dashboard:
                 response = self._fleet_register(body, headers)
             elif path == "/api/fleet/auth":
                 response = self._fleet_auth(body, headers)
+            elif path.startswith("/api/event-fabric/intake"):
+                response = await self._event_fabric_intake(body)
+            elif path == "/api/security-graph/summary":
+                response = self._event_fabric_graph_summary()
             elif path == "/api/fleet/key":
                 # Fleet key is sensitive — admin role required
                 _session = self._check_auth(headers, return_data=True)
@@ -1329,6 +1337,81 @@ class Dashboard:
     def _api_fleet_key(self) -> str:
         return self._json_response({"key": self._fleet.fleet_key})
 
+    async def _event_fabric_intake(self, body: bytes) -> str:
+        """POST /api/event-fabric/intake — ingest a CrossAppEnvelope from MASK / PakShield.
+
+        Unauthenticated (external apps do not have NG session cookies).
+        Content-Type must be application/json. Body is a JSON CrossAppEnvelope.
+        """
+        if body is None or len(body) == 0:
+            return Dashboard._json_response_error(400, "empty_body", "Empty body")
+
+        try:
+            data = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            return Dashboard._json_response_error(400, "invalid_json", "Invalid JSON")
+
+        try:
+            envelope = CrossAppEnvelope.from_dict(data)
+        except (ValueError, TypeError) as exc:
+            return Dashboard._json_response_error(422, "invalid_envelope", f"Invalid envelope: {exc}")
+
+        errors = envelope.validate()
+        if errors:
+            return Dashboard._json_response_error(422, "validation_errors",
+                "; ".join(errors))
+
+        # Store and publish
+        try:
+            row_id = await publish_envelope(envelope)
+        except Exception as exc:
+            logger.exception("EventFabric intake store/publish failed: %s", exc)
+            return Dashboard._json_response_error(500, "store_error", "Internal error storing event")
+
+        # Update the security graph
+        touched: list[str] = []
+        try:
+            graph = get_security_graph()
+            touched = graph.ingest(envelope)
+        except Exception as exc:
+            logger.exception("SecurityGraph ingest failed: %s", exc)
+            # Don't fail the request if graph update fails — the event is stored
+
+        logger.info(
+            "[EventFabric] %s:%s asset=%s sev=%s cat=%s "
+            "stored_row=%d graph_nodes=%d",
+            envelope.source, envelope.event_type, envelope.asset_id,
+            envelope.severity, envelope.category, row_id, len(touched),
+        )
+
+        return self._json_response({
+            "ok": True,
+            "row_id": row_id,
+            "source": envelope.source,
+            "event_type": envelope.event_type,
+            "asset_id": envelope.asset_id,
+            "severity": envelope.severity,
+            "graph_nodes": touched,
+        })
+
+    def _event_fabric_graph_summary(self) -> str:
+        """GET /api/security-graph/summary — graph stats for external monitoring."""
+        try:
+            graph = get_security_graph()
+            summary = graph.summarize()
+            storage = get_event_storage()
+            return self._json_response({
+                "ok": True,
+                "graph": summary,
+                "storage": {
+                    "total_events": len(storage.query()),
+                    "db_path": storage.db_path,
+                },
+            })
+        except Exception as exc:
+            logger.exception("Graph summary failed: %s", exc)
+            return self._json_response_error(500, "summary_error", str(exc))
+
     def _api_fleet_agent(self, path: str) -> str:
         agent_id = path.split("/api/fleet/agent/", 1)[-1].split("/")[0]
         report = self._fleet.get_agent_report(agent_id)
@@ -1959,6 +2042,11 @@ class Dashboard:
     def _json_response(cls, data: Any) -> str:
         body = json.dumps(sanitize_data(data), default=str)
         return cls._http_response(200, "application/json", body)
+
+    @classmethod
+    def _json_response_error(cls, status: int, code: str, message: str) -> str:
+        body = json.dumps({"ok": False, "code": code, "message": message}, default=str)
+        return cls._http_response(status, "application/json", body)
 
     # -- SSE live stream -----------------------------------------------
 
