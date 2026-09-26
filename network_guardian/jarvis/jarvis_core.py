@@ -167,6 +167,7 @@ INTENT_MAP: dict[str, str] = {
     "boot":                 "cmd_start",
     "defenses":             "cmd_start",
     # Defense shutdown
+    "stop":                 "cmd_stop",
     "halt":                 "cmd_stop",
     "turn off":             "cmd_stop",
     "kill":                 "cmd_stop",
@@ -335,7 +336,10 @@ INTENT_MAP: dict[str, str] = {
     "?":                    "cmd_help",
     "what can you do":      "cmd_help",
     "what commands":        "cmd_help",
-    # Exit  (deliberate phrases only — "bye" removed to prevent mic mishearing)
+    # Exit
+    "exit":                 "cmd_exit",
+    "quit":                 "cmd_exit",
+    "bye":                  "cmd_exit",
     "jarvis exit":          "cmd_exit",
     "jarvis shutdown":      "cmd_exit",
     "jarvis terminate":     "cmd_exit",

@@ -412,7 +412,7 @@ class Dashboard:
                 "  CHANGE THIS PASSWORD IMMEDIATELY after login!\n"
                 "  Team data: %s\n"
                 + "=" * 60,
-                bootstrap_password,
+                "[REDACTED — see console / team file]",
                 "generated at startup" if generated_password else "NG_BOOTSTRAP_ADMIN_PASSWORD",
                 data_dir / "wolfpak_team.json",
             )
@@ -645,6 +645,10 @@ class Dashboard:
 
             # Route to handler
             if path == "/api/auth/login":
+                if headers.get("x-requested-with") != "XMLHttpRequest":
+                    writer.write(self._http_response(403, _CONTENT_TEXT, "Forbidden").encode())
+                    await writer.drain()
+                    return
                 response = await self._auth_login(body, client_ip, headers)
             elif path == "/api/auth/change-password":
                 response = await self._auth_change_password(body, client_ip)
@@ -1298,6 +1302,10 @@ class Dashboard:
         if not username or not password:
             return self._http_response(403, _CONTENT_JSON,
                 json.dumps({"ok": False, "message": "Credentials required"}))
+        if len(password) > 128:
+            logger.warning("Oversized password in agent auth for user: %s (possible injection)", username)
+            return self._http_response(403, _CONTENT_JSON,
+                json.dumps({"ok": False, "message": "Invalid credentials"}))
         member = self._team.authenticate(username, password)
         if not member:
             logger.warning("Failed agent auth attempt for user: %s", username)

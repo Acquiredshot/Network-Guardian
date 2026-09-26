@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "network-guardian"
-version = "0.2.0"
+version = "1.0.0"
 description = "Autonomous network auditing and system monitoring assistant"
 authors = [{name = "Wolf-Pak Innovations LLC", email = "legal@wolfpakinnovations.com"}]
 requires-python = ">=3.11"
@@ -25,8 +25,12 @@ dependencies = [
     "pyyaml>=6.0,<7",
     "requests>=2.32,<3",
     "beautifulsoup4>=4.12,<5",
-    "lxml>=5.0",
+    "lxml>=5.0,<7",
     "psycopg>=3.2,<4",
+    "rich>=13.7,<16",
+    "psutil>=5.9,<7",
+    "watchdog>=4.0,<7",
+    "reportlab>=4.0,<5",
 ]
 
 [project.optional-dependencies]
@@ -38,8 +42,7 @@ dev = [
 remote = [
     "cmdop>=0.1",
     "cmdop-bot>=0.1",
-    "openclaw>=2026.3",
-    "twilio>=9.0,<10",
+    "openclaw>=2026.3"
 ]
 
 # Dependency integrity: install with `pip install --require-hashes -r requirements.lock`
@@ -53,6 +56,7 @@ ng-build-agent = "network_guardian.agent.build:main"
 ng-fleet = "network_guardian.wolfpak.ng_fleet:main"
 ng-ids = "network_guardian.wolfpak.ng_ids:main"
 ng-status = "network_guardian.wolfpak.ng_status:main"
+ng-hud = "network_guardian.cli.hud:main"
 
 [tool.setuptools.packages.find]
 include = ["network_guardian*"]

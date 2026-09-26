@@ -31,7 +31,7 @@ def _saas_bind_host(default_host: str) -> str:
     host = os.environ.get("HOST")
     if host:
         return host
-    return "0.0.0.0" if os.environ.get("DYNO") or os.environ.get("PORT") else default_host
+    return default_host
 
 
 def build_parser() -> argparse.ArgumentParser:

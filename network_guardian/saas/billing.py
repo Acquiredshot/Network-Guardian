@@ -119,7 +119,10 @@ class StripeBilling:
         if not payload:
             raise BillingError("Webhook payload is required")
         if not self.config.stripe_webhook_secret:
-            return json.loads(payload)
+            raise BillingError(
+                "Stripe webhook secret not configured — "
+                "set STRIPE_WEBHOOK_SECRET environment variable"
+            )
         if not signature_header:
             raise BillingError("Stripe-Signature header required")
         parsed = self._parse_signature(signature_header)

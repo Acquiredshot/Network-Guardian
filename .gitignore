@@ -104,3 +104,11 @@ win32/
 # Crash / core dumps
 *.dmp
 crash_*.txt
+
+# WhatsApp server logs
+whatsapp_*.log
+
+# npm / node artifacts (if frontend added later)
+node_modules/
+package-lock.json
+yarn.lock

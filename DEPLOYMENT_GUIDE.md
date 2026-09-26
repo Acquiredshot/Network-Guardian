@@ -47,7 +47,7 @@ python3 --version
 # Install the application in development mode (recommended for testing)
 pip install -e ".[dev]"
 
-# If you need remote control features (Twilio, SMS, Discord):
+# If you need remote control features (Telegram, Discord, Slack):
 # pip install -e ".[remote]"
 ```
 

@@ -1233,15 +1233,24 @@ Automated protective actions executed: **{len([a for a in report.actions_taken i
         # 3. ARP spoofing detection
         arp_table = obs.get("arp_table", [])
         gateway_ip = obs.get("gateway", "")
-        mac_to_ips: dict[str, list[str]] = {}
+        mac_to_ips: dict[str, set[str]] = {}
         for entry in arp_table:
             mac = entry.mac if isinstance(entry, ARPEntry) else str(entry)
             ip = entry.ip if isinstance(entry, ARPEntry) else ""
-            if mac and mac != "(incomplete)" and mac != "ff:ff:ff:ff:ff:ff":
-                mac_to_ips.setdefault(mac, []).append(ip)
+            # 01:00:5e/33:33 are IPv4/IPv6 multicast MAC prefixes — every multicast
+            # group address maps deterministically to one of these (RFC 1112), so a
+            # single such MAC legitimately "claims" many IPs and isn't spoofable.
+            if (
+                mac
+                and mac != "(incomplete)"
+                and mac != "ff:ff:ff:ff:ff:ff"
+                and not mac.lower().startswith(("01:00:5e", "33:33"))
+            ):
+                mac_to_ips.setdefault(mac, set()).add(ip)
 
-        for mac, ips in mac_to_ips.items():
-            if len(ips) > 1:
+        for mac, ip_set in mac_to_ips.items():
+            if len(ip_set) > 1:
+                ips = sorted(ip_set)
                 threats.append(ThreatEvent(
                     timestamp=now, severity="critical",
                     category="arp_spoof",

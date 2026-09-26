@@ -52,31 +52,22 @@ class PluginRegistry:
 
     def register(self, plugin: Plugin) -> None:
         if plugin.name in self._plugins:
-            raise ValueError(f"Plugin already registered: {plugin.name}")
+            raise ValueError(f"Plugin '{plugin.name}' is already registered")
         self._plugins[plugin.name] = plugin
-        logger.info("Plugin registered: %s", plugin.name)
 
     def get(self, name: str) -> Plugin:
         return self._plugins[name]
 
     async def start_all(self) -> None:
         for plugin in self._plugins.values():
-            logger.info("Starting plugin: %s", plugin.name)
             await plugin.start()
 
     async def stop_all(self) -> None:
-        for plugin in reversed(list(self._plugins.values())):
-            logger.info("Stopping plugin: %s", plugin.name)
+        for plugin in self._plugins.values():
             await plugin.stop()
 
     def health_check_all(self) -> list[dict[str, Any]]:
-        results = []
-        for plugin in self._plugins.values():
-            try:
-                results.append(plugin.health_check())
-            except Exception as exc:
-                results.append({"plugin": plugin.name, "status": "error", "detail": str(exc)})
-        return results
+        return [p.health_check() for p in self._plugins.values()]
 
     @property
     def names(self) -> list[str]:

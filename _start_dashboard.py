@@ -20,7 +20,7 @@ def _saas_bind_host() -> str:
     host = os.environ.get("HOST")
     if host:
         return host
-    return "0.0.0.0" if os.environ.get("DYNO") or os.environ.get("PORT") else "127.0.0.1"
+    return "127.0.0.1"
 
 
 async def main() -> None:

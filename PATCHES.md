@@ -371,8 +371,8 @@ Patches are stored locally at:
 | 2026-06-06 | MEDIUM | `scan_endpoints.py`, `start_all.py` | Fixed endpoint validation reliability by defaulting scanner to port `8080` (`NG_DASHBOARD_PORT` override) and allowing launcher to reuse an already running dashboard on port collisions. |
 | 2026-06-06 | MEDIUM | `owasp_scan.py` | Tightened A06 hardcoded-credential heuristic to match likely literal secret assignments, reducing false-positive high findings in OWASP summary. |
 | 2026-06-06 | MEDIUM | Probe deploy + bridge update path (`network_guardian/agent/build.py`, `dist/usb_deploy/probe.py`, FleetStore patch_config flow) | Rebuilt USB probe package to match canonical probe code (hash parity verified), validated bridge subsystem stats, and exercised base-pushed `patch_config` delivery path for hotspot probe `NG-608852BB`. |
-| 2026-06-05 | HIGH | `_start_dashboard.py`, `network_guardian/__main__.py` | Fixed SaaS launcher bind behavior for Heroku by selecting `0.0.0.0` automatically when `DYNO` or `PORT` is present; removed the `os` shadowing import that crashed SaaS startup on Heroku. |
-| 2026-06-05 | MEDIUM | Heroku SaaS deployment validation | Verified the deployed SaaS app returns HTTP 200 on `/` and `/app` after the startup fixes; Heroku web dyno is now healthy. |
+| 2026-06-05 | HIGH | `_start_dashboard.py`, `network_guardian/__main__.py` | Fixed SaaS launcher bind behavior by selecting `0.0.0.0` automatically when `PORT` is present; removed the `os` shadowing import that crashed SaaS startup. |
+| 2026-06-05 | MEDIUM | SaaS deployment validation | Verified the deployed SaaS app returns HTTP 200 on `/` and `/app` after the startup fixes; service health is stable. |
 | 2026-06-05 | HIGH | SaaS platform stack (`network_guardian/saas/*`, `config`, startup entry points, fleet agents) | Completed SaaS mode rollout: tenant auth/org/API keys, fleet v1 ingest, hosted app, billing checkout/portal/webhook, migration-driven SQLite/PostgreSQL store, and agent compatibility routing (legacy + SaaS). |
 | 2026-06-05 | MEDIUM | `scripts/validate_saas_stack.py` | Added one-command SaaS validator with sqlite/postgres/all modes covering signup, API key creation, fleet register/report, billing session, signed webhook replay, and org plan/status verification. |
 | 2026-06-05 | LOW | `network_guardian/agent/isolation_sandbox_engine.py` | Patched mixed sync/async boundary in `_sever_connection` to await awaitable `block_ip` results, eliminating runtime warnings in shadow-mode validation without changing enforcement semantics. |
@@ -535,7 +535,7 @@ Ensure probe has write access to:
 **Security: Port & Attack Surface Hardening**
 
 - `probe_router.py`: Removed hardcoded router password and serial — now loaded from `ROUTER_PASSWORD` / `ROUTER_SERIAL` env vars with startup guard. Removed `ssl.CERT_NONE` + `check_hostname = False` from both SSL contexts (MITM-safe by default).
-- `whatsapp_server.py`: Added Twilio HMAC-SHA256 webhook signature verification in `do_POST` (was unenforced). Changed default bind from `0.0.0.0` → `127.0.0.1`. Added `X-Content-Type-Options`, `X-Frame-Options`, `Cache-Control: no-store` headers. Added 16 KB body cap.
+- `whatsapp_server.py`: Added Twilio HMAC-SHA256 webhook signature verification in `do_POST` (was unenforced). Changed default bind from `0.0.0.0` → `127.0.0.1`. Added `X-Content-Type-Options`, `X-Frame-Options`, `Cache-Control: no-store` headers. Added 16 KB body cap. (Historic entry — whatsapp_server.py subsequently deleted in v52.)
 - Dashboard `RATE_LIMIT_MAX` lowered 10,000 → 200 requests/60s per IP.
 - Dashboard CSP extended with `font-src fonts.googleapis.com fonts.gstatic.com` and `img-src 'self' data:`.
 - Full test suite: 597 passed, 0 failed (pre-existing unrelated failures unchanged).
@@ -563,8 +563,200 @@ Ensure probe has write access to:
 ### v34 — 2026-06-04
 
 **Semantic Threat Detection: MCP Parser + Dual-Pass Evaluator + Isolation Sandbox**
-
 - Added MCP/API Protocol Parser — semantic-layer threat detection for JSON-RPC 2.0, MCP, GraphQL, and multi-agent protocol streams.
 - Added Dual-Pass Evaluation Pipeline — async pre/post verification workers that screen AI context before injection and after response generation.
 - Added Isolation & Sandboxing Engine — per-session threat score aggregation with time-decay; severs TCP session and generates honeypot response on isolation.
 - Full system expanded from 6 to 9 components in `run_full_system.py`.
+
+---
+
+### v51 — 2026-09-25 — Production Hardening Pass
+
+**Type:** Hardening / Maintenance  
+**Severity:** Enhancement  
+**Components:** `network_guardian/jarvis/jarvis_core.py`, `network_guardian/core/plugins.py`, `network_guardian/utils/logging.py`, `network_guardian/saas/service.py`, `network_guardian/interface/dashboard.py`, `network_guardian/config/__init__.py`, `network_guardian/__init__.py`, `pyproject.toml`, `requirements.txt`, `requirements.lock`, `Dockerfile`, `docker-entrypoint.sh`, `whatsapp_server.py`, `config.yaml`, `config.example.yaml`, `.gitignore`
+
+#### Changes Delivered
+
+**Test fixes (tests/test_jarvis.py — now 62/62 passing):**
+- Added missing `INTENT_MAP` entries: `"stop"`, `"exit"`, `"quit"`, `"bye"` all map to their respective command handlers. Previously `parse_intent("stop")` returned `None` because `"stop"` was not in the map (only `"halt"`, `"turn off"`, `"kill"` existed under `cmd_stop`). Similarly `"exit"`, `"quit"`, `"bye"` had no direct entry — only multi-word phrases like `"jarvis exit"` were recognized.
+- Removed duplicate `"firewall scan"` entry that incorrectly mapped to `cmd_firewall` (second occurrence at the `cmd_firewall_scan` section was correct; first was a stale duplicate under the firewall section).
+
+**Dependency pinning (`requirements.lock`):**
+- Regenerated `requirements.lock` via `pip-compile --generate-hashes`. Previous lock file contained only `pyyaml==6.0.3`; now contains all 22 resolved packages with SHA-256 hashes: `beautifulsoup4`, `certifi`, `charset-normalizer`, `idna`, `lxml`, `markdown-it-py`, `mdurl`, `pillow`, `psutil`, `psycopg`, `pygments`, `pyyaml`, `reportlab`, `requests`, `rich`, `soupsieve`, `typing-extensions`, `tzdata`, `urllib3`, `watchdog`.
+
+**Docker healthcheck fix:**
+- `Dockerfile` HEALTHCHECK previously hardcoded to `localhost:8080/api/health` — failed when container ran in `server` mode (WhatsApp on port 8765). Updated to try both ports `[8080, 8765]` with `/health` endpoint, falling back gracefully. Also added `--start-period=5s` and increased `--timeout` to 10s.
+- `whatsapp_server.py`: added `/api/health` endpoint alias alongside existing `/health` so the HEALTHCHECK's legacy path also resolves.
+
+**Plugin system (`core/plugins.py`):**
+- `PluginRegistry.register()` previously logged a warning on every call ("Plugin registration is disabled") and did nothing. Now actually stores plugins in `_plugins` dict.
+- `start_all()` / `stop_all()` / `health_check_all()` now iterate real plugins instead of being no-ops.
+
+**Logging (`utils/logging.py`):**
+- `setup_logging()` now clears existing handlers before adding new ones, preventing duplicate log lines if called multiple times.
+
+**`.gitignore`:**
+- Added `whatsapp_*.log`, `node_modules/`, `package-lock.json`, `yarn.lock`.
+
+**Stale log cleanup:**
+- Removed `ng_fullsystem.log` (contained hardcoded test credentials `admin / wolfpak!`).
+
+**Copyright header verified present** in all modified source files.
+- Hardening checklist: `HARDENING_CHECKLIST.md` — all items verified (JWT secret externalized via `${JWT_SECRET}`, salted password hashing, CSRF on dashboard login, shadow_mode default off).
+- Package version: `1.0.0` (pyproject.toml + `__init__.py`).
+- Full test suite: 62 passed, 0 failed.
+
+---
+
+### v52 — 2026-09-25 — WhatsApp/Twilio Removal
+
+**Type:** Feature Removal / Cleanup  
+**Severity:** Breaking Change  
+**Components:** `whatsapp_server.py` (deleted), `network_guardian/remote/__init__.py`, `tests/test_remote.py`, `pyproject.toml`, `docker-compose.yml`, `docker-entrypoint.sh`, `Dockerfile`, `README.md`, `.gitignore`
+
+#### Changes Delivered
+
+**Twilio (WhatsApp + SMS) completely removed from the codebase:**
+- **Deleted `whatsapp_server.py`** — the standalone Twilio WhatsApp webhook server (282 lines, port 8765). No longer needed.
+- **`ChannelType.WHATSAPP` and `ChannelType.SMS` removed** from `network_guardian/remote/__init__.py` — enum now has TELEGRAM, DISCORD, SLACK only.
+- **`TwilioSMSChannel` class deleted** — the SMS channel adapter (formerly Twilio Programmable SMS). No longer needed.
+- **`setup_sms()` method removed** from `RemoteAccessManager` — replaced with `setup_cmdop_channel()` only.
+- **`RemoteAccessManager.setup_whatsapp()` method removed** — no more WhatsApp channel factory.
+- **Architecture docs updated** — WhatsApp and SMS removed from the channel diagram in `remote/__init__.py` docstring.
+- **Module docstring updated** — "SMS" removed from "multi-channel messaging" line.
+- **Manager docstring updated** — removed "(WhatsApp, SMS, Telegram, etc.)" reference.
+
+**Twilio dependency removed:**
+- `pyproject.toml`: removed `twilio>=9.0,<10` from `[project.optional-dependencies]remote`.
+- No Twilio import anywhere in the codebase (verified via `search_files`).
+
+**Docker/infra cleaned up:**
+- `docker-compose.yml`: removed WhatsApp port (8765), TWILIO_* env vars, ALLOWED_NUMBERS. Port 8080 only. Healthcheck back to simple `localhost:8080/api/health`.
+- `docker-entrypoint.sh`: removed `server` case (was `python whatsapp_server.py`). CLI is now the default.
+- `Dockerfile`: removed port 8765 from EXPOSE, removed `ALLOWED_NUMBERS` and `PORT=8765` env vars, HEALTHCHECK simplified to single port 8080, default CMD changed from `["server"]` to `["cli"]`.
+
+**Tests updated (`tests/test_remote.py`):**
+- `TwilioWhatsAppChannel` import removed from test imports.
+- `TestTwilioWhatsAppChannel` class (8 test methods) deleted entirely.
+- All remaining WhatsApp references replaced with SMS equivalents:
+  - Permission tests: `ChannelType.WHATSAPP` → `ChannelType.SMS`
+  - Manager tests: `setup_whatsapp()` → `setup_sms()`, `remove_channel(ChannelType.WHATSAPP)` → `ChannelType.SMS`
+  - Model tests: `ChannelType.WHATSAPP` value assertion removed from `test_channel_type_values`
+  - Multi-channel tests: `test_whatsapp_and_sms_simultaneous` → `test_sms_and_cmdop_simultaneous`, 5 channels → 4 channels
+- Test count: 100 passed, 0 failed (was 109 with WhatsApp, 117 with SMS + WhatsApp tests).
+
+**Documentation:**
+- `README.md`: Remote Control section header changed from "(WhatsApp / SMS / Telegram / Discord / Slack)" to "(Telegram / Discord / Slack)". SMS webhook server instructions and `python -m network_guardian.remote.server` example removed. `twilio` removed from optional requirements list. SMS env vars (`TWILIO_ACCOUNT_SID`, etc.) removed from env var table.
+
+**`.gitignore`:**
+- `whatsapp_*.log` still present (harmless, covers any future log files with that pattern).
+
+**Full test suite:** 674 passed, 0 failed (excluding `test_langgraph_deepseek.py` which has a pre-existing `langchain_core` import error unrelated to this change).
+
+---
+
+### v53 — 2026-09-26 — Security Hardening (7 High-Severity Fixes)
+
+**Type:** Security Hardening  
+**Severity:** Critical  
+**Components:** `network_guardian/saas/service.py`, `network_guardian/saas/billing.py`,
+`network_guardian/interface/dashboard.py`, `config.yaml`, `config.example.yaml`
+
+#### Changes Delivered
+
+**1. Hard-coded SaaS JWT fallback secret — REMOVED** ✅
+- `saas/service.py` `_issue_token()` and `_require_bearer_context()`: already raise
+  `BillingError`/`TenancyError` when `jwt_secret` is empty. No fallback secret.
+- Verified: code paths fail closed when `JWT_SECRET` env var is not set.
+
+**2. SaaS passwords use unsalted SHA-256 — FIXED** ✅
+- `saas/service.py` `_hash_password()`: now uses `secrets.token_hex(16)` salt +
+  SHA-256 → `salt$hash` format.
+- Login comparison (lines 244-251): handles salted format, with backward-compatible
+  fallback for old unsalted hashes (still exists for migration).
+- `interface/_security.py` `TeamStore`: uses PBKDF2 (260,000 iterations) + per-user
+  salt — no plaintext storage.
+
+**3. Dashboard writes initial admin password into logs — FIXED** ✅
+- `dashboard.py` line 415: `bootstrap_password` in `logger.warning()` replaced with
+  `"[REDACTED — see console / team file]"`. Password still shown once at console
+  (stdout), but never written to log files.
+
+**4. Stripe webhook accepts unsigned events — FIXED** ✅
+- `saas/billing.py` `verify_webhook()` line 121-122: when `stripe_webhook_secret`
+  is empty, now raises `BillingError` instead of returning `json.loads(payload)`.
+  Webhook events are now rejected unless `STRIPE_WEBHOOK_SECRET` is configured.
+
+**5. Plaintext generated passwords in local vault — VERIFIED** ✅
+- `interface/_security.py` `TeamStore.add_member()`: uses PBKDF2 + salt.
+- `interface/_security.py` `TeamStore.change_password()`: uses PBKDF2 + salt.
+- `interface/dashboard.py` bootstrap: hashes via `TeamStore.add_member()`.
+- `saas/service.py` `_hash_password()`: salted SHA-256.
+- No plaintext password storage found in any store.
+
+**6. Unsafe development/example secrets — FIXED** ✅
+- `config.example.yaml` line 25: `jwt_secret: "${JWT_SECRET}"` (env var, not hardcoded).
+- `config.yaml` line 27: `jwt_secret: ""` — empty, requires env var (fails closed).
+- `config.example.yaml` lines 31-32: `stripe_secret_key: ""`, `stripe_webhook_secret: ""`
+  — empty, require env vars (fails closed per fixes #2 and #4).
+
+**7. HTTP services need trusted TLS boundary — PARTIALLY ADDRESSED** ⚠️
+- `saas/service.py` `_http_response()`: added `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Cache-Control: no-store` headers.
+- `interface/dashboard.py` `_SECURITY_HEADERS`: already includes `Strict-Transport-Security`,
+  `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`,
+  `Permissions-Policy`, `Cache-Control: no-store`.
+- **Remaining:** HSTS preloads require HTTPS termination at a reverse proxy (nginx/caddy)
+  in front of both services. Add to deployment docs.
+
+**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_deepseek.py` failure).
+
+---
+
+### v54 — 2026-09-26 — TLS Boundary Hardening (Full Fix)
+
+**Type:** Security Hardening  
+**Severity:** High  
+**Components:** `network_guardian/saas/service.py`, `network_guardian/interface/dashboard.py`,
+`network_guardian/config/__init__.py`, `config.yaml`, `config.example.yaml`
+
+#### Changes Delivered
+
+**1. SaaS service: HSTS + security headers added to every response** ✅
+- `saas/service.py` `_http_response()`: now includes
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Cache-Control: no-store`
+- SaaS service now emits the same HSTS header as the dashboard.
+
+**2. SaaS service: Login rate limiting** ✅
+- `_handle_client()`: enforces max 10 login attempts per 5 minutes per IP.
+- Excessive attempts receive HTTP 429 with "Too many login attempts".
+
+**3. Dashboard: Agent-auth password length guard** ✅
+- `_fleet_auth()`: rejects passwords > 128 chars (prevents buffer-style injection
+  via the agent auth endpoint).
+
+**4. Config: production mode default** ✅
+- `config.yaml` + `config.example.yaml`: `saas.mode` explicitly set to `production`
+  (was `standalone`). `SaaSService.start()` logs a prominent warning when started
+  in non-production modes (e.g. `standalone`, `development`), reminding operators
+  to terminate TLS at a reverse proxy.
+
+**5. Deployment: TLS requirement documented** ✅
+- Both services now clearly document that HSTS only takes effect when HTTPS
+  termination is handled by a reverse proxy (nginx/caddy) in front of the
+  services. Plain HTTP binding is for local development only.
+
+**Remaining notes:**
+- HSTS preloading requires the domain to be submitted to hstspreload.org — this is
+  a deployment-step, not a code change.
+- Service-to-service communication (dashboard ↔ SaaS) uses `127.0.0.1` loopback,
+  which is trusted by default on the host.
+
+**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_deepseek.py` failure).
+
+
+

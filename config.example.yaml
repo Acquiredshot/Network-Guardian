@@ -20,9 +20,9 @@ security:
   session_timeout: 3600
 
 saas:
-  mode: standalone
+  mode: production
   database_url: "sqlite:///./network_guardian_saas.db"
-  jwt_secret: "change-me"
+  jwt_secret: "${JWT_SECRET}"
   jwt_issuer: "network-guardian"
   jwt_audience: "network-guardian-api"
   access_token_ttl: 3600

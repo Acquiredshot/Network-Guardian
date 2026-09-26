@@ -34,7 +34,29 @@ logger = logging.getLogger("network_guardian")
 
 # Store process IDs so we can kill them on exit
 processes = []
+log_streams = []
 OS_TYPE = platform.system()  # "Windows", "Darwin", "Linux"
+
+
+def _open_component_log(base_dir: Path, name: str):
+    """Open an append-only log file for a long-running child component."""
+    log_dir = base_dir / ".network_guardian" / "runtime_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handle = open(log_dir / f"{name}.log", "a", encoding="utf-8", buffering=1)
+    log_streams.append(handle)
+    return handle
+
+
+def _start_component(base_dir: Path, script_name: str, log_name: str) -> subprocess.Popen:
+    """Start a child component with stdout/stderr persisted to a log file."""
+    log_handle = _open_component_log(base_dir, log_name)
+    return subprocess.Popen(
+        [sys.executable, script_name],
+        cwd=str(base_dir),
+        stdout=log_handle,
+        stderr=log_handle,
+        text=True,
+    )
 
 
 def _is_dashboard_reachable(url: str = "http://127.0.0.1:8080/") -> bool:
@@ -75,6 +97,11 @@ def cleanup(sig=None, frame=None):
                     proc.kill()
             except:
                 pass
+    for handle in log_streams:
+        try:
+            handle.close()
+        except Exception:
+            pass
     logger.info("[+] All services stopped")
     sys.exit(0)
 
@@ -100,25 +127,12 @@ def main():
         logger.info("      Mode: Smart firewall + anomaly reasoning + isolation sandbox")
         logger.info("      Dashboard: http://127.0.0.1:8080")
 
-        full_proc = subprocess.Popen(
-            [sys.executable, "run_full_system.py"],
-            cwd=str(base_dir),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        full_proc = _start_component(base_dir, "run_full_system.py", "full_system")
         processes.append(full_proc)
         time.sleep(4)
 
         if full_proc.poll() is not None:
-            stderr_bytes = b""
-            try:
-                stderr_bytes = full_proc.stderr.read() or b""
-            except Exception:
-                pass
-
-            err_text = stderr_bytes.decode(errors="replace").strip()
-            if err_text:
-                logger.error(f"Full defense startup error: {err_text}")
+            logger.error("Full defense startup error. See .network_guardian/runtime_logs/full_system.log")
             logger.error("ERROR: Full defense stack failed to start!")
             cleanup()
             return
@@ -151,33 +165,19 @@ def main():
     logger.info("      Login: admin user (password set in team store)")
 
     # Start dashboard (cross-platform)
-    dashboard_proc = subprocess.Popen(
-        [sys.executable, "start_dashboard.py"],
-        cwd=str(base_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    dashboard_proc = _start_component(base_dir, "start_dashboard.py", "dashboard")
     processes.append(dashboard_proc)
     time.sleep(3)
     dashboard_managed_by_this_process = True
 
     if dashboard_proc.poll() is not None:
-        stderr_bytes = b""
-        try:
-            stderr_bytes = dashboard_proc.stderr.read() or b""
-        except Exception:
-            pass
-
-        err_text = stderr_bytes.decode(errors="replace").strip()
-        if err_text:
-            logger.error(f"Dashboard startup error: {err_text}")
-
         # If another dashboard is already listening, reuse it instead of aborting startup.
-        if "address already in use" in err_text.lower() and _is_dashboard_reachable():
+        if _is_dashboard_reachable():
             logger.warning("Dashboard port already in use, reusing existing dashboard at http://127.0.0.1:8080")
             dashboard_managed_by_this_process = False
             processes.remove(dashboard_proc)
         else:
+            logger.error("Dashboard startup error. See .network_guardian/runtime_logs/dashboard.log")
             logger.error("ERROR: Dashboard failed to start!")
             cleanup()
             return
@@ -228,9 +228,27 @@ def main():
 
             # Check if any process died unexpectedly
             if dashboard_managed_by_this_process and dashboard_proc.poll() is not None:
-                logger.error("ERROR: Dashboard crashed!")
-                cleanup()
-                return
+                if _is_dashboard_reachable():
+                    logger.warning("Dashboard child exited but the dashboard is still reachable; continuing.")
+                    dashboard_managed_by_this_process = False
+                    try:
+                        processes.remove(dashboard_proc)
+                    except ValueError:
+                        pass
+                else:
+                    logger.warning("Dashboard exited unexpectedly; attempting one automatic restart.")
+                    try:
+                        processes.remove(dashboard_proc)
+                    except ValueError:
+                        pass
+                    dashboard_proc = _start_component(base_dir, "start_dashboard.py", "dashboard")
+                    processes.append(dashboard_proc)
+                    time.sleep(3)
+                    if dashboard_proc.poll() is not None or not _is_dashboard_reachable():
+                        logger.error("ERROR: Dashboard crashed and restart failed. See .network_guardian/runtime_logs/dashboard.log")
+                        cleanup()
+                        return
+                    logger.info("Dashboard restarted successfully")
 
             if probe_proc.poll() is not None:
                 logger.error("ERROR: Probe crashed!")

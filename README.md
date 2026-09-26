@@ -2,24 +2,51 @@
 
 > **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, LangGraph + DeepSeek-R1 chain-of-thought triage, J.A.R.V.I.S. conversational terminal shell with live telemetry access and field probe command, malware process scanning, real-time ransomware monitoring, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via phone, live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.13, zero heavy ML deps.
 
-**Live demo:** https://network-guardian-cc8900c70290.herokuapp.com (credentials provided separately)
+**Live demo:** Hosted cloud demo (credentials provided separately)
 
 ---
 
-## Recent Updates (2026-06-09)
+## What is Network Guardian?
 
-- **[v49] JARVIS Probe Commander** — `probe_commander.py` gives JARVIS full awareness of all active field probes. `probes` command: reads registered agents from `fleet.json`, async health-checks each probe IP (ping + port scan + HTTP banner), and sweeps the subnet for unregistered NG instances. `probe health` command pings all known agents. Read-only guard-rail — no mutations.
-- **[v49] JARVIS Live Data Access** — Free-form questions to JARVIS now receive a real-time telemetry snapshot (threat level, metrics, fleet, firewall history, all probe statuses) injected into the DeepSeek context window. JARVIS answers factual questions directly ("when was the last firewall scan?") instead of returning "I don't have access."
-- **[v49] `cmd_fleet` fix** — Fleet report now shows both passive `devices[]` and registered probe `agents{}` from `fleet.json`. Previously all field agents were invisible in JARVIS fleet output.
-- **[v49] `.gitignore` hardened** — `jarvis_crash.log`, `.ng_agent/`, `.network_guardian/`, `fleet_key.txt`, `agent_key.txt`, `config.local.yaml`, `win32com/`, `*.dmp` added to prevent accidental push of runtime data and fleet credentials.
-- **[v48] J.A.R.V.I.S. Terminal Intelligence Layer** — conversational REPL shell with natural-language command dispatch, live telemetry aggregation, AI-powered triage, voice I/O (SAPI 5), microphone wake-word detection, and NG process lifecycle management. Launch: `python jarvis_gui.py`
-- **[v48] LangGraph + DeepSeek-R1 Reasoning Engine** — four-node `StateGraph` (ingest → reason → plan → summarize) replaces keyword-only intent classification in `TriageAgent` with chain-of-thought reasoning. Activate by setting `DEEPSEEK_API_KEY` in `.env`.
-- **[v47]** Added Google Safe Browsing trust signals + Search Console verification to SaaS landing page.
-- **[v46]** `FloodGuardAgent` — per-IP SYN/UDP/ICMP/probe-saturation detection with auto-escalating IPS blocks; probe self-protection (`_ProbeFloodGuard`) embedded in field probes.
+Network Guardian is a pure-Python autonomous network security platform. It runs an inline IDS/IPS engine with 15 signature rules and payload analysis, a 24/7 AI anomaly-detection loop with four-tier thresholds, LangGraph + DeepSeek-R1 chain-of-thought triage (optional, keyword fallback otherwise), and J.A.R.V.I.S. — a conversational terminal shell with live telemetry access, natural-language command dispatch, and field-probe awareness.
+
+**Core subsystems:**
+
+| Layer | What it does |
+|---|---|
+| **IDS** | 15 signature rules, payload analysis, brute-force & multi-stage attack correlation, alert suppression |
+| **IPS** | IP block/allowlist, rate limiting, quarantine zones, auto-respond to IDS alerts |
+| **IP Cloaking** | MAC masking, IP obfuscation, source rotation, decoy generation, proxy chains, named identities |
+| **Fleet Agents** | `ng-probe` (periodic scanner) and `ng-sentinel` (persistent stay-behind bot) phone home over Tor/proxy |
+| **Covert Comms** | Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy requests, body padding |
+| **24/7 AI Monitor** | Background asyncio loop — rolling time-series, spike detection, 4-tier anomaly thresholds, live AI event stream |
+| **Malware ReAct Agent** | Autonomous process scanner — Observe → Reason → Act → Learn, 0–100 threat score, branded PDF report per detection |
+| **Ransomware ReAct Agent** | Real-time file-system watcher triggering full ReAct reasoning on every alert, with optional auto-quarantine |
+| **PDF/Markdown Reports** | ReportLab-branded PDF threat reports + Markdown incident reports auto-saved on every detection event |
+| **LangGraph + DeepSeek-R1** | Four-node `StateGraph` (ingest → reason → plan → summarize) using DeepSeek-R1 via OpenAI-compatible API; activates when `DEEPSEEK_API_KEY` is set; keyword scorer fallback otherwise |
+| **J.A.R.V.I.S. Terminal Shell** | Conversational REPL with 80+ NL keywords, live telemetry aggregation, voice I/O (SAPI 5 TTS + microphone wake-word), and NG process lifecycle management |
+| **JARVIS Probe Commander** | Read-only probe awareness — reads registered agents from `fleet.json`, async health-checks each (ping + port scan + HTTP banner), sweeps subnet for unregistered instances |
+| **ML / AI Engine** | Isolation Forest, One-Class SVM, ARIMA/Holt-Winters forecasting, ROS-style AI node graph, NLP parsing |
+| **Per-Device UEBA Baselines** | Each IP builds its own rolling Isolation Forest; flags deviations from a device's *personal* baseline |
+| **Lateral Movement Detection** | Tracks unique destination fan-out per source IP; raises alert when fan-out spikes ≥ 3σ or hits 20 unique destinations |
+| **Remote Control** | Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
+| **Dashboard** | Zero-dep async HTTP dashboard — Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection, Reports, Incidents |
+| **SaaS Control Plane** | Multi-tenant auth, organizations, memberships, API keys, fleet ingest API, hosted tenant app (`/` + `/app`), billing checkout/portal/webhook flow (SQLite + PostgreSQL) |
+| **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
+| **Password Manager** | CLI credential vault + team user management — PBKDF2-HMAC-SHA256, atomic persistence |
+| **Email Protection** | IMAP scanner — SpamAssassin spam/phishing scoring + ClamAV malware detection, async polling loop |
+| **Email ReAct Agent** | Autonomous Observe → Reason → Act → Learn email threat agent — per-cycle risk scoring, PDF reports |
+| **Desktop App** | Native PyQt5 firewall console — live IDS alert feed, one-click IP blocking, payload analyser, blocked-IP management |
+| **Smart Firewall Agent** | Autonomous injection-blocking ReAct agent — 10-type / 36-rule detection (SQLi, XSS, CMDi, LDAP, XXE, SSTI, Path Traversal, CRLF, NoSQL, GraphQL), IP escalation, event-bus driven |
+| **MCP/API Protocol Parser** | Semantic-layer threat detection for JSON-RPC 2.0, MCP, GraphQL, multi-agent payloads — prompt injection, tool abuse, context poisoning, schema exfiltration |
+
+**Current state (v54):** Production-hardened. JWT secret fails closed (no insecure fallback). SaaS passwords salted (`salt$hash` + PBKDF2 for dashboard team store). Dashboard bootstrap password no longer written to logs. Stripe webhook rejects unsigned events. No plaintext password storage. Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, Cache-Control) on all HTTP responses. Login rate-limited. Twilio (WhatsApp + SMS) removed — remote control is Telegram / Discord / Slack only. Version 1.0.0.
+
+**Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.**
 
 ---
 
-## Operator Upgrade Notes (v48 → v49)
+## Quick Start
 
 1. **No breaking changes** — drop-in enhancement. Existing probes, fleet API, and dashboard are unaffected.
 2. **New JARVIS probe commands:**
@@ -43,7 +70,7 @@
    - Set `JARVIS_MIC_INDEX` to select microphone device (default: 1 for HyperX; use `python -m sounddevice` to list).
    - Set `NG_DATA_ROOT` to override the data directory read by `TelemetryAggregator` (default: `~/.network_guardian`).
 3. **No breaking changes** — existing probes, fleet API, dashboard routes, and SaaS stack are unaffected.
-4. **Test suite** — run `python -m pytest tests/ -q` to verify all **715 tests pass**.
+4. **Test suite** — run `python -m pytest tests/ -q` to verify all **666 tests pass**.
 
 ---
 
@@ -85,7 +112,7 @@
 | **ML / AI Engine** | Isolation Forest, One-Class SVM, ARIMA/Holt-Winters forecasting, ROS-style AI node graph, NLP parsing |
 | **Per-Device Behavioral Baseline (UEBA)** | **v35: NEW** — Each IP builds its own rolling Isolation Forest (30-sample warm-up, 200-sample window). Flags deviations from a device's *personal* baseline rather than fleet-wide averages. Persists baselines to `~/.network_guardian/baselines/`. Wired into the node graph as `DeviceBaselineNode`; publishes `ai.device_baseline_alert` events. |
 | **Lateral Movement Detection (UEBA)** | **v35: NEW** — Tracks unique destination fan-out per source IP in rolling 5-minute windows. Raises `ai.lateral_movement_alert` when fan-out spikes ≥ 3σ above per-source baseline OR hits the absolute threshold of 20 unique destinations. Catches ransomware propagation, worm spread, and internal recon in real time. History persisted to `~/.network_guardian/lateral_movement.json`. |
-| **Remote Control** | WhatsApp, SMS (Twilio), Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
+|| **Remote Control** | Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification (Twilio/WhatsApp/SMS removed in v52) |
 | **Dashboard** | Zero-dep async HTTP dashboard with Fleet Map canvas, live AI Engine charts, threat feed, Threat Detection page, Reports, and Incidents pages |
 | **SaaS Control Plane** | Multi-tenant auth, organizations, memberships, API keys, fleet ingest API, hosted tenant app (`/` + `/app`), and billing checkout/portal/webhook flow. SQLite and PostgreSQL backends supported via migration-driven store. |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
@@ -127,26 +154,16 @@
 
 ```bash
 pip install -e ".[dev]"
-network-guardian                                   # interactive CLI
-python run_full_system.py                          # full 9-component system (v35: +UEBA per-device baselines + lateral movement detection)
-python start_all.py --public-defense               # public/hotspot primary defense mode (full stack)
-NG_PUBLIC_DEFENSE=1 python start_all.py            # same as above via env flag
-python _start_dashboard.py                         # web dashboard only (default port 8080; set PORT env var to override)
-NG_MODE=saas JWT_SECRET=dev-secret STRIPE_WEBHOOK_SECRET=whsec_local python _start_dashboard.py
-python scripts/validate_saas_stack.py --mode sqlite
-# PostgreSQL mode requires a running Postgres instance
-python scripts/validate_saas_stack.py --mode postgres --postgres-url postgresql://127.0.0.1:55432/postgres
-$env:PORT=8081; python _start_dashboard.py         # run on port 8081 (Windows PowerShell)
-PORT=8081 python _start_dashboard.py               # run on port 8081 (macOS/Linux)
+
+# SaaS control plane (requires env vars for production)
+#    JWT_SECRET       — signing key for session tokens (required)
+#    STRIPE_WEBHOOK_SECRET — webhook verification (required for billing)
+#    STRIPE_SECRET_KEY     — Stripe API key (optional; billing works in mock mode without it)
+JWT_SECRET=your-secret STRIPE_WEBHOOK_SECRET=whsec_xxx STRIPE_SECRET_KEY=sk_test_xxx python _start_dashboard.py
+
+# Dashboard only (default port 8080; set PORT env var to override)
+python _start_dashboard.py
 NG_BOOTSTRAP_ADMIN_PASSWORD='set-a-strong-password' python _start_dashboard.py  # first-run bootstrap password override
-pwsh ./Invoke-SecurityPosture.ps1                  # Windows read-only posture audit (PowerShell 5.1+)
-python -m network_guardian --desktop               # PyQt5 desktop firewall console (requires PyQt5)
-python password_manager.py                         # credential vault + team user management CLI
-python -m network_guardian.agent.email_scanner     # one-shot email scan CLI
-python -m network_guardian.agent.email_react_agent # autonomous email ReAct agent CLI
-python -m network_guardian.agent.smart_firewall_agent  # standalone injection scanner CLI
-python -m network_guardian.agent.web_browsing_agent    # Safe Web Browsing Agent CLI
-python run_web_browsing_tests.py                       # interactive TUI test monitor (Textual)
 
 # ── J.A.R.V.I.S. (v48) ─────────────────────────────────────────
 python -m network_guardian.jarvis.jarvis_core          # JARVIS conversational terminal shell (NL commands)
@@ -992,14 +1009,13 @@ Every threat detection generates up to three documents:
 
 ---
 
-## Remote Control (WhatsApp / SMS / Telegram / Discord / Slack)
+## Remote Control (Telegram / Discord / Slack)
 
 ```bash
-export TWILIO_ACCOUNT_SID=ACxxxx https://network-guardian-cc8900c70290.herokuapp.com/fleet TWILIO_AUTH_TOKEN=your_token  ALLOWED_NUMBERS=+1YOURPHONE
-python whatsapp_server.py   # expose with: ngrok http 8765
+python -m network_guardian  # run the CLI
 ```
 
-Send `ping` → `pong`. Permissions: READ / EXECUTE / ADMIN.  
+Send `ping` → `pong`. Permissions: READ / EXECUTE / ADMIN.
 Key commands: `status`, `ids scan <text>`, `ips block <ip>`, `audit <target>`, `explore <subnet>`, `train anomaly`.
 
 ---
@@ -1008,7 +1024,7 @@ Key commands: `status`, `ids scan <text>`, `ips block <ip>`, `audit <target>`, `
 
 | Hardening | Detail |
 |---|---|
-| **Secure session cookie** | `ng_session` cookie gets `; Secure` flag automatically when served over HTTPS (`X-Forwarded-Proto: https`). Active on Heroku by default. |
+| **Secure session cookie** | `ng_session` cookie gets `; Secure` flag automatically when served over HTTPS (`X-Forwarded-Proto: https`). Active whenever traffic is HTTPS. |
 | **Admin-only fleet key API** | `GET /api/fleet/key` returns HTTP 403 to any non-admin account. Operators cannot extract the raw HMAC fleet key. |
 | **Password complexity** | Passwords require 8+ chars, one uppercase, one digit, and one special character. Enforced on set and change. |
 | **Cache-Control on Threat Detection** | `/security` page is served with `Cache-Control: no-store, no-cache, must-revalidate` so browsers never serve a stale nonce'd page after a server restart. |
@@ -1016,15 +1032,13 @@ Key commands: `status`, `ids scan <text>`, `ips block <ip>`, `audit <target>`, `
 
 ---
 
-## Heroku Deployment
+## Deployment Notes
 
 ```bash
-heroku create network-guardian
-heroku config:set FLEET_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
-git push heroku main
+export FLEET_KEY=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 ```
 
-The `FLEET_KEY` config var persists across dyno restarts. Agents connect with `--key $FLEET_KEY`.
+Store `FLEET_KEY` in your deployment environment configuration. Agents connect with `--key $FLEET_KEY`.
 
 ---
 
@@ -1169,7 +1183,7 @@ pytest tests/ -v   # 388 tests, all passing
 - `reportlab` — PDF report generation (installed automatically via `pip install -e .`)
 - `psutil` — malware process scanning
 - `watchdog` — real-time ransomware filesystem monitoring
-- Optional: `pyyaml`, `twilio`, `cmdop`, `cmdop-bot`, `openclaw`
+- Optional: `pyyaml`, `cmdop`, `cmdop-bot`, `openclaw`
 
 ---
 

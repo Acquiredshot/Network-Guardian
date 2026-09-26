@@ -37,4 +37,5 @@ def setup_logging(level: str = "INFO") -> None:
 
     root = logging.getLogger("network_guardian")
     root.setLevel(log_level)
+    root.handlers.clear()
     root.addHandler(handler)

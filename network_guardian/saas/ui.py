@@ -26,7 +26,7 @@ _APP_PAGE = '''<!DOCTYPE html>
   "provider": {
     "@type": "Organization",
     "name": "Wolf-Pak Innovations LLC",
-    "url": "https://network-guardian-cc8900c70290.herokuapp.com/"
+    "url": "https://github.com/Acquiredshot/Network-Guardian"
   }
 }
 </script>
@@ -172,7 +172,7 @@ code{background:rgba(255,255,255,.05);padding:2px 6px;border-radius:6px}
       <a href="https://github.com/Acquiredshot/Network-Guardian/blob/main/LICENSE" rel="noopener noreferrer" target="_blank">License</a>
       <a href="https://github.com/Acquiredshot/Network-Guardian/blob/main/COMMERCIAL_EULA.txt" rel="noopener noreferrer" target="_blank">EULA</a>
       <a href="https://github.com/Acquiredshot/Network-Guardian" rel="noopener noreferrer" target="_blank">GitHub</a>
-      <a href="https://transparencyreport.google.com/safe-browsing/search?url=https://network-guardian-cc8900c70290.herokuapp.com/" rel="noopener noreferrer" target="_blank">Safe Browsing Status</a>
+      <a href="https://transparencyreport.google.com/safe-browsing/search?url=https://github.com/Acquiredshot/Network-Guardian" rel="noopener noreferrer" target="_blank">Safe Browsing Status</a>
     </nav>
   </footer>
 

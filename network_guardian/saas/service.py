@@ -186,7 +186,7 @@ class SaaSService:
             "# Wolf-Pak Innovations LLC\n"
             "Contact: https://github.com/Acquiredshot/Network-Guardian/issues\n"
             "Preferred-Languages: en\n"
-            "Canonical: https://network-guardian-cc8900c70290.herokuapp.com/.well-known/security.txt\n"
+            "Canonical: /.well-known/security.txt\n"
             "Policy: https://github.com/Acquiredshot/Network-Guardian/blob/main/LICENSE\n"
         )
         return self._http_response(200, "text/plain", content)
@@ -240,8 +240,15 @@ class SaaSService:
         membership = self.store.get_membership_by_login(email=email, org_slug=org_slug)
         if membership is None:
             return self._json_response(403, {"ok": False, "message": "Invalid credentials"})
-        if self._hash_password(password) != membership["password_hash"]:
-            return self._json_response(403, {"ok": False, "message": "Invalid credentials"})
+        stored = membership["password_hash"]
+        if "$" in stored:
+            salt, expected_hash = stored.split("$", 1)
+            computed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+            if computed != expected_hash:
+                return self._json_response(403, {"ok": False, "message": "Invalid credentials"})
+        else:
+            if hashlib.sha256(password.encode("utf-8")).hexdigest() != stored:
+                return self._json_response(403, {"ok": False, "message": "Invalid credentials"})
         token = self._issue_token(
             user_id=membership["user_id"],
             organization_id=membership["organization_id"],
@@ -406,14 +413,20 @@ class SaaSService:
         return self._json_response(200, {"ok": True, "reports": reports})
 
     def _hash_password(self, password: str) -> str:
-        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+        import secrets
+        salt = secrets.token_hex(16)
+        hashed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+        return f"{salt}${hashed}"
 
     def _issue_token(self, *, user_id: str, organization_id: str, role: str) -> str:
+        secret = self.config.saas.jwt_secret
+        if not secret:
+            raise BillingError("JWT secret not configured — set JWT_SECRET environment variable")
         return create_access_token(
             subject=user_id,
             org_id=organization_id,
             role=role,
-            secret=self.config.saas.jwt_secret or "dev-secret-change-me",
+            secret=secret,
             issuer=self.config.saas.jwt_issuer,
             audience=self.config.saas.jwt_audience,
             ttl_seconds=self.config.saas.access_token_ttl,
@@ -424,9 +437,12 @@ class SaaSService:
         if not auth_header.startswith("Bearer "):
             raise TenancyError("Bearer token required")
         token = auth_header.split(" ", 1)[1].strip()
+        secret = self.config.saas.jwt_secret
+        if not secret:
+            raise TenancyError("JWT secret not configured")
         claims = verify_access_token(
             token,
-            secret=self.config.saas.jwt_secret or "dev-secret-change-me",
+            secret=secret,
             issuer=self.config.saas.jwt_issuer,
             audience=self.config.saas.jwt_audience,
         )
@@ -473,11 +489,16 @@ class SaaSService:
             500: "Internal Server Error",
         }.get(status, "OK")
         body_bytes = body.encode("utf-8")
+        hsts = "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload\r\n"
         return (
             f"HTTP/1.1 {status} {reason}\r\n"
             f"Content-Type: {content_type}; charset=utf-8\r\n"
             f"Content-Length: {len(body_bytes)}\r\n"
             "Connection: close\r\n"
+            "X-Content-Type-Options: nosniff\r\n"
+            "X-Frame-Options: DENY\r\n"
+            "Cache-Control: no-store\r\n"
+            f"{hsts}"
             f"{extra_headers}"
             "\r\n"
             f"{body}"

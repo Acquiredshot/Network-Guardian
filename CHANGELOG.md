@@ -335,7 +335,7 @@ no structured data, no contextual trust signals).
 
 #### Google Search Console
 
-- Property `https://network-guardian-cc8900c70290.herokuapp.com/` added and
+- Production SaaS property URL added and
   verified via HTML-file method (2026-06-08).
 - Safe Browsing review request submitted via Search Console → Security Issues.
 
@@ -638,15 +638,15 @@ and inside every deployed field probe**.
 
 ## [v42] — 2026-06-05
 
-### Fixed — Heroku SaaS Startup and Launch Hardening
+### Fixed — SaaS Startup and Launch Hardening
 
-- `_start_dashboard.py` and `network_guardian/__main__.py` now choose a Heroku-safe bind address automatically for SaaS mode (`0.0.0.0` when `DYNO` or `PORT` is present, otherwise local loopback).
-- Removed the local `os` shadowing bug in `_start_dashboard.py` that caused SaaS startup to crash at runtime on Heroku.
+- `_start_dashboard.py` and `network_guardian/__main__.py` now choose a cloud-safe bind address automatically for SaaS mode (`0.0.0.0` when `PORT` is present, otherwise local loopback).
+- Removed the local `os` shadowing bug in `_start_dashboard.py` that caused SaaS startup to crash at runtime.
 
 ### Validation
 
 - GitHub push completed for the release commit.
-- Heroku deploy completed successfully and the web dyno is up.
+- Cloud deployment completed successfully and the web service is up.
 - Live SaaS routes validated with HTTP 200 responses on `/` and `/app`.
 
 ---

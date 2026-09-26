@@ -173,7 +173,7 @@ def _apply_dict(cfg: Config, raw: dict[str, Any]) -> Config:
     if "log_level" in raw:
         cfg.log_level = str(raw["log_level"])
     if "data_dir" in raw:
-        cfg.data_dir = Path(raw["data_dir"])
+        cfg.data_dir = Path(raw["data_dir"]).expanduser()
     if "shadow_mode" in raw:
         cfg.shadow_mode = bool(raw["shadow_mode"])
 

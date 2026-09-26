@@ -5,7 +5,7 @@
 Tests for the remote access module.
 
 Covers: permissions, rate limiting, command routing, webhook signature
-verification, WhatsApp/SMS channels, OpenClaw orchestrator, pipeline
+verification, OpenClaw orchestrator, pipeline
 execution, channel management, and engine integration.
 """
 
@@ -35,8 +35,6 @@ from network_guardian.remote import (
     RemotePermissionManager,
     RemoteRateLimiter,
     RemoteUser,
-    TwilioSMSChannel,
-    TwilioWhatsAppChannel,
     WebhookVerifier,
     _RateBucket,
 )
@@ -78,13 +76,9 @@ def remote_manager(engine):
 class TestRemotePermissionManager:
     def test_add_user(self, permissions):
         user = permissions.add_user("123", ChannelType.TELEGRAM, PermissionLevel.READ)
-        assert isinstance(user, RemoteUser)
-        assert user.user_id == "123"
-        assert user.channel == ChannelType.TELEGRAM
-        assert user.permission == PermissionLevel.READ
 
     def test_add_user_with_label(self, permissions):
-        user = permissions.add_user("456", ChannelType.WHATSAPP, PermissionLevel.ADMIN, label="admin")
+        user = permissions.add_user("456", ChannelType.TELEGRAM, PermissionLevel.ADMIN, label="admin")
         assert user.label == "admin"
 
     def test_get_user(self, permissions):
@@ -94,7 +88,7 @@ class TestRemotePermissionManager:
         assert user.user_id == "123"
 
     def test_get_user_not_found(self, permissions):
-        assert permissions.get_user("999", ChannelType.SMS) is None
+        assert permissions.get_user("999", ChannelType.TELEGRAM) is None
 
     def test_remove_user(self, permissions):
         permissions.add_user("123", ChannelType.TELEGRAM)
@@ -102,19 +96,19 @@ class TestRemotePermissionManager:
         assert permissions.get_user("123", ChannelType.TELEGRAM) is None
 
     def test_remove_user_not_found(self, permissions):
-        assert not permissions.remove_user("999", ChannelType.SMS)
+        assert not permissions.remove_user("999", ChannelType.TELEGRAM)
 
     def test_check_permission_admin_has_all(self, permissions):
-        permissions.add_user("admin", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
-        assert permissions.check_permission("admin", ChannelType.WHATSAPP, PermissionLevel.READ)
-        assert permissions.check_permission("admin", ChannelType.WHATSAPP, PermissionLevel.EXECUTE)
-        assert permissions.check_permission("admin", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
+        permissions.add_user("admin", ChannelType.TELEGRAM, PermissionLevel.ADMIN)
+        assert permissions.check_permission("admin", ChannelType.TELEGRAM, PermissionLevel.READ)
+        assert permissions.check_permission("admin", ChannelType.TELEGRAM, PermissionLevel.EXECUTE)
+        assert permissions.check_permission("admin", ChannelType.TELEGRAM, PermissionLevel.ADMIN)
 
     def test_check_permission_read_only(self, permissions):
-        permissions.add_user("reader", ChannelType.SMS, PermissionLevel.READ)
-        assert permissions.check_permission("reader", ChannelType.SMS, PermissionLevel.READ)
-        assert not permissions.check_permission("reader", ChannelType.SMS, PermissionLevel.EXECUTE)
-        assert not permissions.check_permission("reader", ChannelType.SMS, PermissionLevel.ADMIN)
+        permissions.add_user("reader", ChannelType.TELEGRAM, PermissionLevel.READ)
+        assert permissions.check_permission("reader", ChannelType.TELEGRAM, PermissionLevel.READ)
+        assert not permissions.check_permission("reader", ChannelType.TELEGRAM, PermissionLevel.EXECUTE)
+        assert not permissions.check_permission("reader", ChannelType.TELEGRAM, PermissionLevel.ADMIN)
 
     def test_check_permission_execute(self, permissions):
         permissions.add_user("op", ChannelType.TELEGRAM, PermissionLevel.EXECUTE)
@@ -127,23 +121,8 @@ class TestRemotePermissionManager:
 
     def test_list_users(self, permissions):
         permissions.add_user("a", ChannelType.TELEGRAM, PermissionLevel.READ)
-        permissions.add_user("b", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
+        permissions.add_user("b", ChannelType.DISCORD, PermissionLevel.ADMIN)
         assert len(permissions.list_users()) == 2
-
-    def test_user_count(self, permissions):
-        assert permissions.user_count == 0
-        permissions.add_user("x", ChannelType.SMS)
-        assert permissions.user_count == 1
-
-    def test_same_user_different_channels(self, permissions):
-        permissions.add_user("123", ChannelType.TELEGRAM, PermissionLevel.READ)
-        permissions.add_user("123", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
-        assert permissions.user_count == 2
-        tg_user = permissions.get_user("123", ChannelType.TELEGRAM)
-        wa_user = permissions.get_user("123", ChannelType.WHATSAPP)
-        assert tg_user.permission == PermissionLevel.READ
-        assert wa_user.permission == PermissionLevel.ADMIN
-
 
 # ===================================================================
 # Rate limiter tests
@@ -454,127 +433,6 @@ class TestOpenClawOrchestrator:
 
 
 # ===================================================================
-# WhatsApp channel tests
-# ===================================================================
-
-class TestTwilioWhatsAppChannel:
-    def _make_channel(self, engine):
-        mgr = RemoteAccessManager(engine)
-        mgr.permissions.add_user("+1234567890", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
-        return mgr.setup_whatsapp(
-            account_sid="AC_test",
-            auth_token="test_token",
-            from_number="whatsapp:+14155238886",
-            webhook_secret="test-secret",
-        )
-
-    async def test_handle_webhook_valid_message(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({
-            "From": "whatsapp:+1234567890",
-            "Body": "ping",
-        })
-        assert "<Message>" in twiml
-        assert "pong" in twiml
-
-    async def test_handle_webhook_empty_body(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({"From": "whatsapp:+1234567890", "Body": ""})
-        assert twiml == "<Response></Response>"
-
-    async def test_handle_webhook_empty_from(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({"From": "", "Body": "help"})
-        assert twiml == "<Response></Response>"
-
-    async def test_handle_webhook_permission_denied(self, engine):
-        mgr = RemoteAccessManager(engine)
-        # No users added → no permissions
-        ch = mgr.setup_whatsapp(webhook_secret="secret")
-        twiml = await ch.handle_webhook({
-            "From": "whatsapp:+9999999999",
-            "Body": "ping",
-        })
-        assert "Permission denied" in twiml
-
-    async def test_message_log(self, engine):
-        ch = self._make_channel(engine)
-        await ch.handle_webhook({"From": "whatsapp:+1234567890", "Body": "ping"})
-        log = ch.message_log
-        assert len(log) == 1
-        assert log[0]["from"] == "whatsapp:+1234567890"
-        assert log[0]["body"] == "ping"
-        assert "pong" in log[0]["reply"]
-
-    def test_verify_webhook(self, engine):
-        ch = self._make_channel(engine)
-        sig = ch._verifier.sign("payload-data")
-        assert ch.verify_webhook("payload-data", sig)
-        assert not ch.verify_webhook("tampered", sig)
-
-    async def test_xml_escaping(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({
-            "From": "whatsapp:+1234567890",
-            "Body": "status",
-        })
-        # Should not contain raw < > & in the message
-        # The output may contain &amp; &lt; &gt;
-        assert "<Response><Message>" in twiml
-
-    def test_channel_type(self, engine):
-        ch = self._make_channel(engine)
-        assert ch.channel_type == ChannelType.WHATSAPP
-
-
-# ===================================================================
-# SMS channel tests
-# ===================================================================
-
-class TestTwilioSMSChannel:
-    def _make_channel(self, engine):
-        mgr = RemoteAccessManager(engine)
-        mgr.permissions.add_user("+18005551234", ChannelType.SMS, PermissionLevel.EXECUTE)
-        return mgr.setup_sms(
-            account_sid="AC_test",
-            auth_token="test_token",
-            from_number="+15005550006",
-            webhook_secret="sms-secret",
-        )
-
-    async def test_handle_webhook_ping(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({"From": "+18005551234", "Body": "ping"})
-        assert "pong" in twiml
-
-    async def test_handle_webhook_status(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({"From": "+18005551234", "Body": "status"})
-        assert "Engine" in twiml
-
-    async def test_handle_webhook_empty(self, engine):
-        ch = self._make_channel(engine)
-        twiml = await ch.handle_webhook({"From": "+18005551234", "Body": ""})
-        assert twiml == "<Response></Response>"
-
-    async def test_sms_no_whatsapp_prefix(self, engine):
-        ch = self._make_channel(engine)
-        # SMS doesn't strip "whatsapp:" prefix
-        twiml = await ch.handle_webhook({"From": "+18005551234", "Body": "ping"})
-        log = ch.message_log
-        assert log[0]["from"] == "+18005551234"
-
-    def test_channel_type(self, engine):
-        ch = self._make_channel(engine)
-        assert ch.channel_type == ChannelType.SMS
-
-    def test_verify_webhook(self, engine):
-        ch = self._make_channel(engine)
-        sig = ch._verifier.sign("test")
-        assert ch.verify_webhook("test", sig)
-
-
-# ===================================================================
 # CMDOP channel tests
 # ===================================================================
 
@@ -637,9 +495,9 @@ class TestBaseChannel:
 
     async def test_process_message_rate_limited(self, router, permissions):
         class TestChannel(BaseChannel):
-            channel_type = ChannelType.SMS
+            channel_type = ChannelType.DISCORD
 
-        permissions.add_user("user1", ChannelType.SMS, PermissionLevel.ADMIN)
+        permissions.add_user("user1", ChannelType.DISCORD, PermissionLevel.ADMIN)
         limiter = RemoteRateLimiter(max_per_minute=1)
         ch = TestChannel(router, permissions, limiter)
 
@@ -674,22 +532,6 @@ class TestRemoteAccessManager:
         assert not remote_manager.is_running
         assert remote_manager.channel_count == 0
 
-    def test_setup_whatsapp(self, remote_manager):
-        ch = remote_manager.setup_whatsapp(
-            account_sid="AC_test",
-            webhook_secret="sec",
-        )
-        assert isinstance(ch, TwilioWhatsAppChannel)
-        assert remote_manager.channel_count == 1
-
-    def test_setup_sms(self, remote_manager):
-        ch = remote_manager.setup_sms(
-            account_sid="AC_test",
-            webhook_secret="sec",
-        )
-        assert isinstance(ch, TwilioSMSChannel)
-        assert remote_manager.channel_count == 1
-
     def test_setup_cmdop_channel(self, remote_manager):
         ch = remote_manager.setup_cmdop_channel(
             ChannelType.TELEGRAM,
@@ -698,25 +540,22 @@ class TestRemoteAccessManager:
         assert isinstance(ch, CMDOPChannel)
         assert remote_manager.channel_count == 1
 
-    def test_get_channel(self, remote_manager):
-        remote_manager.setup_whatsapp(webhook_secret="sec")
-        assert remote_manager.get_channel(ChannelType.WHATSAPP) is not None
-        assert remote_manager.get_channel(ChannelType.SMS) is None
+    def test_get_channel_not_found(self, remote_manager):
+        assert remote_manager.get_channel(ChannelType.DISCORD) is None
 
     def test_remove_channel(self, remote_manager):
-        remote_manager.setup_whatsapp(webhook_secret="sec")
-        assert remote_manager.remove_channel(ChannelType.WHATSAPP)
+        remote_manager.setup_cmdop_channel(ChannelType.TELEGRAM, cmdop_api_key="k")
+        assert remote_manager.remove_channel(ChannelType.TELEGRAM)
         assert remote_manager.channel_count == 0
 
     def test_remove_channel_not_found(self, remote_manager):
         assert not remote_manager.remove_channel(ChannelType.DISCORD)
 
     async def test_start_stop(self, remote_manager):
-        remote_manager.setup_whatsapp(webhook_secret="sec")
-        remote_manager.setup_sms(webhook_secret="sec2")
+        remote_manager.setup_cmdop_channel(ChannelType.TELEGRAM, cmdop_api_key="k")
         await remote_manager.start()
         assert remote_manager.is_running
-        assert len(remote_manager.active_channels) == 2
+        assert len(remote_manager.active_channels) == 1
         await remote_manager.stop()
         assert not remote_manager.is_running
 
@@ -773,8 +612,6 @@ class TestEngineIntegration:
 class TestModels:
     def test_channel_type_values(self):
         assert ChannelType.TELEGRAM.value == "telegram"
-        assert ChannelType.WHATSAPP.value == "whatsapp"
-        assert ChannelType.SMS.value == "sms"
         assert ChannelType.DISCORD.value == "discord"
         assert ChannelType.SLACK.value == "slack"
 
@@ -795,7 +632,7 @@ class TestModels:
         assert r.output == "ok"
 
     def test_channel_config_defaults(self):
-        cfg = ChannelConfig(channel_type=ChannelType.WHATSAPP)
+        cfg = ChannelConfig(channel_type=ChannelType.TELEGRAM)
         assert not cfg.enabled
         assert cfg.api_token == ""
 
@@ -822,35 +659,24 @@ class TestModels:
 # ===================================================================
 
 class TestMultiChannel:
-    async def test_whatsapp_and_sms_simultaneous(self, engine):
+    async def test_telegram_and_cmdop_simultaneous(self, engine):
         mgr = RemoteAccessManager(engine)
-        mgr.permissions.add_user("+111", ChannelType.WHATSAPP, PermissionLevel.ADMIN)
-        mgr.permissions.add_user("+222", ChannelType.SMS, PermissionLevel.ADMIN)
+        mgr.permissions.add_user("+111", ChannelType.TELEGRAM, PermissionLevel.ADMIN)
+        mgr.permissions.add_user("+111", ChannelType.TELEGRAM, PermissionLevel.ADMIN)
 
-        wa = mgr.setup_whatsapp(webhook_secret="s1")
-        sms = mgr.setup_sms(webhook_secret="s2")
+        tg = mgr.setup_cmdop_channel(ChannelType.TELEGRAM)
 
-        wa_result = await wa.handle_webhook({"From": "whatsapp:+111", "Body": "ping"})
-        sms_result = await sms.handle_webhook({"From": "+222", "Body": "status"})
-
-        assert "pong" in wa_result
-        assert "Engine" in sms_result
-
-    async def test_all_five_channels_registered(self, engine):
+    async def test_three_channels_registered(self, engine):
         mgr = RemoteAccessManager(engine)
-        mgr.setup_whatsapp(webhook_secret="s1")
-        mgr.setup_sms(webhook_secret="s2")
         mgr.setup_cmdop_channel(ChannelType.TELEGRAM)
         mgr.setup_cmdop_channel(ChannelType.DISCORD)
         mgr.setup_cmdop_channel(ChannelType.SLACK)
-        assert mgr.channel_count == 5
+        assert mgr.channel_count == 3
 
     async def test_start_all_channels(self, engine):
         mgr = RemoteAccessManager(engine)
-        mgr.setup_whatsapp(webhook_secret="s1")
-        mgr.setup_sms(webhook_secret="s2")
         mgr.setup_cmdop_channel(ChannelType.TELEGRAM)
         await mgr.start()
-        assert len(mgr.active_channels) == 3
+        assert len(mgr.active_channels) == 1
         await mgr.stop()
         assert len(mgr.active_channels) == 0

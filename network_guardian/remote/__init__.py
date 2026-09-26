@@ -5,15 +5,13 @@
 Remote access module for Network Guardian.
 
 Integrates OpenClaw agent orchestration + CMDOP remote machine access +
-multi-channel messaging (Telegram, Discord, Slack, WhatsApp, SMS).
+multi-channel messaging (Telegram, Discord, Slack).
 
 Architecture
 ------------
-WhatsApp (Twilio) ──┐
-SMS (Twilio) ───────┤
-Telegram (aiogram) ─┤── GuardianCommandRouter ── Engine ── All subsystems
-Discord (discord.py)┤
-Slack (slack-bolt) ──┘
+Telegram (aiogram)  ─┤
+Discord (discord.py)─┤── GuardianCommandRouter ── Engine ── All subsystems
+Slack (slack-bolt)  ─┘
 
 OpenClaw sits on top for AI-powered pipeline orchestration so natural
 language messages can be interpreted and chained into multi-step actions.
@@ -50,8 +48,6 @@ class ChannelType(enum.Enum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
     SLACK = "slack"
-    WHATSAPP = "whatsapp"
-    SMS = "sms"
 
 
 class PermissionLevel(enum.Enum):
@@ -201,7 +197,7 @@ class RemoteRateLimiter:
 
 
 # ---------------------------------------------------------------------------
-# Webhook signature verifier (Twilio-style HMAC)
+"""Webhook signature verifier (HMAC-SHA256)."""
 # ---------------------------------------------------------------------------
 
 class WebhookVerifier:
@@ -398,7 +394,7 @@ class GuardianCommandRouter:
             names = self.engine.sensors.names
             return "Sensors:\n" + "\n".join(f"  {n}" for n in names)
         if args[0] == "collect":
-            timeout = 20.0  # generous but keeps WhatsApp responsive
+            timeout = 20.0  # generous but keeps channels responsive
             try:
                 if len(args) > 1:
                     sensor = self.engine.sensors.get(args[1])
@@ -839,10 +835,9 @@ class OpenClawOrchestrator:
 # ---------------------------------------------------------------------------
 
 class BaseChannel:
-    """
-    Abstract base for messaging channels.
+    """Abstract base for messaging channels.
 
-    Subclasses provide the transport (Twilio, Telegram SDK, etc.)
+    Subclasses provide the transport (Telegram SDK, Discord.py, Slack Bolt)
     while the common logic handles auth, rate limiting, and routing.
     """
 
@@ -904,145 +899,9 @@ class BaseChannel:
         logger.info("Channel %s stopped.", self.channel_type.value)
 
 
-class TwilioWhatsAppChannel(BaseChannel):
-    """
-    WhatsApp channel via Twilio WhatsApp Business API.
-
-    Expects inbound webhooks at a configured HTTP endpoint.
-    Sends replies using the Twilio REST API.
-    """
-
-    channel_type = ChannelType.WHATSAPP
-
-    def __init__(
-        self,
-        router: GuardianCommandRouter,
-        permissions: RemotePermissionManager,
-        rate_limiter: RemoteRateLimiter,
-        *,
-        account_sid: str = "",
-        auth_token: str = "",
-        from_number: str = "",
-        webhook_secret: str = "",
-    ) -> None:
-        super().__init__(router, permissions, rate_limiter)
-        self.account_sid = account_sid
-        self.auth_token = auth_token
-        self.from_number = from_number  # e.g. "whatsapp:+14155238886"
-        self._verifier = WebhookVerifier(webhook_secret) if webhook_secret else None
-        self._message_log: list[dict[str, str]] = []
-
-    def verify_webhook(self, payload: str, signature: str) -> bool:
-        """Verify an inbound Twilio webhook signature."""
-        if self._verifier is None:
-            return False
-        return self._verifier.verify(payload, signature)
-
-    async def handle_webhook(self, form_data: dict[str, str]) -> str:
-        """
-        Process an inbound WhatsApp message from Twilio webhook.
-
-        Returns the TwiML response body.
-        """
-        sender = form_data.get("From", "")
-        body = form_data.get("Body", "").strip()
-
-        if not sender or not body:
-            return "<Response></Response>"
-
-        # Extract phone number from "whatsapp:+1234567890"
-        user_id = sender.replace("whatsapp:", "").strip()
-
-        responses: list[str] = []
-
-        async def collect(text: str) -> None:
-            responses.append(text)
-
-        await self.process_message(user_id, body, collect)
-
-        reply = "\n".join(responses) if responses else "No response."
-        self._message_log.append({"from": sender, "body": body, "reply": reply})
-
-        # Return TwiML
-        # Escape XML-sensitive characters
-        safe_reply = (
-            reply.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-        return f"<Response><Message>{safe_reply}</Message></Response>"
-
-    @property
-    def message_log(self) -> list[dict[str, str]]:
-        return list(self._message_log)
-
-
-class TwilioSMSChannel(BaseChannel):
-    """
-    SMS channel via Twilio Programmable SMS.
-
-    Same webhook pattern as the WhatsApp channel but without the
-    whatsapp: prefix on phone numbers.
-    """
-
-    channel_type = ChannelType.SMS
-
-    def __init__(
-        self,
-        router: GuardianCommandRouter,
-        permissions: RemotePermissionManager,
-        rate_limiter: RemoteRateLimiter,
-        *,
-        account_sid: str = "",
-        auth_token: str = "",
-        from_number: str = "",
-        webhook_secret: str = "",
-    ) -> None:
-        super().__init__(router, permissions, rate_limiter)
-        self.account_sid = account_sid
-        self.auth_token = auth_token
-        self.from_number = from_number
-        self._verifier = WebhookVerifier(webhook_secret) if webhook_secret else None
-        self._message_log: list[dict[str, str]] = []
-
-    def verify_webhook(self, payload: str, signature: str) -> bool:
-        if self._verifier is None:
-            return False
-        return self._verifier.verify(payload, signature)
-
-    async def handle_webhook(self, form_data: dict[str, str]) -> str:
-        sender = form_data.get("From", "")
-        body = form_data.get("Body", "").strip()
-
-        if not sender or not body:
-            return "<Response></Response>"
-
-        user_id = sender.strip()
-        responses: list[str] = []
-
-        async def collect(text: str) -> None:
-            responses.append(text)
-
-        await self.process_message(user_id, body, collect)
-
-        reply = "\n".join(responses) if responses else "No response."
-        self._message_log.append({"from": sender, "body": body, "reply": reply})
-
-        safe_reply = (
-            reply.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-        return f"<Response><Message>{safe_reply}</Message></Response>"
-
-    @property
-    def message_log(self) -> list[dict[str, str]]:
-        return list(self._message_log)
-
-
 class CMDOPChannel(BaseChannel):
     """
-    Channel bridge for cmdop-bot (Telegram / Discord / Slack).
+    Channel adapter for Telegram / Discord / Slack via cmdop-bot.
 
     Wraps the cmdop-bot CMDOPHandler and integrates it into the
     Network Guardian permission and rate-limiting framework.  When
@@ -1103,7 +962,7 @@ class RemoteAccessManager:
     Combines:
     - GuardianCommandRouter for command execution
     - OpenClawOrchestrator for AI pipeline orchestration
-    - Multiple channel adapters (WhatsApp, SMS, Telegram, etc.)
+    - Multiple channel adapters (Telegram, Discord, Slack)
     - Permission management and rate limiting
     """
 
@@ -1141,42 +1000,6 @@ class RemoteAccessManager:
         return len(self._channels)
 
     # -- Convenience factory methods ----------------------------------------
-
-    def setup_whatsapp(
-        self,
-        *,
-        account_sid: str = "",
-        auth_token: str = "",
-        from_number: str = "",
-        webhook_secret: str = "",
-    ) -> TwilioWhatsAppChannel:
-        ch = TwilioWhatsAppChannel(
-            self.router, self.permissions, self.rate_limiter,
-            account_sid=account_sid,
-            auth_token=auth_token,
-            from_number=from_number,
-            webhook_secret=webhook_secret,
-        )
-        self.add_channel(ch)
-        return ch
-
-    def setup_sms(
-        self,
-        *,
-        account_sid: str = "",
-        auth_token: str = "",
-        from_number: str = "",
-        webhook_secret: str = "",
-    ) -> TwilioSMSChannel:
-        ch = TwilioSMSChannel(
-            self.router, self.permissions, self.rate_limiter,
-            account_sid=account_sid,
-            auth_token=auth_token,
-            from_number=from_number,
-            webhook_secret=webhook_secret,
-        )
-        self.add_channel(ch)
-        return ch
 
     def setup_cmdop_channel(
         self,

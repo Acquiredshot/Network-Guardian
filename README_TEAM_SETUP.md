@@ -64,7 +64,7 @@ Running `start_all.py` starts:
 
 ```
 Username: admin
-Password: <password>
+Password: wolfy169
 ```
 
 ---
@@ -98,8 +98,7 @@ After startup (takes ~5 seconds):
 2. **Verify system:** `python verify_system.py` (or `python3`)
 3. **Start application:** `python start_all.py` (or use `.bat` on Windows)
 4. **Open dashboard:** http://127.0.0.1:8080
-5. **Login:** admin / <password>
-
+5. **Login:** admin / <password >
 ### Result
 
 Each team member has:
