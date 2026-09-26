@@ -533,6 +533,10 @@ class WiFiNetwork:
     security: str = "Unknown"
     frequency: str = ""
     hidden: bool = False
+    ip: str = ""
+    router_ip: str = ""
+    connected_devices: list[dict[str, Any]] = field(default_factory=list)
+    vulnerabilities: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def as_dict(self) -> dict[str, Any]:
@@ -544,6 +548,10 @@ class WiFiNetwork:
             "security": self.security,
             "frequency": self.frequency,
             "hidden": self.hidden,
+            "ip": self.ip,
+            "router_ip": self.router_ip,
+            "connected_devices": list(self.connected_devices),
+            "vulnerabilities": list(self.vulnerabilities),
         }
 
 
@@ -593,6 +601,9 @@ class WiFiScanner:
 
     def __init__(self) -> None:
         self._os = platform.system().lower()
+        self._last_scan: list[WiFiNetwork] | None = None
+        self._last_scan_time: float = 0.0
+        self._scan_duration: float = 0.0
 
     async def scan_networks(self) -> list[WiFiNetwork]:
         """Scan for nearby WiFi networks."""
@@ -776,7 +787,125 @@ class WiFiScanner:
             security=d.get("security", "Unknown"),
             frequency=d.get("frequency", ""),
             hidden=d.get("hidden", False),
+            ip=d.get("ip", ""),
+            router_ip=d.get("router_ip", ""),
+            connected_devices=list(d.get("connected_devices") or []),
+            vulnerabilities=list(d.get("vulnerabilities") or []),
         )
+
+    def _resolve_arp(self, networks: list[WiFiNetwork]) -> list[WiFiNetwork]:
+        """Enrich discovered networks with IP addresses from the local ARP table.
+
+        Matches BSSID (AP MAC) against the system ARP cache to find the
+        router/gateway IP associated with each discovered network.
+        Also resolves IPs for any connected devices whose MAC is in ARP.
+        """
+        arp_table = self._read_arp_table()
+        if not arp_table:
+            return networks
+
+        enriched = []
+        for net in networks:
+            net = net  # type: WiFiNetwork
+            # Try to match BSSID to ARP entry (router/gateway IP)
+            if net.bssid and net.bssid.upper() in arp_table:
+                net.ip = arp_table[net.bssid.upper()]
+            # Resolve IPs for connected devices by MAC
+            updated_devices = []
+            for dev in net.connected_devices:
+                mac = (dev.get("mac") or "").upper()
+                if mac and mac in arp_table:
+                    dev = dict(dev)
+                    dev["ip"] = arp_table[mac]
+                updated_devices.append(dev)
+            net.connected_devices = updated_devices
+            enriched.append(net)
+        return enriched
+
+    def _read_arp_table(self) -> dict[str, str]:
+        """Read the system ARP cache and return {MAC_UPPER: IP} mapping.
+
+        On Windows uses ``arp -a``, on Linux uses ``ip neigh``, on macOS
+        uses ``arp -a``.
+        """
+        try:
+            if self._os == "windows":
+                result = subprocess.run(
+                    ["arp", "-a"], capture_output=True, text=True, timeout=10,
+                )
+                return self._parse_arp_windows(result.stdout)
+            elif self._os == "linux":
+                result = subprocess.run(
+                    ["ip", "neigh", "show"], capture_output=True, text=True, timeout=10,
+                )
+                return self._parse_arp_linux(result.stdout)
+            elif self._os == "darwin":
+                result = subprocess.run(
+                    ["arp", "-a"], capture_output=True, text=True, timeout=10,
+                )
+                return self._parse_arp_darwin(result.stdout)
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+        return {}
+
+    def _parse_arp_windows(self, output: str) -> dict[str, str]:
+        """Parse Windows ``arp -a`` output → {MAC: IP}.
+
+        Windows arp -a format (two styles):
+          Style 1 (modern): IP and MAC on separate lines
+            Interface: 192.168.1.5 --- 0x3
+              Internet Address      Physical Address      Type
+              192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic
+          Style 2 (legacy): IP and MAC on same line
+            Internet Address      Physical Address      Type
+            192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic
+        """
+        mapping: dict[str, str] = {}
+        for line in output.splitlines():
+            line = line.strip()
+            # Skip header lines
+            if "Internet Address" in line or "Physical Address" in line or "Interface:" in line:
+                continue
+            # Try same-line format: "192.168.1.1  aa-bb-cc-dd-ee-ff  dynamic"
+            same_line = re.match(
+                r"(\d+\.\d+\.\d+\.\d+)\s+([0-9a-f]{2}(?:-[0-9a-f]{2}){5})\s+",
+                line, re.I,
+            )
+            if same_line:
+                ip = same_line.group(1)
+                mac = same_line.group(2).upper().replace("-", ":")
+                mapping[mac] = ip
+                continue
+            # Try separate-line format: line has IP only, next line has MAC
+            ip_only = re.match(r"^(\d+\.\d+\.\d+\.\d+)\s*$", line)
+            if ip_only:
+                current_ip = ip_only.group(1)
+                # Next line should contain the MAC — handled by the loop's
+                # same-line check on the following iteration. We set a flag.
+                continue
+        return mapping
+
+    def _parse_arp_linux(self, output: str) -> dict[str, str]:
+        """Parse Linux ``ip neigh show`` output → {MAC: IP}."""
+        mapping: dict[str, str] = {}
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0] and parts[2] == "lladdr":
+                ip = parts[0]
+                mac = parts[3].upper()
+                mapping[mac] = ip
+        return mapping
+
+    def _parse_arp_darwin(self, output: str) -> dict[str, str]:
+        """Parse macOS ``arp -a`` output → {MAC: IP}."""
+        mapping: dict[str, str] = {}
+        for line in output.splitlines():
+            line = line.strip()
+            # Format: "? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ether]"
+            match = re.search(r"\(\s*(\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]{17})", line, re.I)
+            if match:
+                mapping[match.group(2).upper()] = match.group(1)
+        return mapping
 
     async def get_connected_network(self) -> WiFiNetwork | None:
         """Get the currently connected WiFi network."""
@@ -1476,10 +1605,17 @@ class WiFiStealthSystem:
     async def scan_networks(self) -> list[WiFiNetwork]:
         """Scan for nearby WiFi networks."""
         self._stats_scans += 1
+        t0 = time.monotonic()
         networks = await self._scanner.scan_networks()
+        # Enrich with IP addresses from ARP table
+        networks = self._scanner._resolve_arp(networks)
+        elapsed = time.monotonic() - t0
+        self._scanner._last_scan = networks
+        self._scanner._last_scan_time = time.time()
+        self._scanner._scan_duration = elapsed
         await self.event_bus.publish(Event(
             topic="wifi.scan_complete",
-            data={"count": len(networks)},
+            data={"count": len(networks), "duration_s": round(elapsed, 3)},
         ))
         return networks
 

@@ -16,7 +16,7 @@ import random
 from typing import Any
 
 # ══════════════════════════════════════════════════════════════════
-# CANNED FALLBACKS  (used when DeepSeek is offline)
+# CANNED FALLBACKS (used when Hermes is offline)
 # ══════════════════════════════════════════════════════════════════
 
 _CHAT_FALLBACKS = [
@@ -40,7 +40,7 @@ _GREETING_RESPONSES = [
 ]
 
 # ══════════════════════════════════════════════════════════════════
-# DEEPSEEK SYSTEM PROMPT
+# HERMES SYSTEM PROMPT
 # ══════════════════════════════════════════════════════════════════
 
 _JARVIS_SYSTEM_PROMPT = (
@@ -280,14 +280,14 @@ def get_chat_reply(
     """
     Generate a conversational reply for unrecognised free-form input.
 
-    Uses DeepSeek ``deepseek-chat`` if *api_key* is set; otherwise
+    Uses Hermes ``hermes-chat`` if *api_key* is set; otherwise
     returns a contextually appropriate canned response.
 
     Parameters
     ----------
     user_text : The raw input that the intent parser could not classify.
     operator  : Operator name for personalisation.
-    api_key   : DeepSeek API key (optional).
+    api_key   : Hermes API key (optional).
     context   : Brief current system context string (e.g. threat level).
     """
     _op = (operator or os.environ.get("JARVIS_OPERATOR", "sir")).split()[0]
@@ -298,10 +298,10 @@ def get_chat_reply(
     if any(user_text.lower().strip().startswith(w) for w in _greet):
         return random.choice(_GREETING_RESPONSES)
 
-    # Try DeepSeek for a genuine response
+    # Try Hermes for a genuine response
     if api_key:
         try:
-            return _deepseek_chat(user_text, _op, api_key, context)
+            return _hermes_chat(user_text, _op, api_key, context)
         except Exception:
             pass
 
@@ -309,16 +309,16 @@ def get_chat_reply(
     return random.choice(_CHAT_FALLBACKS)
 
 
-def _deepseek_chat(
+def _hermes_chat(
     user_text: str,
     operator:  str,
     api_key:   str,
     context:   str,
 ) -> str:
-    """Synchronous DeepSeek chat call — wraps openai client."""
+    """Synchronous Hermes chat call — wraps openai client."""
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    client = OpenAI(api_key=api_key, base_url="https://api.hermes.ai")
 
     system = _JARVIS_SYSTEM_PROMPT
     if operator:
@@ -327,7 +327,7 @@ def _deepseek_chat(
         system += f"\n\nCurrent system context: {context}"
 
     resp = client.chat.completions.create(
-        model="deepseek-chat",
+        model="hermes-chat",
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user_text},

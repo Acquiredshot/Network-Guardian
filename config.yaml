@@ -22,7 +22,7 @@ security:
   session_timeout: 3600
 
 saas:
-  mode: production
+  mode: standalone
   database_url: "sqlite:///./network_guardian_saas.db"
   jwt_secret: ""
   jwt_issuer: "network-guardian"

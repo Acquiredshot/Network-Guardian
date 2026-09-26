@@ -1,196 +1,113 @@
 # Network Guardian
 
-> **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, LangGraph + DeepSeek-R1 triage, a J.A.R.V.I.S. conversational terminal shell, malware/ransomware ReAct agents, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via chat, a live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.13, zero heavy ML deps.
+> **Autonomous network security platform** — IDS/IPS, Smart Firewall, 24/7 AI anomaly detection, LangGraph + Hermes triage, J.A.R.V.I.S. conversational terminal, malware/ransomware ReAct agents, fleet probes with covert comms, automatic incident reporting, remote control via chat, live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.13, zero heavy ML deps.
 
-**Live demo:** Hosted cloud demo (credentials provided separately)
-**Current state:** v55, production-hardened, version 1.0.0. Wolf-Pak Phase 1 scaffolding is complete and verified. See [CHANGELOG.md](CHANGELOG.md) and [PATCHES.md](PATCHES.md) for full release history.
-
-**Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.**
+**Current state:** v1.0.0, production-hardened. **Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.**
 
 ---
 
-## Core Subsystems
+## What It Is
 
-| Layer | What it does |
-|---|---|
-| **IDS / IPS** | 15 signature rules, payload analysis, brute-force & multi-stage correlation, IP block/allow, rate limiting, quarantine zones |
-| **Smart Firewall Agent** | Autonomous injection blocker — 36 rules across 10 injection types (SQLi, XSS, CMDi, LDAP, XXE, SSTI, path traversal, header/NoSQL/GraphQL), escalating IP blocks, event-bus driven |
-| **IP Cloaking / Covert Comms** | MAC masking, IP obfuscation, Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy traffic |
-| **Fleet Agents** | `ng-probe` (periodic) and `ng-sentinel` (persistent) phone home over Tor/proxy; zero-dep standalone probe available |
-| **24/7 AI Monitor** | Rolling time-series, spike detection, 4-tier anomaly thresholds, live AI event stream |
-| **Per-Device UEBA + Lateral Movement** | Personal Isolation Forest baseline per IP; fan-out/lateral-movement alerts at ≥3σ or 20+ destinations |
-| **Malware / Ransomware ReAct Agents** | Observe → Reason → Act → Learn cycles, 0–100 threat scoring, auto-quarantine option, branded PDF report per detection |
-| **Email Protection + ReAct Agent** | IMAP scanner (SpamAssassin + ClamAV + AI classification), full ReAct cycle, PDF reports |
-| **LangGraph + DeepSeek-R1** | Chain-of-thought triage (`ingest → reason → plan → summarize`); activates when `DEEPSEEK_API_KEY` is set, keyword fallback otherwise |
-| **J.A.R.V.I.S. Terminal Shell** | Conversational REPL, live telemetry, voice I/O (SAPI 5 + wake-word), read-only Probe Commander for fleet awareness |
-| **MCP/API Protocol Parser** | Semantic threat detection for JSON-RPC 2.0, MCP, GraphQL, multi-agent payloads — prompt injection, tool abuse, schema exfiltration |
-| **Remote Control** | Telegram, Discord, Slack — per-user permissions, rate limiting, webhook verification |
-| **Dashboard** | Zero-dep async HTTP server — Fleet Map, AI charts, threat feed, Reports, Incidents (see table below) |
-| **SaaS Control Plane** | Multi-tenant auth, orgs, API keys, fleet ingest API, billing checkout/portal/webhook (SQLite + PostgreSQL) |
-| **Desktop App** | Native PyQt5 firewall console sharing the same engine as the web dashboard |
-| **Password Manager** | CLI credential vault + team account management — PBKDF2-HMAC-SHA256 |
-| **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
+Network Guardian is a standalone network security platform you run on your own host. It watches your network and systems, detects threats, and can block attackers — all from a single machine with no external dependencies.
 
-## Roadmap — Wolf-Pak Platform
+**It does these things out of the box:**
 
-Network Guardian is one pillar of the broader Wolf-Pak security platform. The full architecture combines three product pillars into a unified security backplane.
+- **IDS/IPS** — 15 signature rules, payload analysis, brute-force & multi-stage correlation, IP block/allow, rate limiting, quarantine zones
+- **Smart Firewall** — autonomous injection blocker (36 rules across SQLi, XSS, CMDi, LDAP, XXE, SSTI, path traversal, header/NoSQL/GraphQL); escalating IP blocks; event-bus driven
+- **AI Anomaly Monitor** — rolling time-series, spike detection, 4-tier anomaly thresholds, live event stream
+- **UEBA + Lateral Movement** — per-device Isolation Forest baseline; alerts at ≥3σ deviation or 20+ destination fan-out
+- **Malware / Ransomware ReAct** — Observe → Reason → Act → Learn cycles, 0–100 threat scoring, auto-quarantine, branded PDF report per detection
+- **Email Protection** — IMAP scanner (SpamAssassin + ClamAV + AI classification), full ReAct cycle, PDF reports
+- **IP Cloaking / Covert Comms** — MAC masking, IP obfuscation, Tor/SOCKS5/HTTP proxy, timing jitter, UA rotation, decoy traffic
+- **Fleet Probes** — `ng-probe` (periodic) and `ng-sentinel` (persistent) phone home over Tor/proxy; zero-dep standalone probe available
+- **MCP/API Protocol Parser** — semantic threat detection for JSON-RPC 2.0, MCP, GraphQL, multi-agent payloads (prompt injection, tool abuse, schema exfiltration)
+- **Remote Control** — Telegram, Discord, Slack; per-user permissions, rate limiting, webhook verification
+- **Password Manager** — CLI credential vault + team account management (PBKDF2-HMAC-SHA256)
+- **Plugin System** — extensible registry for custom sensors, models, and dashboard components
 
-```
-┌────────────────────────┐
-│    WOLF-PAK PLATFORM   │
-└────────────┬───────────┘
-             │
-    ┌────────┼────────┐
-    │        │        │
-    ▼        ▼        ▼
-NETWORK    PAKSHIELD  MASK
-GUARDIAN   Identity   Network/
-           Risk &     Asset
-           Access     Intelligence
-    │        │        │
-    └────────┼────────┘
-             │
-             ▼
-┌─────────────────────────┐
-│ WOLF-PAK SECURITY CORE  │
-│  Event Fabric           │
-│  Security Graph         │
-│  Threat Intel           │
-└─────────────┬───────────┘
-              │
-              ▼
-┌─────────────────────────┐
-│ AI SECURITY ORCHESTRATOR│
-│  Detection              │
-│  Investigation          │
-│  Response               │
-└─────────────┬───────────┘
-              │
-              ▼
-         POLICY ENGINE
-              │
-              ▼
-         ACTION GATEWAY
-              │
-              ▼
-       CUSTOMER ENVIRONMENT
+## J.A.R.V.I.S. Terminal Shell
+
+A conversational REPL you run directly in your terminal. It aggregates live telemetry (threat level, CPU/RAM/disk, fleet devices, firewall history, probe agent statuses) and lets you talk to your network in plain English:
+
+```bash
+python -m network_guardian.jarvis.jarvis_core
 ```
 
-### Three Pillars
+Commands like `situation`, `triage`, `firewall scan`, `malware`, `ids alerts`, `fleet`, `probes`, `metrics` all work with natural-language aliases. Voice I/O is built in (Windows SAPI 5, with wake-word detection).
 
-| Pillar | Role | Status |
-|--------|------|--------|
-| **Network Guardian** (this repo) | Network security detection/response — IDS/IPS, fleet agents, AI monitor, malware/ransomware ReAct, dashboard, SaaS control plane | ✅ Existing (v1.0.0) |
-| **Pakshield** | Identity risk scoring + access control evaluation — anomaly detection on auth events, policy-based access decisions, audit evidence | 🟡 Phase 1 scaffolded |
-| **Mask Network** | Network/asset intelligence — asset discovery, threat mapping (IOC correlation), vulnerability assessment (exposure scoring) | 🟡 Phase 1 scaffolded |
+## LangGraph + Hermes Triage
 
-### Security Core Pipeline
+When you set `HERMES_API_KEY`, J.A.R.V.I.S. uses a LangGraph state machine with Hermes for chain-of-thought triage — ingest → reason → plan → summarize. It produces a structured action plan with confidence scores and recommendations. Without the key, it falls back to a keyword scorer. No behaviour change either way.
 
-```
-Event Fabric → Security Graph → Threat Intel
-     │
-     ▼
-AI Security Orchestrator (Detection → Investigation → Response)
-     │
-     ▼
-Policy Engine → Action Gateway → Customer Environment
+## Dashboard
+
+A zero-dep async HTTP dashboard runs on port 8080 (override with `PORT`). It gives you a live Fleet Map, KPI bar, event feed, and pages for IDS/IPS, WiFi, cloaking, explorer/auditor, AI engine charts, fleet agents, reports/incidents, and threat detection (malware/ransomware ReAct with PDF download).
+
+```bash
+python _start_dashboard.py
 ```
 
-- **Event Fabric** — normalises security events from all three pillars into a common `SecurityEvent` format; fan-out via `asyncio.Queue` to handlers.
-- **Security Graph** — in-memory entity-relationship store binding assets, identities, threats, vulnerabilities, and events into a unified context model.
-- **AI Security Orchestrator** — detects threats from events, investigates them with graph context, and plans response actions.
-- **Policy Engine** — evaluates proposed actions against policies (scope, action-type allow/block, auto-approve vs. human-approval thresholds) before they reach the gateway.
-- **Action Gateway** — executes policy-approved actions in the customer environment via backend integrations (NG engine, Pakshield identity, cloud APIs).
+Front with nginx/caddy in production. SaaS mode (multi-tenant auth, orgs, API keys, billing) activates when `JWT_SECRET` is set.
 
-### Implementation Phases
+## SaaS Control Plane
 
-| Phase | Focus | Deliverables | Status |
-|-------|-------|-------------|--------|
-| **P1** | Scaffold all pillars + core | `pakshield/`, `network_intelligence/`, `wolf_pak_security_core/`, `ai_security_orchestrator/`, `policy_engine/`, `action_gateway/` with phase-1 stubs | ✅ Done |
-| **P2** | Wire pillars into Security Core | Event Fabric ingestion from NG + Pakshield + Mask; Security Graph bulk ingest; orchestrator plugged into event fabric | 🔲 Next |
-| **P3** | Pakshield deep implementation | Identity risk ML models, tap into NG auth/access events, real access control policies, audit trail | 🔲 |
-| **P4** | Mask Network deep implementation | Active subnet discovery, external threat-feed integration, CVE lookup, per-asset exposure dashboards | 🔲 |
-| **P5** | Production hardening | Persistent graph store (SQLite/PostgreSQL), event archival, action audit trail, dashboard pages for new pillars, end-to-end tests | 🔲 |
+When `JWT_SECRET` is configured, the dashboard also serves a multi-tenant control plane on port 8081: org management, API keys, fleet ingest API, and Stripe billing checkout/portal/webhook (mock billing works without real Stripe keys). SQLite by default; PostgreSQL available.
 
-### Directory Layout (new pillars)
+## How It Fits With Mask and Pakshield
+
+Network Guardian is one pillar of the **Wolf-Pak platform** — a three-product security backplane:
 
 ```
-pakshield/
-  __init__.py
-  identity_risk/     # IdentityRiskEvaluator, RiskScore
-  access_control/    # AccessControlEngine, AccessDecision
-network_intelligence/
-  __init__.py
-  asset_discovery/   # AssetDiscovery, Asset
-  threat_mapping/    # ThreatMapper, ThreatMapping
-  vuln_assessment/   # VulnAssessor, Vulnerability
-wolf_pak_security_core/
-  __init__.py
-  event_fabric/      # EventFabric, SecurityEvent
-  security_graph/    # SecurityGraph, GraphNode/Edge
-ai_security_orchestrator/
-  __init__.py
-  detection/         # DetectionEngine, DetectionFinding
-  investigation/     # InvestigationEngine, InvestigationCase
-  response/          # ResponsePlanner, ResponsePlan
-policy_engine/
-  __init__.py
-  rules/             # PolicyEngine, Policy, PolicyVerdict
-  evaluation/        # EvaluationPipeline, PlanDecision
-action_gateway/
-  __init__.py
-  execution/         # ActionGateway, ActionExecutor
-  integration/       # ActionGatewayIntegration
-  connectors/        # FirewallApiExecutor, backend stubs
+Network Guardian  ──  IDS/IPS, AI monitor, dashboard, SaaS
+Pakshield         ──  Identity risk scoring + access control
+Mask Network     ──  Network/asset intelligence + threat mapping
 ```
 
-Full phase detail, per-module status table, test plan, and risk register: [WOLF-PAK_ROADMAP.md](WOLF-PAK_ROADMAP.md).
+They share a common **Event Fabric** — a cross-app event bus with an HTTP intake endpoint and SQLite storage. Both Mask and Pakshield push their observations into Network Guardian's dashboard as structured envelopes:
 
----
+```
+MASK  ──▶  POST /api/event-fabric/intake  ──▶  Event Fabric  ──▶  Security Graph
+PAKSHIELD ────────────────────────────────────────▶
+```
 
-## Dashboard Pages
+- **Mask adapter** (`scripts/mask_adapter.py`) — exports Mask daemon observations (sysinfo, processes, network connections, user sessions) into the Event Fabric. Falls back to direct OS observation via psutil when the Mask daemon's IPC isn't available.
+- **Pakshield adapter** (`scripts/pakshield_adapter.py`) — exports PakShield identity, risk, and access events (risk scores, findings, access decisions, device posture) from PakShield's SQLite database into the Event Fabric.
+- **Security Graph** — an in-memory entity-relationship store that correlates hosts, devices, identities, processes, and network flows across all three products. Queryable via `GET /api/security-graph/summary`.
+- **AI Security Orchestrator** (`scripts/orchestrator_service.py`) — wires DetectionEngine → InvestigationEngine → ResponsePlanner to the Event Fabric. Processes stored events from all three sources and publishes findings.
 
-| Page | Route | Description |
-|---|---|---|
-| Dashboard | `/` | Live Fleet Map, KPI bar, event feed |
-| IDS / IPS | `/ids`, `/ips` | Alert log, rule hits, block list, quarantine zones |
-| WiFi | `/wifi` | Connected networks, rogue AP alerts |
-| Cloaking | `/cloaking` | Active identity, MAC/IP rotation status |
-| Explorer / Auditor | `/explorer`, `/auditor` | Topology discovery, compliance findings |
-| AI Engine | `/ai` | Rolling anomaly charts, live AI event stream |
-| Fleet | `/fleet` | Registered agents, per-agent drill-down |
-| Reports / Incidents | `/reports`, `/incidents` | Threat assessment cards, Markdown incident reports |
-| Threat Detection | `/security` | Malware/Ransomware ReAct scanners with PDF download |
-
----
+The real Mask and Pakshield products live in their own workspaces (`C:\Users\CodyC\MASK` and `C:\Users\CodyC\PakShield`) and are actively developed there. Network Guardian provides the ingestion and correlation layer that ties them together.
 
 ## Quick Start
 
 ```bash
 pip install -e ".[dev]"
 
-# Dashboard only (default port 8080; set PORT env var to override)
+# Dashboard (port 8080; override with PORT)
 python _start_dashboard.py
 
-# SaaS control plane (requires JWT_SECRET; Stripe vars optional for mock billing)
+# SaaS mode (requires JWT_SECRET; Stripe vars optional for mock billing)
 JWT_SECRET=your-secret STRIPE_WEBHOOK_SECRET=whsec_xxx python _start_dashboard.py
 
 # J.A.R.V.I.S. terminal shell
 python -m network_guardian.jarvis.jarvis_core
-DEEPSEEK_API_KEY=sk-<key> python -m network_guardian.jarvis.jarvis_core   # with DeepSeek-R1 triage
 
-# Fleet probe (env vars keep credentials out of `ps`/Task Manager)
+# With Hermes triage (set your key)
+HERMES_API_KEY=sk-<key> python -m network_guardian.jarvis.jarvis_core
+
+# Fleet probe
 export NG_BASE=https://YOUR-DASHBOARD-URL
 export NG_KEY=YOUR_FLEET_KEY
 python -m network_guardian.agent.probe --tor --stealth
-
-# Desktop app
-python -m network_guardian --desktop
 ```
 
-More detail: [LOCAL_STARTUP.md](LOCAL_STARTUP.md) · [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) · [CROSS_PLATFORM_SETUP.md](CROSS_PLATFORM_SETUP.md) · [README_TEAM_SETUP.md](README_TEAM_SETUP.md) · [DATA_COLLECTION_GUIDE.md](DATA_COLLECTION_GUIDE.md)
+Push events from Mask and Pakshield into the Event Fabric:
 
----
+```bash
+# From the Network Guardian repo root
+python scripts/mask_adapter.py --once
+python scripts/pakshield_adapter.py --once
+python scripts/orchestrator_service.py --once   # run detection/investigation/response
+```
 
 ## Testing
 
@@ -200,30 +117,15 @@ pytest tests/ -v
 
 ## Requirements
 
-- Python 3.11+, zero external ML deps (core platform)
+- Python 3.11+
 - Root/admin for network scanning (ping, Nmap)
-- `reportlab` (PDF reports), `psutil` (malware scan), `watchdog` (ransomware monitor) — all installed via `pip install -e .`
-- Optional: `pyyaml`, `langgraph` + `langchain-openai` + `langchain-core` (DeepSeek-R1 triage), `PyQt5` (desktop app)
-
----
+- `reportlab` (PDF reports), `psutil` (malware scan), `watchdog` (ransomware monitor) — installed via `pip install -e .`
+- Optional: `pyyaml`, `langgraph` + `langchain-openai` + `langchain-core` (Hermes triage), `PyQt5` (desktop app)
 
 ## Secret Hygiene
 
-Never commit real credentials. Use env vars or platform secrets. Run `grep -RInE "(token|secret|password|fleet_key)" .` before every push. Keep the repo **private**.
+Never commit real credentials. Use env vars. Run `grep -RInE "(token|secret|password|fleet_key)" .` before every push. Keep the repo **private**.
 
 ## License
 
-This project is proprietary and closed-source.
-
-- Copyright © 2026 Wolf-Pak Innovations LLC. All Rights Reserved.
-- Legal owner: Wolf-Pak Innovations LLC (Michigan, USA).
-- No permission is granted to use, copy, modify, distribute, sublicense, sell, or create derivatives without prior written authorization.
-- Commercial use requires a separate paid commercial license agreement.
-- See `LICENSE` and `COPYRIGHT` for full terms.
-
-## Legal and Commercial Ops
-
-- Federal filing checklist packet: `FEDERAL_COPYRIGHT_REGISTRATION_PACKET.txt`
-- Commercial license agreement template: `COMMERCIAL_EULA.txt`
-- Inbound commercial request intake form: `LICENSE_REQUEST_INTAKE_FORM.txt`
-- Internal pricing and tier matrix: `PRICING_TIER_MATRIX.txt`
+Proprietary and closed-source. Copyright © 2026 Wolf-Pak Innovations LLC. All Rights Reserved. Commercial use requires a separate paid license agreement. See `LICENSE` and `COPYRIGHT` for full terms.

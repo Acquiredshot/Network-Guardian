@@ -69,6 +69,8 @@ NEW_ROUTES = '''    def _route(self, path: str) -> str:
             "/api/ids/rules": self._api_ids_rules,
             "/api/wifi/networks": self._api_wifi_networks,
             "/api/wifi/status": self._api_wifi_status,
+            "/api/wifi/scan": self._api_wifi_scan,
+            "/api/wifi/metrics": self._api_wifi_metrics,
             "/api/cloaking/status": self._api_cloaking_status,
             "/api/explorer/topology": self._api_explorer_topology,
             "/api/ai/metrics": self._api_ai_metrics,
@@ -322,13 +324,18 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 table{width:100%;border-collapse:collapse;font-size:.82rem}
 th{text-align:left;color:var(--dim);text-transform:uppercase;font-size:.7rem;letter-spacing:.8px;padding:8px 6px;border-bottom:1px solid var(--border)}
 td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.4)}
-canvas{display:block}
+.canvas{display:block}
 .kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;min-width:130px;flex:1}
 .kpi .v{font-size:1.6rem;font-weight:700;color:var(--blue)}
 .kpi .l{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600}
 .sev-critical{background:rgba(248,81,73,.2);color:var(--red)}
+.scan-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer;font-size:.85rem;transition:.2s}
+.scan-btn:hover{background:#4090e0}
+.scan-btn:disabled{opacity:.5;cursor:wait}
+.signal-bar{width:100%;height:6px;background:rgba(48,54,61,.6);border-radius:3px;overflow:hidden;margin-top:6px}
+.signal-bar .fill{height:100%;border-radius:3px}
 .sev-high{background:rgba(219,109,40,.2);color:var(--orange)}
 .sev-medium{background:rgba(210,153,34,.2);color:var(--yellow)}
 .sev-low{background:rgba(63,185,80,.2);color:var(--green)}
@@ -713,6 +720,10 @@ WIFI_HTML = (
     <div class="card"><h2>&#128752; Connected Network</h2><div id="connInfo" class="empty">Scanning...</div></div>
     <div class="card" style="grid-column:1/-1"><h2>&#128225; Discovered Networks</h2><div id="netList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px"></div></div>
   </div>
+  <div style="margin-bottom:12px">
+    <button id="scanBtn" class="scan-btn" onclick="doScan()">&#128220; Scan Networks</button>
+    <span id="scanStatus" style="margin-left:10px;color:var(--dim);font-size:.82rem"></span>
+  </div>
 </div>
 <script nonce="{{NONCE}}">
 function sigColor(s){return s>=-50?'#3fb950':s>=-65?'#58a6ff':s>=-75?'#d29922':'#f85149';}
@@ -765,33 +776,77 @@ function drawFreq(nets){
     ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='left';ctx.fillText(count+' ('+(count/total*100|0)+'%)',w>50?124:126+w,y+barH/2+4);
   });
 }
-async function load(){
-  try{
-    const [wR,sR]=await Promise.all([fetch('/api/wifi/networks'),fetch('/api/wifi/status')]);
-    const nets=await wR.json(),st=await sR.json();
-    document.getElementById('kN').textContent=nets.length;
-    document.getElementById('kSc').textContent=st.scans||0;
-    const conn=st.connected;
-    document.getElementById('kC').textContent=conn?conn.ssid||'-':'-';
-    document.getElementById('kS').textContent=conn?(conn.signal+' dBm'):'-';
-    document.getElementById('kCh').textContent=conn?(conn.channel||'-'):'-';
-    document.getElementById('kSec').textContent=new Set(nets.map(n=>n.security||'Open')).size;
-    document.getElementById('st').textContent=nets.length?nets.length+' Networks':'Idle';
-    document.getElementById('st').style.color=nets.length?'var(--green)':'var(--blue)';
-    if(conn){document.getElementById('connInfo').innerHTML='<div style="display:flex;align-items:center;gap:12px"><span style="font-size:2rem">&#128225;</span><div><div style="font-size:1.1rem;font-weight:700">'+(conn.ssid||'Hidden')+' <span class="conn-tag">CONNECTED</span></div><div style="color:var(--dim);font-size:.82rem;margin-top:4px">BSSID: '+(conn.bssid||'-')+' | Ch '+(conn.channel||'-')+' | Signal: <span style="color:'+sigColor(conn.signal||0)+'">'+(conn.signal||'-')+' dBm</span> | '+(conn.security||'-')+'</div></div></div>';}
-    else{document.getElementById('connInfo').innerHTML='<div class="empty">Not connected</div>';}
-    drawSig(nets);drawSec(nets);drawFreq(nets);
+async function load() {
+  try {
+    const [wR, sR] = await Promise.all([fetch('/api/wifi/networks'), fetch('/api/wifi/status')]);
+    const nets = await wR.json(), st = await sR.json();
+    document.getElementById('kN').textContent = nets.length;
+    document.getElementById('kSc').textContent = st.scans || 0;
+    const conn = st.connected;
+    document.getElementById('kC').textContent = conn ? conn.ssid || '-' : '-';
+    document.getElementById('kS').textContent = conn ? (conn.signal + ' dBm') : '-';
+    document.getElementById('kCh').textContent = conn ? (conn.channel || '-') : '-';
+    document.getElementById('kSec').textContent = new Set(nets.map(n => n.security || 'Open')).size;
+    document.getElementById('st').textContent = nets.length ? nets.length + ' Networks' : 'Idle';
+    document.getElementById('st').style.color = nets.length ? 'var(--green)' : 'var(--blue)';
+    if (conn) {
+      document.getElementById('connInfo').innerHTML = '<div style="display:flex;align-items:center;gap:12px"><span style="font-size:2rem">&#128225;</span><div><div style="font-size:1.1rem;font-weight:700">' + (conn.ssid || 'Hidden') + ' <span class="conn-tag">CONNECTED</span></div><div style="color:var(--dim);font-size:.82rem;margin-top:4px">BSSID: ' + (conn.bssid || '-') + ' | Ch ' + (conn.channel || '-') + ' | Signal: <span style="color:' + sigColor(conn.signal || 0) + '">' + (conn.signal || '-') + ' dBm</span> | ' + (conn.security || '-') + '</div></div></div>';
+    } else {
+      document.getElementById('connInfo').innerHTML = '<div class="empty">Not connected</div>';
+    }
+    drawSig(nets); drawSec(nets); drawFreq(nets);
     // Network list
-    const el=document.getElementById('netList');
-    if(!nets.length){el.innerHTML='<div class="empty">No networks</div>';}
-    else{el.innerHTML=[...nets].sort((a,b)=>b.signal-a.signal).map(n=>{
-      const pct=Math.max(0,Math.min(100,(n.signal+100))),col=sigColor(n.signal),isC=conn&&n.ssid===conn.ssid;
-      return '<div class="wifi-card'+(isC?' style="border-color:var(--green)"':'')+'"><span style="font-size:1.6rem">'+(n.hidden?'&#128683;':'&#128225;')+'</span><div class="wifi-info"><div class="ssid">'+(n.ssid||'[Hidden]')+(isC?' <span class="conn-tag">CONNECTED</span>':'')+'</div><div class="meta">BSSID: '+(n.bssid||'-')+' | Ch '+(n.channel||'-')+' | '+(n.frequency||'-')+'</div><div class="signal-bar"><div class="fill" style="width:'+pct+'%;background:'+col+'"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.7rem"><span style="color:'+col+'">'+n.signal+' dBm ('+pct+'%)</span><span style="padding:2px 6px;border-radius:6px;font-size:.65rem;background:'+secColor(n.security)+'22;color:'+secColor(n.security)+'">'+(n.security||'Open')+'</span></div></div></div>';
-    }).join('');}
-    document.getElementById('ts').textContent=new Date().toLocaleTimeString()+' | Auto 5s';
-  }catch(e){console.error(e);}
+    const el = document.getElementById('netList');
+    if (!nets.length) {
+      el.innerHTML = '<div class="empty">No networks — click Scan Networks to discover</div>';
+    } else {
+      el.innerHTML = [...nets].sort((a, b) => b.signal - a.signal).map(n => {
+        const pct = Math.max(0, Math.min(100, (n.signal + 100))), col = sigColor(n.signal), isC = conn && n.ssid === conn.ssid;
+        return '<div class="wifi-card' + (isC ? ' style="border-color:var(--green)"' : '') + '"><span style="font-size:1.6rem">' + (n.hidden ? '&#128683;' : '&#128225;') + '</span><div class="wifi-info"><div class="ssid">' + (n.ssid || '[Hidden]') + (isC ? ' <span class="conn-tag">CONNECTED</span>' : '') + '</div><div class="meta">BSSID: ' + (n.bssid || '-') + ' | Ch ' + (n.channel || '-') + ' | ' + (n.frequency || '-') + '</div><div class="signal-bar"><div class="fill" style="width:' + pct + '%;background:' + col + '"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.7rem"><span style="color:' + col + '">' + n.signal + ' dBm (' + pct + '%)</span><span style="padding:2px 6px;border-radius:6px;font-size:.65rem;background:' + secColor(n.security) + '22;color:' + secColor(n.security) + '">' + (n.security || 'Open') + '</span></div></div></div>';
+      }).join('');
+    }
+    document.getElementById('ts').textContent = new Date().toLocaleTimeString() + ' | Auto 5s';
+  } catch (e) { console.error(e); }
 }
-load();setInterval(load,5000);
+async function doScan() {
+  const btn = document.getElementById('scanBtn');
+  const st = document.getElementById('scanStatus');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  st.textContent = 'scanning...';
+  try {
+    const r = await fetch('/api/wifi/scan', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      st.textContent = 'found ' + d.networks.length + ' networks';
+      btn.textContent = 'Rescan';
+      btn.disabled = false;
+      // Refresh the page data
+      load();
+    } else {
+      st.textContent = 'scan failed: ' + (d.message || 'unknown');
+      btn.textContent = 'Retry Scan';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    st.textContent = 'error: ' + e.message;
+    btn.textContent = 'Retry Scan';
+    btn.disabled = false;
+  }
+}
+// Auto-scan on first load if no cached data
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch('/api/wifi/networks');
+    const nets = await r.json();
+    if (!nets.length) {
+      document.getElementById('scanStatus').textContent = 'no cached data — scanning...';
+      await doScan();
+    }
+  } catch (_) {}
+});
+load();
+setInterval(load, 5000);
 </script></body></html>"""
 )
 

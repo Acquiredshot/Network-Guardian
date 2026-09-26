@@ -71,4 +71,8 @@ line-length = 100
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:.*asyncio\\.get_event_loop_policy.*:DeprecationWarning",
+    "ignore:.*asyncio\\.set_event_loop_policy.*:DeprecationWarning",
+]
 

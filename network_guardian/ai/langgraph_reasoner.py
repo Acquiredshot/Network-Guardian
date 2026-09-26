@@ -2,12 +2,12 @@
 # Proprietary and confidential. Unauthorized use, reproduction,
 # or distribution is strictly prohibited. See LICENSE for terms.
 """
-LangGraph + DeepSeek Reasoner for Network Guardian
-====================================================
+J.A.R.V.I.S. — Network Guardian Reasoning Engine (Hermes-backed)
+=================================================================
 
 Replaces the keyword-based intent classification and plan-building in
 ``TriageAgent`` with a proper LangGraph state machine where each node is a
-discrete processing step and DeepSeek-R1 (``deepseek-reasoner``) provides
+discrete processing step and Hermes (``hermes-reasoner``) provides
 deep chain-of-thought threat reasoning at the REASON node.
 
 Graph topology
@@ -21,7 +21,7 @@ State fields (``NetworkGuardianState``)
   intent              : str      – free-text user goal
   system_state        : dict     – live snapshot from TriageAgent.SystemState
   observations        : dict     – threat observations from sub-agents
-  deepseek_reasoning  : str      – raw DeepSeek chain-of-thought
+  hermes_reasoning    : str      – raw Hermes chain-of-thought
   intent_class        : str      – classified intent (THREAT_HUNT, etc.)
   confidence          : float    – classification confidence 0–1
   action_plan         : list     – ordered GoalStep-like dicts
@@ -33,10 +33,10 @@ State fields (``NetworkGuardianState``)
 
 Environment variables
 ---------------------
-  DEEPSEEK_API_KEY        – DeepSeek API key (required for LLM nodes)
-  DEEPSEEK_MODEL          – override model, default ``deepseek-reasoner``
-  DEEPSEEK_BASE_URL       – override endpoint, default ``https://api.deepseek.com``
-  DEEPSEEK_TIMEOUT        – request timeout seconds, default 60
+  HERMES_API_KEY         – Hermes API key (required for LLM nodes)
+  HERMES_MODEL           – override model, default ``hermes-reasoner``
+  HERMES_BASE_URL        – override endpoint, default ``https://api.hermes.ai``
+  HERMES_TIMEOUT         – request timeout seconds, default 60
 """
 
 from __future__ import annotations
@@ -54,13 +54,13 @@ from langgraph.graph import END, StateGraph
 logger = logging.getLogger("network_guardian.ai.langgraph_reasoner")
 
 # ---------------------------------------------------------------------------
-# DeepSeek client factory
+# Hermes client factory
 # ---------------------------------------------------------------------------
 
-_DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-_DEEPSEEK_MODEL    = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")   # V3: fast (1-3s). Set to deepseek-reasoner for deep CoT reasoning.
-_DEEPSEEK_TIMEOUT  = int(os.getenv("DEEPSEEK_TIMEOUT", "30"))       # reduced from 60s
-_DEEPSEEK_MAX_TOKENS = int(os.getenv("DEEPSEEK_MAX_TOKENS", "1024")) # cap response length for speed
+_HERMES_BASE_URL = os.getenv("HERMES_BASE_URL", "https://api.hermes.ai")
+_HERMES_MODEL    = os.getenv("HERMES_MODEL", "hermes-reasoner")   # Hermes reasoner: deep CoT. Set to hermes-chat for fast responses.
+_HERMES_TIMEOUT  = int(os.getenv("HERMES_TIMEOUT", "30"))          # request timeout seconds
+_HERMES_MAX_TOKENS = int(os.getenv("HERMES_MAX_TOKENS", "1024"))   # cap response length for speed
 
 _SYSTEM_PROMPT = """You are the Reasoning Engine for Network Guardian, an enterprise-grade
 network security platform. Your role is to:
@@ -77,7 +77,7 @@ network security platform. Your role is to:
 Respond **only** with valid JSON in the following schema (no markdown fences):
 {
   "intent_class": "<one of the above>",
-  "confidence": <0.0–1.0>,
+  "confidence": <0.0-1.0>,
   "reasoning_summary": "<2-4 sentence plain-English reasoning>",
   "action_plan": [
     {"agent": "<agent_key>", "action": "<description>", "kwargs": {}},
@@ -86,18 +86,21 @@ Respond **only** with valid JSON in the following schema (no markdown fences):
   "recommendations": ["<rec1>", "<rec2>", ...]
 }"""
 
+# Old Hermes prompt preserved for reference:
+# _HERMES_SYSTEM_PROMPT = """..."""
+
 
 def _make_llm(api_key: str | None = None) -> ChatOpenAI:
-    """Instantiate the DeepSeek ChatOpenAI client."""
-    key = api_key or os.getenv("DEEPSEEK_API_KEY", "")
+    """Instantiate the Hermes ChatOpenAI client."""
+    key = api_key or os.getenv("HERMES_API_KEY", "")
     return ChatOpenAI(
-        model=_DEEPSEEK_MODEL,
+        model=_HERMES_MODEL,
         api_key=key or "no-key",  # allow offline/mock mode
-        base_url=_DEEPSEEK_BASE_URL,
-        timeout=_DEEPSEEK_TIMEOUT,
+        base_url=_HERMES_BASE_URL,
+        timeout=_HERMES_TIMEOUT,
         max_retries=1,
         temperature=0.0,
-        max_tokens=_DEEPSEEK_MAX_TOKENS,
+        max_tokens=_HERMES_MAX_TOKENS,
     )
 
 
@@ -116,7 +119,7 @@ class NetworkGuardianState(TypedDict, total=False):
     api_key: str  # optional per-call override
 
     # Reasoning outputs
-    deepseek_reasoning: str
+    hermes_reasoning: str
     intent_class: str
     confidence: float
 
@@ -181,21 +184,21 @@ def ingest_node(state: NetworkGuardianState) -> NetworkGuardianState:
 
 
 # ---------------------------------------------------------------------------
-# Node: reason (DeepSeek)
+# Node: reason (Hermes)
 # ---------------------------------------------------------------------------
 
 
 def reason_node(state: NetworkGuardianState) -> NetworkGuardianState:
-    """Call DeepSeek-R1 to reason about the intent and current threat posture."""
+    """Call Hermes to reason about the intent and current threat posture."""
     if state.get("error"):
         return state  # propagate upstream error without calling LLM
 
-    api_key = state.get("api_key") or os.getenv("DEEPSEEK_API_KEY", "")
+    api_key = state.get("api_key") or os.getenv("HERMES_API_KEY", "")
     iteration = state.get("iteration", 0)
 
     if not api_key:
-        logger.warning("[REASON] No DEEPSEEK_API_KEY — falling back to keyword classification")
-        return {**state, "deepseek_reasoning": "(no API key — keyword fallback)", "error": "no_api_key"}
+        logger.warning("[REASON] No HERMES_API_KEY — falling back to keyword classification")
+        return {**state, "hermes_reasoning": "(no API key — keyword fallback)", "error": "no_api_key"}
 
     llm = _make_llm(api_key=api_key)
     messages = state.get("messages", [])
@@ -204,7 +207,7 @@ def reason_node(state: NetworkGuardianState) -> NetworkGuardianState:
         response: AIMessage = llm.invoke(messages)
         raw = response.content or ""
 
-        # DeepSeek-R1 returns <think>...</think> before the final answer
+        # Hermes returns <think>...</think> before the final answer
         think_match = re.search(r"<think>(.*?)</think>", raw, re.DOTALL)
         chain_of_thought = think_match.group(1).strip() if think_match else ""
         # Strip the think block from the answer part
@@ -219,7 +222,7 @@ def reason_node(state: NetworkGuardianState) -> NetworkGuardianState:
             if json_match:
                 parsed = json.loads(json_match.group(1))
             else:
-                raise ValueError(f"Could not parse JSON from DeepSeek response: {answer[:300]}")
+                raise ValueError(f"Could not parse JSON from Hermes response: {answer[:300]}")
 
         intent_class = parsed.get("intent_class", "UNKNOWN").upper()
         confidence = float(parsed.get("confidence", 0.5))
@@ -233,27 +236,28 @@ def reason_node(state: NetworkGuardianState) -> NetworkGuardianState:
         )
 
         logger.info(
-            "[REASON] DeepSeek classified intent=%s (confidence=%.1f%%) | "
+            "[REASON] Hermes classified intent=%s (confidence=%.1f%%) | "
             "%d steps planned | iteration=%d",
             intent_class, confidence * 100, len(action_plan), iteration,
         )
 
         return {
             **state,
-            "deepseek_reasoning": full_reasoning,
+            "hermes_reasoning": full_reasoning,
             "intent_class": intent_class,
             "confidence": confidence,
             "action_plan": action_plan,
             "recommendations": recommendations,
             "messages": messages + [response],
             "error": "",
+            "iteration": iteration + 1,
         }
 
     except Exception as exc:
-        logger.error("[REASON] DeepSeek call failed (iteration=%d): %s", iteration, exc)
+        logger.error("[REASON] Hermes call failed (iteration=%d): %s", iteration, exc)
         return {
             **state,
-            "deepseek_reasoning": "",
+            "hermes_reasoning": "",
             "error": str(exc),
             "iteration": iteration + 1,
         }
@@ -267,7 +271,7 @@ def reason_node(state: NetworkGuardianState) -> NetworkGuardianState:
 def plan_node(state: NetworkGuardianState) -> NetworkGuardianState:
     """Validate / enrich the action plan produced by the reason node.
 
-    If DeepSeek returned an empty plan or errored, build a sensible
+    If Hermes returned an empty plan or errored, build a sensible
     fallback plan using the intent class so the system keeps running.
     """
     action_plan = state.get("action_plan", [])
@@ -321,7 +325,7 @@ def summarize_node(state: NetworkGuardianState) -> NetworkGuardianState:
     """Compile final findings + recommendations for the caller."""
     intent_class = state.get("intent_class", "UNKNOWN")
     confidence = state.get("confidence", 0.0)
-    reasoning = state.get("deepseek_reasoning", "")
+    reasoning = state.get("hermes_reasoning", "")
     action_plan = state.get("action_plan", [])
     recs = state.get("recommendations", [])
 
@@ -330,11 +334,11 @@ def summarize_node(state: NetworkGuardianState) -> NetworkGuardianState:
         intent_class, confidence * 100, len(action_plan), len(recs),
     )
 
-    # Attach reasoning as a meta finding if DeepSeek was used
+    # Attach reasoning as a meta finding if Hermes was used
     findings = list(state.get("findings", []))
     if reasoning and "(no API key" not in reasoning:
         findings.insert(0, {
-            "source": "deepseek_reasoner",
+            "source": "hermes_reasoner",
             "type": "ai_reasoning",
             "intent_class": intent_class,
             "confidence": confidence,
@@ -350,7 +354,15 @@ def summarize_node(state: NetworkGuardianState) -> NetworkGuardianState:
 
 
 def _should_re_reason(state: NetworkGuardianState) -> Literal["reason", "plan"]:
-    """Skip re-reason to keep latency low — single-pass is fast enough for V3."""
+    """Re-run once on weak confidence, then stop to avoid loops."""
+    confidence = float(state.get("confidence", 1.0) or 1.0)
+    iteration = int(state.get("iteration", 0) or 0)
+    error = state.get("error", "")
+
+    if error == "no_api_key":
+        return "plan"
+    if confidence < 0.5 and iteration < 1:
+        return "reason"
     return "plan"
 
 
@@ -418,13 +430,13 @@ async def reason_about_intent(
     observations:
         Findings gathered by sub-agents in a prior observation pass.
     api_key:
-        DeepSeek API key; falls back to the ``DEEPSEEK_API_KEY`` env var.
+        Hermes API key; falls back to the ``HERMES_API_KEY`` env var.
 
     Returns
     -------
     dict with keys:
         intent_class, confidence, action_plan, recommendations,
-        deepseek_reasoning, findings, error
+        hermes_reasoning, findings, error
     """
     graph = get_reasoner_graph()
     initial_state: NetworkGuardianState = {
@@ -435,6 +447,7 @@ async def reason_about_intent(
         "messages": [],
         "error": "",
         "iteration": 0,
+        "hermes_reasoning": "",
     }
 
     result: NetworkGuardianState = await graph.ainvoke(initial_state)
@@ -444,7 +457,7 @@ async def reason_about_intent(
         "confidence": result.get("confidence", 0.0),
         "action_plan": result.get("action_plan", []),
         "recommendations": result.get("recommendations", []),
-        "deepseek_reasoning": result.get("deepseek_reasoning", ""),
+        "hermes_reasoning": result.get("hermes_reasoning", ""),
         "findings": result.get("findings", []),
         "error": result.get("error", ""),
     }

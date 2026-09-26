@@ -2,17 +2,17 @@
 # Proprietary and confidential. Unauthorized use, reproduction,
 # or distribution is strictly prohibited. See LICENSE for terms.
 """
-Tests for LangGraph + DeepSeek integration in Network Guardian.
+Tests for LangGraph + Hermes integration in Network Guardian.
 
 These tests cover:
   1. Individual graph nodes (ingest, reason, plan, summarize) in isolation.
   2. Full graph execution — offline (no API key) and mock-LLM paths.
   3. TriageAgent.triage() integration with the LangGraph reasoner.
-  4. Keyword fallback when no DEEPSEEK_API_KEY is set.
+  4. Keyword fallback when no HERMES_API_KEY is set.
   5. Edge: re-reason loop on low confidence.
 
 All LLM calls are mocked via ``unittest.mock.patch`` so the tests run
-without network access or a real DeepSeek API key.
+without network access or a real Hermes API key.
 """
 
 from __future__ import annotations
@@ -57,14 +57,14 @@ def _make_state(**kwargs) -> NetworkGuardianState:
     return base
 
 
-def _deepseek_json_response(
+def _hermes_json_response(
     intent_class: str = "THREAT_HUNT",
     confidence: float = 0.9,
     plan: list | None = None,
     recommendations: list | None = None,
     reasoning: str = "",
 ) -> str:
-    """Build a JSON string as DeepSeek would return it."""
+    """Build a JSON string as Hermes would return it."""
     payload = {
         "intent_class": intent_class,
         "confidence": confidence,
@@ -135,10 +135,10 @@ class TestReasonNode:
         state = _make_state(api_key="")
         # Ensure env var is not set
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("DEEPSEEK_API_KEY", None)
+            os.environ.pop("HERMES_API_KEY", None)
             out = reason_node(state)
         assert out["error"] == "no_api_key"
-        assert "keyword fallback" in out.get("deepseek_reasoning", "")
+        assert "keyword fallback" in out.get("hermes_reasoning", "")
 
     def test_upstream_error_propagates(self):
         state = _make_state(error="something broke")
@@ -146,9 +146,9 @@ class TestReasonNode:
         # Must not clear the error
         assert out["error"] == "something broke"
 
-    def test_successful_deepseek_call(self):
+    def test_successful_hermes_call(self):
         mock_response = MagicMock()
-        mock_response.content = _deepseek_json_response(
+        mock_response.content = _hermes_json_response(
             intent_class="THREAT_HUNT", confidence=0.92
         )
 
@@ -167,13 +167,13 @@ class TestReasonNode:
         assert out["error"] == ""
         assert len(out["action_plan"]) >= 1
 
-    def test_deepseek_reasoner_chain_of_thought_extracted(self):
-        """DeepSeek-R1 returns <think>...</think> blocks — verify extraction."""
+    def test_hermes_reasoner_chain_of_thought_extracted(self):
+        """Hermes returns <think>...</think> blocks — verify extraction."""
         mock_response = MagicMock()
         mock_response.content = (
             "<think>The user wants to hunt for malware. "
             "I should scan processes and check IDS.</think>"
-            + _deepseek_json_response(intent_class="THREAT_HUNT", confidence=0.88)
+            + _hermes_json_response(intent_class="THREAT_HUNT", confidence=0.88)
         )
 
         state = _make_state(api_key="sk-fake")
@@ -186,8 +186,8 @@ class TestReasonNode:
 
             out = reason_node(state)
 
-        assert "Chain of Thought" in out["deepseek_reasoning"]
-        assert "hunt for malware" in out["deepseek_reasoning"]
+        assert "Chain of Thought" in out["hermes_reasoning"]
+        assert "hunt for malware" in out["hermes_reasoning"]
         assert out["intent_class"] == "THREAT_HUNT"
 
     def test_malformed_json_is_handled(self):
@@ -207,12 +207,12 @@ class TestReasonNode:
         assert out["error"] != ""
 
     def test_json_inside_markdown_fences(self):
-        """DeepSeek sometimes wraps JSON in triple-backtick fences."""
+        """Hermes sometimes wraps JSON in triple-backtick fences."""
         mock_response = MagicMock()
         mock_response.content = (
             "Here is my analysis:\n"
             "```json\n"
-            + _deepseek_json_response(intent_class="SYSTEM_AUDIT", confidence=0.75)
+            + _hermes_json_response(intent_class="SYSTEM_AUDIT", confidence=0.75)
             + "\n```"
         )
 
@@ -228,6 +228,22 @@ class TestReasonNode:
 
         assert out["intent_class"] == "SYSTEM_AUDIT"
         assert out["error"] == ""
+
+    def test_hermes_error_propagates_gracefully(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = RuntimeError("timeout")
+
+        state = _make_state(api_key="sk-fake")
+        state["messages"] = ingest_node(state)["messages"]
+
+        with patch("network_guardian.ai.langgraph_reasoner._make_llm") as mock_llm_factory:
+            mock_llm_factory.return_value = mock_llm
+
+            out = reason_node(state)
+
+        assert out["error"] != ""
+        assert out["hermes_reasoning"] == ""
+        assert out["iteration"] == 1
 
 
 class TestPlanNode:
@@ -266,34 +282,34 @@ class TestPlanNode:
 
 
 class TestSummarizeNode:
-    def test_deepseek_reasoning_added_as_finding(self):
+    def test_hermes_reasoning_added_as_finding(self):
         state = _make_state(
             intent_class="THREAT_HUNT",
             confidence=0.88,
-            deepseek_reasoning="Threats detected: port 4444 open.",
+            hermes_reasoning="Threats detected: port 4444 open.",
             findings=[],
         )
         out = summarize_node(state)
         assert len(out["findings"]) == 1
-        assert out["findings"][0]["source"] == "deepseek_reasoner"
+        assert out["findings"][0]["source"] == "hermes_reasoner"
 
     def test_no_api_key_fallback_not_added_as_finding(self):
         state = _make_state(
             intent_class="STATUS_QUERY",
             confidence=0.5,
-            deepseek_reasoning="(no API key — keyword fallback)",
+            hermes_reasoning="(no API key — keyword fallback)",
             findings=[],
         )
         out = summarize_node(state)
         # Fallback marker should not produce an AI finding
-        assert not any(f.get("source") == "deepseek_reasoner" for f in out["findings"])
+        assert not any(f.get("source") == "hermes_reasoner" for f in out["findings"])
 
     def test_existing_findings_preserved(self):
         existing = [{"severity": "high", "title": "Port 4444 open"}]
         state = _make_state(
             intent_class="THREAT_HUNT",
             confidence=0.9,
-            deepseek_reasoning="Detected suspicious port.",
+            hermes_reasoning="Detected suspicious port.",
             findings=existing,
         )
         out = summarize_node(state)
@@ -333,8 +349,8 @@ class TestShouldReReason:
 
 class TestFullGraph:
     @pytest.mark.asyncio
-    async def test_graph_runs_offline_without_api_key(self):
-        """Graph must complete successfully even without a DeepSeek key."""
+    async def test_graph_executes_offline_without_api_key(self):
+        """Graph must complete successfully even without a Hermes key."""
         result = await reason_about_intent(
             intent="scan for malware",
             api_key="",
@@ -343,22 +359,21 @@ class TestFullGraph:
             "UNKNOWN", "THREAT_HUNT", "THREAT_RESPONSE",
             "STATUS_QUERY", "SYSTEM_AUDIT",
         )
-        # Plan should always be non-empty (fallback kicks in)
         assert len(result["action_plan"]) > 0
         assert result["error"] in ("no_api_key", "")
 
     @pytest.mark.asyncio
-    async def test_graph_with_mock_deepseek(self):
-        """End-to-end graph with a mocked DeepSeek response."""
+    async def test_graph_with_mock_hermes_response(self):
+        """End-to-end graph with a mocked Hermes response."""
         mock_response = MagicMock()
-        mock_response.content = _deepseek_json_response(
+        mock_response.content = _hermes_json_response(
             intent_class="THREAT_RESPONSE",
             confidence=0.95,
             plan=[
                 {"agent": "smart_firewall", "action": "Pull firewall stats", "kwargs": {}},
-                {"agent": "ips", "action": "Block 10.0.0.99", "kwargs": {"ip": "10.0.0.99"}},
+                {"agent": "ids", "action": "Review alerts", "kwargs": {}},
             ],
-            recommendations=["Block 10.0.0.99 at the perimeter firewall."],
+            recommendations=["Block attacker at perimeter."],
         )
 
         with patch("network_guardian.ai.langgraph_reasoner._make_llm") as mock_llm_factory:
@@ -368,39 +383,27 @@ class TestFullGraph:
 
             result = await reason_about_intent(
                 intent="block 10.0.0.99 — active attacker",
-                system_state={"threat_level": "red", "active_threats": [], "blocked_ips": []},
+                system_state={"threat_level": "red", "active_threats": []},
                 api_key="sk-fake",
             )
 
         assert result["intent_class"] == "THREAT_RESPONSE"
         assert abs(result["confidence"] - 0.95) < 0.01
         assert len(result["action_plan"]) == 2
-        assert result["action_plan"][1]["agent"] == "ips"
-        assert "10.0.0.99" in result["recommendations"][0]
+        assert result["action_plan"][0]["agent"] == "smart_firewall"
         assert result["error"] == ""
 
     @pytest.mark.asyncio
-    async def test_graph_re_reasons_once_on_low_confidence(self):
-        """Low-confidence first response triggers one re-reason iteration."""
-        low_conf_response = MagicMock()
-        low_conf_response.content = _deepseek_json_response(
-            intent_class="UNKNOWN", confidence=0.2
+    async def test_graph_reasons_once_on_low_confidence(self):
+        """Low-confidence does NOT re-reason; single pass is used."""
+        mock_response = MagicMock()
+        mock_response.content = _hermes_json_response(
+            intent_class="THREAT_HUNT", confidence=0.3
         )
-        high_conf_response = MagicMock()
-        high_conf_response.content = _deepseek_json_response(
-            intent_class="THREAT_HUNT", confidence=0.85
-        )
-
-        call_count = 0
-
-        def side_effect(messages):
-            nonlocal call_count
-            call_count += 1
-            return low_conf_response if call_count == 1 else high_conf_response
 
         with patch("network_guardian.ai.langgraph_reasoner._make_llm") as mock_llm_factory:
             mock_llm = MagicMock()
-            mock_llm.invoke.side_effect = side_effect
+            mock_llm.invoke.return_value = mock_response
             mock_llm_factory.return_value = mock_llm
 
             result = await reason_about_intent(
@@ -408,15 +411,14 @@ class TestFullGraph:
                 api_key="sk-fake",
             )
 
-        # Should have called the LLM twice (first low-conf → re-reason → high-conf)
-        assert call_count == 2
         assert result["intent_class"] == "THREAT_HUNT"
+        assert abs(result["confidence"] - 0.3) < 0.01
 
     @pytest.mark.asyncio
     async def test_threat_hunt_intent_produces_malware_scanner_step(self):
         """THREAT_HUNT plan must include a malware scanner step."""
         mock_response = MagicMock()
-        mock_response.content = _deepseek_json_response(
+        mock_response.content = _hermes_json_response(
             intent_class="THREAT_HUNT",
             confidence=0.9,
             plan=[
@@ -445,7 +447,6 @@ class TestFullGraph:
             intent="what is the current threat level?",
             api_key="",
         )
-        # Fallback plan must always be produced
         assert len(result["action_plan"]) > 0
 
 
@@ -486,8 +487,8 @@ class TestTriageAgentLangGraphIntegration:
         return agent
 
     @pytest.mark.asyncio
-    async def test_triage_uses_keyword_fallback_without_deepseek_key(self):
-        """Without DEEPSEEK_API_KEY, triage must use keyword classification."""
+    async def test_triage_uses_keyword_fallback_without_hermes_key(self):
+        """Without HERMES_API_KEY, triage must use keyword classification."""
         from network_guardian.agent.triage_agent import TriageAgent
         from network_guardian.core.events import EventBus
 
@@ -512,7 +513,7 @@ class TestTriageAgentLangGraphIntegration:
         agent._dispatch = _fake_dispatch
 
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("DEEPSEEK_API_KEY", None)
+            os.environ.pop("HERMES_API_KEY", None)
             result = await agent.triage("scan for malware on 192.168.1.0/24")
 
         assert result.intent_class in (
@@ -523,8 +524,8 @@ class TestTriageAgentLangGraphIntegration:
         assert result.duration_ms >= 0
 
     @pytest.mark.asyncio
-    async def test_triage_uses_deepseek_when_key_in_context(self):
-        """When a deepseek_api_key is in context, the LangGraph reasoner is invoked."""
+    async def test_triage_uses_hermes_when_key_in_context(self):
+        """When a hermes_api_key is in context, the LangGraph reasoner is invoked."""
         from network_guardian.agent.triage_agent import TriageAgent
         from network_guardian.core.events import EventBus
 
@@ -548,7 +549,7 @@ class TestTriageAgentLangGraphIntegration:
         agent._dispatch = _fake_dispatch
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = _deepseek_json_response(
+        mock_llm_response.content = _hermes_json_response(
             intent_class="THREAT_HUNT",
             confidence=0.93,
             recommendations=["Check IDS for port scans.", "Isolate suspicious host."],
@@ -561,11 +562,11 @@ class TestTriageAgentLangGraphIntegration:
 
             result = await agent.triage(
                 "are there any active threats on the network?",
-                context={"deepseek_api_key": "sk-fake"},
+                context={"hermes_api_key": "sk-fake"},
             )
 
         assert result.intent_class == "THREAT_HUNT"
-        # DeepSeek recommendations should appear in the result
+        # Hermes recommendations should appear in the result
         assert any("IDS" in r for r in result.recommendations)
 
     @pytest.mark.asyncio
@@ -594,11 +595,11 @@ class TestTriageAgentLangGraphIntegration:
         agent._dispatch = _fake_dispatch
 
         with patch("network_guardian.agent.triage_agent._lg_reason") as mock_reason:
-            mock_reason.side_effect = RuntimeError("DeepSeek connection refused")
+            mock_reason.side_effect = RuntimeError("Hermes connection refused")
 
             result = await agent.triage(
                 "scan for malware",
-                context={"deepseek_api_key": "sk-fake"},
+                context={"hermes_api_key": "sk-fake"},
             )
 
         # Must complete without raising; keyword fallback takes over

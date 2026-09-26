@@ -7,7 +7,7 @@ Covers:
   - SubsystemBootstrapper (root detection, validation)
   - parse_intent / INTENT_MAP
   - JarvisCore.dispatch()
-  - JARVIS → LangGraph integration (DeepSeek mocked)
+  - JARVIS → LangGraph integration (Hermes mocked)
 """
 
 from __future__ import annotations
@@ -351,7 +351,7 @@ class TestJarvisCore:
 
 
 # ════════════════════════════════════════════════════════════════
-#  JARVIS Triage → LangGraph (DeepSeek mocked)
+#  JARVIS Triage → LangGraph (Hermes mocked)
 # ════════════════════════════════════════════════════════════════
 
 class TestJarvisTriage:
@@ -361,7 +361,7 @@ class TestJarvisTriage:
         return {
             "intent_class": "RESPOND",
             "confidence": 0.92,
-            "deepseek_reasoning": "The host at 10.0.0.1 is probing port 22 repeatedly.",
+            "hermes_reasoning": "The host at 10.0.0.1 is probing port 22 repeatedly.",
             "action_plan": [
                 {"agent": "SmartFirewall", "action": "Block 10.0.0.1 on port 22"},
                 {"agent": "IDS", "action": "Flag as brute-force attempt"},
@@ -376,7 +376,7 @@ class TestJarvisTriage:
     def test_triage_prints_ai_result(
         self, capsys, mock_reason_result, monkeypatch, data_root
     ):
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-testkey-1234")
+        monkeypatch.setenv("HERMES_API_KEY", "«redacted:sk-…»")
         monkeypatch.setenv("NG_DATA_ROOT", str(data_root))
 
         async_mock = AsyncMock(return_value=mock_reason_result)
@@ -390,7 +390,7 @@ class TestJarvisTriage:
         assert "SmartFirewall" in out or "action" in out.lower()
 
     def test_triage_falls_back_without_api_key(self, capsys, monkeypatch, data_root):
-        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("HERMES_API_KEY", raising=False)
         monkeypatch.setenv("NG_DATA_ROOT", str(data_root))
         cmd_triage("triage deep scan")
         out = capsys.readouterr().out
@@ -398,7 +398,7 @@ class TestJarvisTriage:
         assert len(out) > 0
 
     def test_triage_falls_back_when_lg_unavailable(self, capsys, monkeypatch, data_root):
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-somekey")
+        monkeypatch.setenv("HERMES_API_KEY", "sk-somekey")
         monkeypatch.setenv("NG_DATA_ROOT", str(data_root))
         with patch("network_guardian.jarvis.jarvis_core._LG_AVAILABLE", False):
             cmd_triage("analyze threats")
@@ -406,7 +406,7 @@ class TestJarvisTriage:
         assert "fallback" in out.lower() or "offline" in out.lower() or len(out) > 0
 
     def test_triage_handles_reasoner_exception(self, capsys, monkeypatch, data_root):
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-testkey-1234")
+        monkeypatch.setenv("HERMES_API_KEY", "«redacted:sk-…»")
         monkeypatch.setenv("NG_DATA_ROOT", str(data_root))
 
         async_mock = AsyncMock(side_effect=RuntimeError("API unreachable"))
@@ -421,7 +421,7 @@ class TestJarvisTriage:
     def test_triage_low_confidence_displayed(
         self, capsys, mock_reason_result, monkeypatch, data_root
     ):
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-testkey-1234")
+        monkeypatch.setenv("HERMES_API_KEY", "«redacted:sk-…»")
         monkeypatch.setenv("NG_DATA_ROOT", str(data_root))
 
         low_conf = {**mock_reason_result, "confidence": 0.25}

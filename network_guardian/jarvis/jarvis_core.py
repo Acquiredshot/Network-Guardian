@@ -4,7 +4,7 @@
 ║          jarvis_core.py  |  Master Shell + Intent Parser         ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Role     : Primary REPL — routes all commands to subsystems     ║
-║  Extended : LangGraph + DeepSeek triage integration              ║
+║  Extended : LangGraph + Hermes triage integration              ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -41,7 +41,7 @@ try:
 except Exception:
     _EAR_AVAILABLE = False
 
-# LangGraph reasoner (optional — active when DEEPSEEK_API_KEY is set)
+# LangGraph reasoner (optional — active when HERMES_API_KEY is set)
 try:
     from network_guardian.ai.langgraph_reasoner import reason_about_intent as _lg_reason
     _LG_AVAILABLE = True
@@ -251,7 +251,7 @@ INTENT_MAP: dict[str, str] = {
     "how much memory":      "cmd_metrics",
     "disk space":           "cmd_metrics",
     "cpu usage":            "cmd_metrics",
-    # Deep-AI triage (LangGraph + DeepSeek)
+    # Deep-AI triage (LangGraph + Hermes)
     "triage":               "cmd_triage",
     "analyze":              "cmd_triage",
     "analyse":              "cmd_triage",
@@ -377,9 +377,9 @@ def print_banner() -> None:
         print(line.center(min(term_width, 80)))
     print(C.RESET)
     ts = datetime.now().strftime("%A, %d %B %Y  |  %H:%M:%S")
-    ds_status = f"{C.GREEN}DeepSeek ACTIVE{C.RESET}" if (
-        _LG_AVAILABLE and os.environ.get("DEEPSEEK_API_KEY")
-    ) else f"{C.YELLOW}DeepSeek OFFLINE{C.RESET}"
+    ds_status = f"{C.GREEN}Hermes ACTIVE{C.RESET}" if (
+        _LG_AVAILABLE and os.environ.get("HERMES_API_KEY")
+    ) else f"{C.YELLOW}Hermes OFFLINE{C.RESET}"
     print(f"{C.DIM}  Version {VERSION}    {ts}{C.RESET}")
     print(f"{C.DIM}  AI Engine: {ds_status}")
     print(f"{C.DIM}  {SEPARATOR}{C.RESET}\n")
@@ -659,19 +659,19 @@ def cmd_metrics(_args: str) -> None:
 
 def cmd_triage(raw: str) -> None:
     """
-    Deep AI triage via LangGraph + DeepSeek-R1.
+    Deep AI triage via LangGraph + Hermes.
 
     Passes the raw command as intent to the reasoner, collects the
     action plan and recommendations, and presents them in the terminal.
-    Falls back to a standard situation report if DeepSeek is unavailable.
+    Falls back to a standard situation report if Hermes is unavailable.
     """
-    jarvis_say("DEEP AI TRIAGE — invoking LangGraph + DeepSeek reasoner...", "section")
+    jarvis_say("DEEP AI TRIAGE — invoking LangGraph + Hermes reasoner...", "section")
 
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = os.environ.get("HERMES_API_KEY", "")
     if not _LG_AVAILABLE or not api_key:
         jarvis_say(
-            "LangGraph/DeepSeek not active. "
-            "Set DEEPSEEK_API_KEY to enable deep reasoning. "
+            "LangGraph/Hermes not active. "
+            "Set HERMES_API_KEY to enable deep reasoning. "
             "Falling back to telemetry-based situation report.",
             "warn",
         )
@@ -694,7 +694,7 @@ def cmd_triage(raw: str) -> None:
             )
         )
     except Exception as exc:
-        jarvis_say(f"DeepSeek call failed: {exc}", "error")
+        jarvis_say(f"Hermes call failed: {exc}", "error")
         return
 
     # Store for voice summary in dispatch
@@ -702,7 +702,7 @@ def cmd_triage(raw: str) -> None:
     _LAST_TRIAGE = dict(result)
 
     # ── Print reasoning ──
-    reasoning = result.get("deepseek_reasoning", "")
+    reasoning = result.get("hermes_reasoning", "")
     if reasoning:
         summary_line = reasoning.split("\n")[0][:200]
         jarvis_say(f"AI Reasoning: {summary_line}", "ai")
@@ -1050,7 +1050,7 @@ def cmd_help(_args: str) -> None:
     jarvis_say("COMMAND REFERENCE", "section")
     commands = [
         ("situation / status / threat",    "Full threat + health intelligence briefing"),
-        ("triage / analyze / deep scan",    "Deep AI triage via LangGraph + DeepSeek"),
+        ("triage / analyze / deep scan / ai scan",    "Deep AI triage via LangGraph + Hermes"),
         ("start / activate / defenses",     "Launch Network Guardian (start_all.py)"),
         ("stop / halt / shutdown",           "Gracefully halt all NG subsystems"),
         ("fleet / devices / nodes",          "Show passive devices + registered probe agents"),
@@ -1073,9 +1073,9 @@ def cmd_help(_args: str) -> None:
     for cmd, desc in commands:
         print(f"  {C.CYAN}{cmd:<40}{C.RESET}{C.DIM}{desc}{C.RESET}")
     print()
-    ds_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    status = f"{C.GREEN}ACTIVE{C.RESET}" if ds_key else f"{C.YELLOW}OFFLINE (set DEEPSEEK_API_KEY){C.RESET}"
-    jarvis_say(f"DeepSeek AI status: {status}", "info")
+    hs_key = os.environ.get("HERMES_API_KEY", "")
+    status = f"{C.GREEN}ACTIVE{C.RESET}" if hs_key else f"{C.YELLOW}OFFLINE (set HERMES_API_KEY){C.RESET}"
+    jarvis_say(f"Hermes AI status: {status}", "info")
     jarvis_say("Natural language accepted — e.g. 'what is the situation of my network?'", "info")
 
 
@@ -1131,17 +1131,17 @@ class JarvisCore:
         self,
         voice: bool = False,
         ear: bool = False,
-        deepseek_api_key: str = "",
+        hermes_api_key: str = "",
     ) -> None:
         """
         Parameters
         ----------
         voice            : Enable TTS voice output (macOS: say; Windows: SAPI 5).
         ear              : Enable microphone input (cross-platform via SpeechRecognition).
-        deepseek_api_key : Override DeepSeek API key (uses env var if not provided).
+        hermes_api_key : Override Hermes API key (uses env var if not provided).
         """
-        if deepseek_api_key:
-            os.environ["DEEPSEEK_API_KEY"] = deepseek_api_key
+        if hermes_api_key:
+            os.environ["HERMES_API_KEY"] = hermes_api_key
 
         self._voice: Optional["JarvisVoice"] = None
         self._ear: Optional["JarvisEar"] = None
@@ -1172,7 +1172,7 @@ class JarvisCore:
 
         # ── Unrecognised input → conversational reply with live data ─
         if intent is None:
-            api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+            api_key = os.environ.get("HERMES_API_KEY", "")
             try:
                 context = _cached_live_context()
             except Exception:
@@ -1227,8 +1227,8 @@ def repl() -> None:
     print_banner()
     jarvis_say(f"All systems online, {_OPERATOR}. Type 'help' for commands.", "ok")
     jarvis_say("Monitoring: fleet | firewall | lateral movement | OS metrics", "info")
-    if _LG_AVAILABLE and os.environ.get("DEEPSEEK_API_KEY"):
-        jarvis_say("DeepSeek AI triage active — try: 'triage scan for threats'", "ai")
+    if _LG_AVAILABLE and os.environ.get("HERMES_API_KEY"):
+        jarvis_say("Hermes AI triage active — try: 'triage scan for threats'", "ai")
     print()
 
     core = JarvisCore(voice=True, ear=True)

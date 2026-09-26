@@ -39,11 +39,11 @@ update delivery is supported through base-pushed `patch_config` in fleet report 
 - **50+ new INTENT_MAP keywords** — all new commands have natural-language aliases
   covering common voice phrasing variants.
 
-- **DeepSeek model switched to `deepseek-chat` (V3)** — 5–10× faster responses vs
-  `deepseek-reasoner` (chain-of-thought). AI timeout reduced from 60 s → 30 s.
-  Model and timeout are configurable via `DEEPSEEK_MODEL` / `DEEPSEEK_TIMEOUT` env vars.
+- **Hermes model switched to `hermes-chat` (V3)** — 5–10× faster responses vs
+  `hermes-reasoner` (chain-of-thought). AI timeout reduced from 60 s → 30 s.
+  Model and timeout are configurable via `HERMES_MODEL` / `HERMES_TIMEOUT` env vars.
 
-- **`.env` documented** — `DEEPSEEK_MODEL=deepseek-chat` and `DEEPSEEK_TIMEOUT=30` now
+- **`.env` documented** — `HERMES_MODEL=hermes-chat` and `HERMES_TIMEOUT=30` now
   present with inline comments explaining fast vs deep reasoning modes.
 
 - **Existing speed caches confirmed active** — `_cached_snapshot()` and `_cached_live_context()`
@@ -89,7 +89,7 @@ run audit               → runs full CVSS/OWASP vulnerability audit against loc
 
 - **Live telemetry context for conversational AI** — Free-form questions now receive a
   real-time snapshot (threat level, metrics, fleet, firewall history, probe agent statuses)
-  injected into the DeepSeek prompt. JARVIS answers factual questions directly instead
+  injected into the Hermes prompt. JARVIS answers factual questions directly instead
   of returning "I don't have access."
 
 - **35+ new natural-language keywords** added to `INTENT_MAP` covering common phrasing
@@ -114,7 +114,7 @@ server's LAN IP (not `127.0.0.1`) when running `run_persistent_probe.py`.
 
 ---
 
-### [v48] — 2026-06-09 — JARVIS + LangGraph/DeepSeek AI Reasoning
+### [v48] — 2026-06-09 — JARVIS + LangGraph/Hermes AI Reasoning
 
 **Type:** Feature / AI Integration  
 **Severity:** Enhancement (no vulnerability)  
@@ -127,24 +127,24 @@ server's LAN IP (not `127.0.0.1`) when running `run_persistent_probe.py`.
   AI triage, voice I/O, and NG process lifecycle management.
 
 - **LangGraph reasoning engine** (`network_guardian/ai/langgraph_reasoner.py`) — four-node
-  `StateGraph` (ingest → reason → plan → summarize) using **DeepSeek-R1** (`deepseek-reasoner`)
+  `StateGraph` (ingest → reason → plan → summarize) using **Hermes** (`hermes-reasoner`)
   via the OpenAI-compatible API. Replaces keyword-only intent classification in `TriageAgent`
   with chain-of-thought reasoning, structured `action_plan` output, and automatic re-reasoning
   when confidence < 40 %.
 
 - **TriageAgent upgrade** — REASON phase now calls `reason_about_intent()` when
-  `DEEPSEEK_API_KEY` is set; full backward compatibility preserved (keyword fallback active
+  `HERMES_API_KEY` is set; full backward compatibility preserved (keyword fallback active
   when key is absent).
 
 - **62 new tests** in `tests/test_jarvis.py`; **31 new tests** in
-  `tests/test_langgraph_deepseek.py`. Total suite: **715 passed, 0 failed**.
+  `tests/test_langgraph_hermes.py`. Total suite: **715 passed, 0 failed**.
 
 #### Operator Action Required
 
-1. Obtain a DeepSeek API key at https://platform.deepseek.com
+1. Obtain a Hermes API key at https://api.hermes.ai
 2. Add to `.env`:
    ```
-   DEEPSEEK_API_KEY=sk-<your-key>
+   HERMES_API_KEY=sk-<your-key>
    ```
 3. Install new dependencies (if not already present):
    ```bash
@@ -652,7 +652,7 @@ Ensure probe has write access to:
 **`.gitignore`:**
 - `whatsapp_*.log` still present (harmless, covers any future log files with that pattern).
 
-**Full test suite:** 674 passed, 0 failed (excluding `test_langgraph_deepseek.py` which has a pre-existing `langchain_core` import error unrelated to this change).
+**Full test suite:** 674 passed, 0 failed (excluding `test_langgraph_hermes.py` which has a pre-existing `langchain_core` import error unrelated to this change).
 
 ---
 
@@ -710,7 +710,7 @@ Ensure probe has write access to:
 - **Remaining:** HSTS preloads require HTTPS termination at a reverse proxy (nginx/caddy)
   in front of both services. Add to deployment docs.
 
-**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_deepseek.py` failure).
+**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_hermes.py` failure).
 
 ---
 
@@ -756,7 +756,7 @@ Ensure probe has write access to:
 - Service-to-service communication (dashboard ↔ SaaS) uses `127.0.0.1` loopback,
   which is trusted by default on the host.
 
-**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_deepseek.py` failure).
+**Test suite:** All 666 tests pass (excluding pre-existing `test_langgraph_hermes.py` failure).
 
 ---
 

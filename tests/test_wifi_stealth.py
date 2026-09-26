@@ -4,14 +4,18 @@
 """Tests for WiFi Stealth system — network SSID hiding and scanning."""
 
 import asyncio
+import json
 import urllib.error
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from types import SimpleNamespace
+
 from network_guardian.config import Config
 from network_guardian.core.engine import Engine
 from network_guardian.core.events import EventBus
+from network_guardian.interface.dashboard import Dashboard
 from network_guardian.cloaking import (
     GatewayDetector,
     RouterAdmin,
@@ -62,6 +66,46 @@ def router_admin():
 # -----------------------------------------------------------------------
 
 class TestWiFiNetwork:
+    def test_dashboard_wifi_metrics_payload_is_grafana_ready(self):
+        dashboard = Dashboard.__new__(Dashboard)
+        dashboard.engine = SimpleNamespace(
+            wifi_stealth=SimpleNamespace(
+                _scanner=SimpleNamespace(
+                    _last_scan=[
+                        WiFiNetwork(ssid="HomeNet", bssid="AA:BB:CC:DD:EE:FF", signal=-52, channel=6, security="WPA2", frequency="2.4 GHz"),
+                        WiFiNetwork(ssid="Neighbor", bssid="11:22:33:44:55:66", signal=-70, channel=36, security="WPA3", frequency="5 GHz"),
+                    ],
+                    _last_connected=WiFiNetwork(ssid="HomeNet", bssid="AA:BB:CC:DD:EE:FF", signal=-52, channel=6, security="WPA2", frequency="2.4 GHz"),
+                ),
+                _stats_scans=9,
+            )
+        )
+
+        payload = dashboard._api_wifi_metrics()
+        assert payload["connected_network"]["ssid"] == "HomeNet"
+        assert payload["signal_strength"][0]["value"] == -52
+        assert payload["security_breakdown"][0]["label"] in {"WPA2", "WPA3"}
+        assert payload["frequency_bands"][0]["label"] in {"2.4 GHz", "5 GHz"}
+        assert payload["prometheus"]["wifi_signal_dbm"][0]["labels"]["ssid"] == "HomeNet"
+
+    def test_dashboard_wifi_scan_endpoint_returns_networks(self):
+        dashboard = Dashboard.__new__(Dashboard)
+        dashboard.engine = SimpleNamespace(
+            wifi_stealth=SimpleNamespace(
+                scan_networks=AsyncMock(return_value=[
+                    WiFiNetwork(ssid="HomeNet", bssid="AA:BB:CC:DD:EE:FF", signal=-52, channel=6, security="WPA2", frequency="2.4 GHz"),
+                    WiFiNetwork(ssid="Neighbor", bssid="11:22:33:44:55:66", signal=-70, channel=36, security="WPA3", frequency="5 GHz"),
+                ])
+            )
+        )
+
+        response = asyncio.run(dashboard._api_wifi_scan())
+        body = response.split("\r\n\r\n", 1)[1]
+        parsed = json.loads(body)
+        assert parsed["ok"] is True
+        assert len(parsed["networks"]) == 2
+        assert parsed["networks"][0]["ssid"] == "HomeNet"
+
     def test_basic_network(self):
         net = WiFiNetwork(ssid="HomeNet", bssid="AA:BB:CC:DD:EE:FF", signal=75)
         assert net.ssid == "HomeNet"
@@ -91,6 +135,29 @@ class TestWiFiNetwork:
         assert net.channel == 0
         assert net.security == "Unknown"
         assert net.frequency == ""
+
+    def test_wifi_network_detail_payload_includes_devices_and_vulnerabilities(self):
+        net = WiFiNetwork(
+            ssid="GuestNet",
+            bssid="AA:BB:CC:DD:EE:FF",
+            signal=-62,
+            channel=11,
+            security="WPA2-Personal",
+            frequency="2.4 GHz",
+            ip="192.168.1.30",
+            router_ip="192.168.1.1",
+            connected_devices=[
+                {"hostname": "LivingRoom-TV", "ip": "192.168.1.21", "mac": "AA:BB:CC:DD:EE:11"},
+            ],
+            vulnerabilities=[
+                {"severity": "medium", "title": "Weak password policy", "description": "WPA2 PSK in use"},
+            ],
+        )
+        payload = net.as_dict
+        assert payload["ip"] == "192.168.1.30"
+        assert payload["router_ip"] == "192.168.1.1"
+        assert payload["connected_devices"][0]["hostname"] == "LivingRoom-TV"
+        assert payload["vulnerabilities"][0]["title"] == "Weak password policy"
 
 
 # -----------------------------------------------------------------------

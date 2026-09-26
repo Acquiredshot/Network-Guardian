@@ -46,7 +46,8 @@ class Finding:
     title: str
     description: str
     severity: Severity = Severity.INFO
-    host: str | None = None
+    host: str | None = None       # IP address
+    mac: str | None = None       # MAC address (for WiFi/network audits)
     port: int | None = None
     recommendation: str = ""
     references: list[str] = field(default_factory=list)

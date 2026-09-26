@@ -6,7 +6,7 @@
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Launch:                                                         ║
 ║    python jarvis_gui.py                                          ║
-║    DEEPSEEK_API_KEY=sk-...  python jarvis_gui.py                 ║
+║    HERMES_API_KEY=sk-...  python jarvis_gui.py                 ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -201,8 +201,8 @@ class JarvisGUI:
         else:
             # Build JarvisCore WITHOUT voice/ear (those start on background thread)
             self._core = JarvisCore(voice=False, ear=False)
-            has_key = bool(os.environ.get("DEEPSEEK_API_KEY"))
-            ai_txt  = "DeepSeek-R1 ACTIVE" if has_key else "DeepSeek OFFLINE — set DEEPSEEK_API_KEY"
+            has_key = bool(os.environ.get("HERMES_API_KEY"))
+            ai_txt  = "Hermes ACTIVE" if has_key else "Hermes OFFLINE — set HERMES_API_KEY"
             ai_col  = "green" if has_key else "yellow"
             self._append(f"\n  ✓  J.A.R.V.I.S. online.  {ai_txt}\n", ai_col)
             self._append("  Natural language accepted — type, click, or speak a command.\n", "dim")
@@ -373,9 +373,9 @@ class JarvisGUI:
 
         # ── AI Engine Status ──────────────────────────────
         _hdr("AI ENGINE")
-        has_key = bool(os.environ.get("DEEPSEEK_API_KEY"))
+        has_key = bool(os.environ.get("HERMES_API_KEY"))
         ds_col  = C["green"] if has_key else C["yellow"]
-        ds_txt  = "● DeepSeek-R1  ACTIVE" if has_key else "● DeepSeek-R1  OFFLINE"
+        ds_txt  = "● Hermes  ACTIVE" if has_key else "● Hermes  OFFLINE"
         tk.Label(side, text=ds_txt, bg=C["bg_side"], fg=ds_col,
                  font=self._f_mono_sm).pack(anchor=tk.W, padx=10, pady=(6, 2))
 

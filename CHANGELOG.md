@@ -38,7 +38,7 @@ module imports, API surface consistency, inter-module wiring, and metadata align
 
 This release gives J.A.R.V.I.S. direct voice/text access to every major Network Guardian
 security subsystem and cuts AI response latency by 5–10× by switching the default
-reasoning model to DeepSeek V3 (`deepseek-chat`).
+reasoning model to Hermes (`hermes-reasoner`).
 
 ---
 
@@ -68,16 +68,16 @@ commands (e.g. `"check firewall"`, `"show blocked"`, `"intrusion prevention"`,
 
 ---
 
-#### AI Speed Optimization — DeepSeek V3 Default
+#### AI Speed Optimization — Hermes Default
 
-| Setting | Before | After |
-|---|---|---|
-| Default model | `deepseek-reasoner` (chain-of-thought, 10–30 s) | `deepseek-chat` (V3, 1–3 s) |
-| API timeout | 60 s | 30 s |
-| Override mechanism | env var `DEEPSEEK_MODEL` | same — documented in `.env` |
+|| Setting | Before | After |
+||---|---|---|
+|| Default model | `hermes-reasoner` (chain-of-thought, 1–3 s) | `hermes-reasoner` (chain-of-thought, 1–3 s) |
+|| API timeout | 60 s | 30 s |
+|| Override mechanism | env var `HERMES_MODEL` | same — documented in `.env` |
 
-`deepseek-reasoner` remains available for deep triage via `DEEPSEEK_MODEL=deepseek-reasoner`.
-Both `DEEPSEEK_MODEL` and `DEEPSEEK_TIMEOUT` are now documented in `.env` with inline
+`hermes-chat` remains available for fast triage via `HERMES_MODEL=hermes-chat`.
+Both `HERMES_MODEL` and `HERMES_TIMEOUT` are now documented in `.env` with inline
 guidance on when to use each mode.
 
 ---
@@ -137,7 +137,7 @@ A read-only probe awareness engine with three capabilities:
 
 The unrecognised-intent path (free-form questions) now:
 
-1. Builds a real-time telemetry snapshot before calling DeepSeek:
+1. Builds a real-time telemetry snapshot before calling Hermes:
    - Current threat level + score
    - CPU / RAM / disk / uptime
    - Fleet device count (online/offline)
@@ -145,7 +145,7 @@ The unrecognised-intent path (free-form questions) now:
    - Lateral movement summary (total, HIGH/CRITICAL, last 24h)
    - **All registered probe agents** (hostname, IP, status, last seen)
 
-2. Injects snapshot into the DeepSeek system prompt so JARVIS answers
+2. Injects snapshot into the Hermes system prompt so JARVIS answers
    from real data instead of saying "I don't have access."
 
 3. Updated system prompt removes the old "recommend a command" fallback
@@ -171,11 +171,11 @@ The unrecognised-intent path (free-form questions) now:
 
 ## [v48] — 2026-06-09
 
-### Added — J.A.R.V.I.S. Terminal Intelligence Layer + LangGraph / DeepSeek-R1 AI Reasoning
+#### Added — J.A.R.V.I.S. Terminal Intelligence Layer + LangGraph / Hermes AI Reasoning
 
 This release integrates a full conversational terminal shell (**J.A.R.V.I.S.**) into the
 Network Guardian platform and replaces the keyword-based TriageAgent intent classifier
-with a **LangGraph state-machine + DeepSeek-R1 chain-of-thought reasoning engine**.
+with a **LangGraph state-machine + Hermes chain-of-thought reasoning engine**.
 All 715 tests pass; 62 new JARVIS-specific tests added.
 
 ---
@@ -198,7 +198,7 @@ Six new modules form the JARVIS terminal intelligence layer:
 | Keywords | Action |
 |---|---|
 | `situation / status / threat / health` | Full threat + telemetry briefing |
-| `triage / analyze / deep scan / ai scan` | **DeepSeek-R1 chain-of-thought triage** — live telemetry → LangGraph → structured action plan |
+|| `triage / analyze / deep scan / ai scan` | **Hermes chain-of-thought triage** — live telemetry → LangGraph → structured action plan |
 | `start / activate / defenses / deploy` | Launch Network Guardian via SubsystemBootstrapper |
 | `stop / halt / shutdown` | Gracefully halt all NG subsystems |
 | `fleet / devices / nodes / network map` | Show registered fleet from `fleet.json` |
@@ -218,7 +218,7 @@ python -m network_guardian.jarvis.jarvis_core
 #### New Module: `network_guardian/ai/langgraph_reasoner.py`
 
 Replaces keyword-only intent classification in `TriageAgent` with a full
-**LangGraph state-machine + DeepSeek-R1** chain-of-thought reasoning pipeline.
+- **LangGraph + Hermes** (`hermes-reasoner`) chain-of-thought reasoning pipeline.
 
 **Graph topology:**
 ```
@@ -230,8 +230,8 @@ Replaces keyword-only intent classification in `TriageAgent` with a full
 | Node | Role |
 |---|---|
 | `ingest_node` | Normalises threat observations and system-state snapshot into graph state |
-| `reason_node` | Calls DeepSeek-R1 (`deepseek-reasoner`) via OpenAI-compatible API; parses `<think>…</think>` chain-of-thought; returns `intent_class`, `confidence`, `action_plan`, `recommendations` |
-| `plan_node` | Validates DeepSeek plan; applies per-`intent_class` fallback actions when plan is empty |
+| `reason_node` | Calls Hermes (`hermes-reasoner`) via OpenAI-compatible API; parses `<think>…</think>` chain-of-thought; returns `intent_class`, `confidence`, `action_plan`, `recommendations` |
+| `plan_node` | Validates Hermes plan; applies per-`intent_class` fallback actions when plan is empty |
 | `summarize_node` | Assembles final findings list from all reasoning artefacts |
 
 **Re-reasoning loop:** if `confidence < 0.40` and only one iteration has occurred,
@@ -245,21 +245,21 @@ result = await reason_about_intent(
     intent="scan for lateral movement",
     system_state=telemetry.full_snapshot(),
     observations={},
-    api_key=os.environ["DEEPSEEK_API_KEY"],
+    api_key=os.environ["HERMES_API_KEY"],
 )
-# result keys: intent_class, confidence, deepseek_reasoning, action_plan, recommendations, findings
+# result keys: intent_class, confidence, hermes_reasoning, action_plan, recommendations, findings
 ```
 
-**Activation:** set `DEEPSEEK_API_KEY` in `.env`. Falls back gracefully to the existing
+**Activation:** set `HERMES_API_KEY` in `.env`. Falls back gracefully to the existing
 keyword scorer if the key is absent or the API is unreachable.
 
 ---
 
 #### Modified: `network_guardian/agent/triage_agent.py`
 
-- **REASON phase** — when `DEEPSEEK_API_KEY` is set, calls `reason_about_intent()` and maps the
-  returned `intent_class` string to `IntentClass` enum; uses DeepSeek's structured `action_plan` directly.
-- **LEARN phase** — DeepSeek `recommendations` are prepended to keyword-built recommendations list.
+- **REASON phase** — when `HERMES_API_KEY` is set, calls `reason_about_intent()` and maps the
+  returned `intent_class` string to `IntentClass` enum; uses Hermes' structured `action_plan` directly.
+- **LEARN phase** — Hermes `recommendations` are prepended to keyword-built recommendations list.
 - Keyword scorer retained as fallback; zero behaviour change if env var is absent.
 
 ---
@@ -273,12 +273,12 @@ keyword scorer if the key is absent or the API is unreachable.
 | `TestSubsystemBootstrapper` | Root auto-detection, env var override, environment validation (6 tests) |
 | `TestParseIntent` | 23 NL→intent mappings, empty/unknown inputs, longest-match win, completeness (28 tests) |
 | `TestJarvisCore` | dispatch(), help output, situation, exit (5 tests) |
-| `TestJarvisTriage` | DeepSeek mocked result, fallback without key, LG unavailable, exception handling, low confidence (5 tests) |
+| `TestJarvisTriage` | Hermes mocked result, fallback without key, LG unavailable, exception handling, low confidence (5 tests) |
 | `TestJarvisIntegration` | Full situation flow, report/print parity, snapshot integrity (3 tests) |
 
 ---
 
-#### New Tests: `tests/test_langgraph_deepseek.py` (31 tests)
+#### New Tests: `tests/test_langgraph_hermes.py` (31 tests)
 
 Covers all four graph nodes, re-reasoning conditional, full graph runs, TriageAgent
 integration path, and graph structure validation. All LLM calls mocked via
@@ -290,10 +290,10 @@ integration path, and graph structure validation. All LLM calls mocked via
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | — | Activates LangGraph + DeepSeek-R1 reasoning |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Override DeepSeek API endpoint |
-| `DEEPSEEK_MODEL` | `deepseek-reasoner` | Override model name |
-| `DEEPSEEK_TIMEOUT` | `60` | API call timeout (seconds) |
+|| `HERMES_API_KEY` | — | Activates LangGraph + Hermes reasoning |
+|| `HERMES_BASE_URL` | `https://api.hermes.ai` | Override Hermes API endpoint |
+|| `HERMES_MODEL` | `hermes-reasoner` | Override model name |
+|| `HERMES_TIMEOUT` | `60` | API call timeout (seconds) |
 | `JARVIS_OPERATOR` | `Network Guardian Operator` | Operator name used in JARVIS greetings |
 | `NG_ROOT` | auto-detected | Override NG project root for SubsystemBootstrapper |
 | `NG_DATA_ROOT` | `~/.network_guardian` | Override data directory for TelemetryAggregator |
@@ -320,7 +320,7 @@ Install: `pip install langgraph langchain-openai langchain-core`
 |---|---|---|
 | Total tests | 653 | **715** |
 | JARVIS tests | 0 | **62** |
-| LangGraph/DeepSeek tests | 0 | **31** |
+| LangGraph/Hermes tests | 0 | **31** |
 | Failures | 0 | **0** |
 
 ---

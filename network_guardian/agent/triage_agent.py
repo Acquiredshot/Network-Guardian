@@ -70,7 +70,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("network_guardian.agent.triage")
 
 # ---------------------------------------------------------------------------
-# LangGraph + DeepSeek reasoner — optional; activated when DEEPSEEK_API_KEY
+# LangGraph + Hermes reasoner — optional; activated when HERMES_API_KEY
 # is set or explicitly passed to TriageAgent.triage().
 # ---------------------------------------------------------------------------
 
@@ -386,20 +386,20 @@ class TriageAgent:
         state_snap = self._state.to_dict()
 
         # ── REASON ───────────────────────────────────────────────────────
-        # Prefer LangGraph + DeepSeek when available; fallback to keyword scorer.
-        deepseek_key = (
-            context.get("deepseek_api_key")
-            or os.getenv("DEEPSEEK_API_KEY", "")
+        # Prefer LangGraph + Hermes when available; fallback to keyword scorer.
+        hermes_key = (
+            context.get("hermes_api_key")
+            or os.getenv("HERMES_API_KEY", "")
         )
         lg_result: dict | None = None
-        if _LANGGRAPH_AVAILABLE and deepseek_key:
+        if _LANGGRAPH_AVAILABLE and hermes_key:
             try:
-                _step("REASON", "Invoking LangGraph + DeepSeek reasoner…")
+                _step("REASON", "Invoking LangGraph + Hermes reasoner…")
                 lg_result = await _lg_reason(
                     intent=intent,
                     system_state=state_snap,
                     observations=context,
-                    api_key=deepseek_key,
+                    api_key=hermes_key,
                 )
                 lg_class_str = lg_result.get("intent_class", "UNKNOWN").upper()
                 try:
@@ -408,13 +408,13 @@ class TriageAgent:
                     intent_class = IntentClass.UNKNOWN
                 confidence = float(lg_result.get("confidence", 0.5))
                 _step("REASON",
-                      f"DeepSeek classified as {intent_class.value} "
+                      f"Hermes classified as {intent_class.value} "
                       f"(confidence={confidence:.1%})",
                       {
                           "intent_class": intent_class.value,
                           "confidence": confidence,
-                          "deepseek_reasoning": lg_result.get("deepseek_reasoning", "")[:500],
-                          "engine": "langgraph+deepseek",
+                          "hermes_reasoning": lg_result.get("hermes_reasoning", "")[:500],
+                          "engine": "langgraph+hermes",
                       })
             except Exception as _lg_exc:
                 logger.warning("[TRIAGE] LangGraph reasoner failed (%s) — falling back to keywords", _lg_exc)
@@ -426,13 +426,13 @@ class TriageAgent:
                       {"intent_class": intent_class.value, "confidence": confidence})
         else:
             intent_class, confidence = _classify_intent(intent)
-            engine_label = "keyword" if not _LANGGRAPH_AVAILABLE else "keyword (no DEEPSEEK_API_KEY)"
+            engine_label = "keyword" if not _LANGGRAPH_AVAILABLE else "keyword (no HERMES_API_KEY)"
             _step("REASON", f"[{engine_label}] Classified as {intent_class.value} (confidence={confidence:.1%})", {
                 "intent_class": intent_class.value,
                 "confidence": confidence,
             })
 
-        # Build execution plan — honour DeepSeek's plan when available
+        # Build execution plan — honour Hermes' plan when available
         if lg_result and lg_result.get("action_plan"):
             plan = [
                 GoalStep(
@@ -504,7 +504,7 @@ class TriageAgent:
 
         # ── LEARN ─────────────────────────────────────────────────────────
         recommendations = self._build_recommendations(intent_class, findings)
-        # Prepend DeepSeek recommendations when available (they are more specific)
+        # Prepend Hermes recommendations when available (they are more specific)
         if lg_result and lg_result.get("recommendations"):
             ds_recs = [r for r in lg_result["recommendations"] if r not in recommendations]
             recommendations = ds_recs + recommendations
