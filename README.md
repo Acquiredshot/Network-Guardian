@@ -3,7 +3,7 @@
 > **Autonomous network security platform** — IDS/IPS, 24/7 AI anomaly detection, LangGraph + DeepSeek-R1 triage, a J.A.R.V.I.S. conversational terminal shell, malware/ransomware ReAct agents, fleet agents with covert comms, automatic PDF/Markdown incident reporting, remote control via chat, a live web dashboard, and a SaaS multi-tenant control plane. Pure Python 3.13, zero heavy ML deps.
 
 **Live demo:** Hosted cloud demo (credentials provided separately)
-**Current state:** v54, production-hardened, version 1.0.0. See [CHANGELOG.md](CHANGELOG.md) and [PATCHES.md](PATCHES.md) for full release history.
+**Current state:** v55, production-hardened, version 1.0.0. Wolf-Pak Phase 1 scaffolding is complete and verified. See [CHANGELOG.md](CHANGELOG.md) and [PATCHES.md](PATCHES.md) for full release history.
 
 **Copyright (c) 2026 Wolf-Pak Innovations LLC. All Rights Reserved.**
 
@@ -30,6 +30,123 @@
 | **Desktop App** | Native PyQt5 firewall console sharing the same engine as the web dashboard |
 | **Password Manager** | CLI credential vault + team account management — PBKDF2-HMAC-SHA256 |
 | **Plugin System** | Extensible registry for custom sensors, models, and dashboard components |
+
+## Roadmap — Wolf-Pak Platform
+
+Network Guardian is one pillar of the broader Wolf-Pak security platform. The full architecture combines three product pillars into a unified security backplane.
+
+```
+┌────────────────────────┐
+│    WOLF-PAK PLATFORM   │
+└────────────┬───────────┘
+             │
+    ┌────────┼────────┐
+    │        │        │
+    ▼        ▼        ▼
+NETWORK    PAKSHIELD  MASK
+GUARDIAN   Identity   Network/
+           Risk &     Asset
+           Access     Intelligence
+    │        │        │
+    └────────┼────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│ WOLF-PAK SECURITY CORE  │
+│  Event Fabric           │
+│  Security Graph         │
+│  Threat Intel           │
+└─────────────┬───────────┘
+              │
+              ▼
+┌─────────────────────────┐
+│ AI SECURITY ORCHESTRATOR│
+│  Detection              │
+│  Investigation          │
+│  Response               │
+└─────────────┬───────────┘
+              │
+              ▼
+         POLICY ENGINE
+              │
+              ▼
+         ACTION GATEWAY
+              │
+              ▼
+       CUSTOMER ENVIRONMENT
+```
+
+### Three Pillars
+
+| Pillar | Role | Status |
+|--------|------|--------|
+| **Network Guardian** (this repo) | Network security detection/response — IDS/IPS, fleet agents, AI monitor, malware/ransomware ReAct, dashboard, SaaS control plane | ✅ Existing (v1.0.0) |
+| **Pakshield** | Identity risk scoring + access control evaluation — anomaly detection on auth events, policy-based access decisions, audit evidence | 🟡 Phase 1 scaffolded |
+| **Mask Network** | Network/asset intelligence — asset discovery, threat mapping (IOC correlation), vulnerability assessment (exposure scoring) | 🟡 Phase 1 scaffolded |
+
+### Security Core Pipeline
+
+```
+Event Fabric → Security Graph → Threat Intel
+     │
+     ▼
+AI Security Orchestrator (Detection → Investigation → Response)
+     │
+     ▼
+Policy Engine → Action Gateway → Customer Environment
+```
+
+- **Event Fabric** — normalises security events from all three pillars into a common `SecurityEvent` format; fan-out via `asyncio.Queue` to handlers.
+- **Security Graph** — in-memory entity-relationship store binding assets, identities, threats, vulnerabilities, and events into a unified context model.
+- **AI Security Orchestrator** — detects threats from events, investigates them with graph context, and plans response actions.
+- **Policy Engine** — evaluates proposed actions against policies (scope, action-type allow/block, auto-approve vs. human-approval thresholds) before they reach the gateway.
+- **Action Gateway** — executes policy-approved actions in the customer environment via backend integrations (NG engine, Pakshield identity, cloud APIs).
+
+### Implementation Phases
+
+| Phase | Focus | Deliverables | Status |
+|-------|-------|-------------|--------|
+| **P1** | Scaffold all pillars + core | `pakshield/`, `network_intelligence/`, `wolf_pak_security_core/`, `ai_security_orchestrator/`, `policy_engine/`, `action_gateway/` with phase-1 stubs | ✅ Done |
+| **P2** | Wire pillars into Security Core | Event Fabric ingestion from NG + Pakshield + Mask; Security Graph bulk ingest; orchestrator plugged into event fabric | 🔲 Next |
+| **P3** | Pakshield deep implementation | Identity risk ML models, tap into NG auth/access events, real access control policies, audit trail | 🔲 |
+| **P4** | Mask Network deep implementation | Active subnet discovery, external threat-feed integration, CVE lookup, per-asset exposure dashboards | 🔲 |
+| **P5** | Production hardening | Persistent graph store (SQLite/PostgreSQL), event archival, action audit trail, dashboard pages for new pillars, end-to-end tests | 🔲 |
+
+### Directory Layout (new pillars)
+
+```
+pakshield/
+  __init__.py
+  identity_risk/     # IdentityRiskEvaluator, RiskScore
+  access_control/    # AccessControlEngine, AccessDecision
+network_intelligence/
+  __init__.py
+  asset_discovery/   # AssetDiscovery, Asset
+  threat_mapping/    # ThreatMapper, ThreatMapping
+  vuln_assessment/   # VulnAssessor, Vulnerability
+wolf_pak_security_core/
+  __init__.py
+  event_fabric/      # EventFabric, SecurityEvent
+  security_graph/    # SecurityGraph, GraphNode/Edge
+ai_security_orchestrator/
+  __init__.py
+  detection/         # DetectionEngine, DetectionFinding
+  investigation/     # InvestigationEngine, InvestigationCase
+  response/          # ResponsePlanner, ResponsePlan
+policy_engine/
+  __init__.py
+  rules/             # PolicyEngine, Policy, PolicyVerdict
+  evaluation/        # EvaluationPipeline, PlanDecision
+action_gateway/
+  __init__.py
+  execution/         # ActionGateway, ActionExecutor
+  integration/       # ActionGatewayIntegration
+  connectors/        # FirewallApiExecutor, backend stubs
+```
+
+Full phase detail, per-module status table, test plan, and risk register: [WOLF-PAK_ROADMAP.md](WOLF-PAK_ROADMAP.md).
+
+---
 
 ## Dashboard Pages
 
