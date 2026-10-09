@@ -1,0 +1,39 @@
+      <div class="data-state data-state-banner" data-kind="not-implemented">
+        <span class="data-state-badge">NOT IMPLEMENTED</span>
+        <strong>The pipeline is detect-only. No prevention or enforcement component exists.</strong>
+        <p>The API exposes no blocking, containment, or policy-enforcement endpoints, and no traffic is dropped, blocked, or modified. Everything on this page reflects that state and does not show simulated prevention data.</p>
+      </div>
+
+      <div class="kpi-grid">
+        <article class="kpi panel"><p class="section-label">Blocked actions</p><p class="kpi-value kpi-text muted-text">NO TELEMETRY</p><p class="kpi-note">No enforcement data source</p></article>
+        <article class="kpi panel"><p class="section-label">Prevention events</p><p class="kpi-value kpi-text muted-text">NO TELEMETRY</p><p class="kpi-note">No prevention event stream</p></article>
+        <article class="kpi panel"><p class="section-label">Active policies</p><p class="kpi-value kpi-text muted-text">NOT IMPLEMENTED</p><p class="kpi-note">No policy store or API</p></article>
+        <article class="kpi panel"><p class="section-label">Enforcement mode</p><p class="kpi-value kpi-text amber-text">DETECT ONLY</p><p class="kpi-note">Detections raise incidents, never blocks</p></article>
+      </div>
+
+      <div class="page-grid">
+        <section class="panel module" aria-label="Prevention and enforcement activity">
+          <div class="module-heading"><div><p class="section-label">Prevention / enforcement activity</p><h2>Enforcement over time</h2></div><span class="quiet-tag">NO TELEMETRY</span></div>
+          <div class="empty-visual">
+            <div class="chart-grid" aria-hidden="true"></div>
+            <div class="empty-copy"><span class="empty-glyph" aria-hidden="true">—</span><strong>NO TELEMETRY</strong><span>No enforcement point reports prevention activity to the pipeline.</span></div>
+          </div>
+        </section>
+
+        <section class="panel module" aria-label="Policy and enforcement status">
+          <div class="module-heading"><div><p class="section-label">Policy / enforcement status</p><h2>Enforcement capabilities</h2></div><span class="quiet-tag warning-tag">DETECT ONLY</span></div>
+          <ul class="telemetry-list">
+            <li><span class="telemetry-name">Inline traffic blocking</span><span class="telemetry-detail">No inline enforcement point</span><span class="status-chip" data-state="unknown">NOT IMPL.</span></li>
+            <li><span class="telemetry-name">Firewall / ACL push</span><span class="telemetry-detail">No firewall integration</span><span class="status-chip" data-state="unknown">NOT IMPL.</span></li>
+            <li><span class="telemetry-name">Host containment</span><span class="telemetry-detail">No EDR integration</span><span class="status-chip" data-state="unknown">NOT IMPL.</span></li>
+            <li><span class="telemetry-name">Prevention policies</span><span class="telemetry-detail">No policy API</span><span class="status-chip" data-state="unknown">NOT IMPL.</span></li>
+            <li data-integration="network_guardian"><span class="telemetry-name">Network Guardian push</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          </ul>
+          <p class="module-footnote">Network Guardian receives incident notifications only and does not enforce anything. Response today is manual analyst review, which you can preview on the <a href="/incidents">Incidents</a> page.</p>
+        </section>
+      </div>
+
+      <section class="panel module data-module" aria-label="Blocked actions and prevention events">
+        <div class="module-heading"><div><p class="section-label">Blocked actions / prevention events</p><h2>Enforcement log</h2></div><span class="quiet-tag">0 RECORDS</span></div>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Action</th><th>Policy</th><th>Source</th><th>Destination</th><th>Result</th></tr></thead><tbody><tr><td colspan="6" class="table-empty">NO TELEMETRY · No enforcement endpoint exists, so no blocked actions or prevention events can be recorded.</td></tr></tbody></table></div>
+      </section>

@@ -1,0 +1,5 @@
+-e ../..
+fastapi
+uvicorn[standard]
+pika
+pydantic-settings

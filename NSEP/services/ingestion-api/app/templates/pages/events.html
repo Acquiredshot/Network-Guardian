@@ -1,0 +1,34 @@
+      <section class="panel module data-module" id="eventList" aria-label="Event table">
+        <div class="module-heading"><div><p class="section-label">Event stream</p><h2>Persisted security events</h2></div><span class="quiet-tag" data-total>Loading</span></div>
+        <form class="data-filters" data-filters>
+          <label>Search<input name="q" type="search" placeholder="ID, source, type, payload"></label>
+          <label>Source<input name="source" placeholder="Any source"></label>
+          <label>Event type<input name="event_type" placeholder="Any event type"></label>
+          <label>Severity<select name="severity"><option value="">All severities</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select></label>
+          <label>Status<select name="status"><option value="">All statuses</option><option>accepted</option><option>published</option><option>processing</option><option>processed</option><option>failed</option></select></label>
+          <div class="filter-actions"><button class="action-button secondary-action" type="submit">Apply</button><button class="action-button ghost-action" type="reset">Reset</button></div>
+        </form>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th><button class="sort-button" data-sort type="button">Timestamp <span>↕</span></button></th><th>Source</th><th>Event type</th><th>Severity</th><th>Status</th><th>Incident</th><th></th></tr></thead><tbody data-rows><tr><td colspan="7" class="table-empty">Loading events…</td></tr></tbody></table></div>
+        <div class="table-footer"><span data-page-info>Loading</span><div class="page-actions"><button class="page-button" data-prev type="button" aria-label="Previous events">←</button><button class="page-button" data-next type="button" aria-label="Next events">→</button></div></div>
+
+        <section class="record-detail" id="eventDetail" hidden aria-live="polite">
+          <div class="module-heading"><div><p class="section-label">Selected event</p><h2 data-detail-title>Event details</h2></div><button class="icon-button" id="closeEventDetail" type="button" title="Close event details" aria-label="Close event details">×</button></div>
+          <dl class="detail-grid" data-detail-fields></dl>
+          <pre class="json-detail" data-detail-json></pre>
+          <div class="detail-actions"><a class="row-action" data-link-explorer href="/explorer">Inspect in Explorer →</a><a class="row-action" data-link-incident href="/incidents" hidden>Open incident →</a></div>
+        </section>
+      </section>
+
+      <section class="panel module form-module" aria-label="Submit a security event">
+        <div class="module-heading"><div><p class="section-label">Event operations</p><h2>Submit a security event</h2></div><span class="method-tag post-tag">POST</span></div>
+        <p class="module-intro">Submits to the existing ingestion endpoint. The response includes the event ID for status lookup.</p>
+        <form id="eventForm" class="operation-form">
+          <label>Source<input name="source" maxlength="128" required placeholder="sensor-01"></label>
+          <label>Event type<input name="event_type" maxlength="128" required placeholder="authentication_failure"></label>
+          <label class="wide-field">Occurred at<input name="occurred_at" type="datetime-local" required></label>
+          <label class="wide-field">Payload (JSON)<textarea name="payload" rows="4" required>{}</textarea></label>
+          <label class="wide-field">Metadata (JSON)<textarea name="metadata" rows="3">{}</textarea></label>
+          <button class="action-button" type="submit">Submit event</button>
+        </form>
+        <div class="result-box" id="eventSubmitResult" aria-live="polite" hidden></div>
+      </section>

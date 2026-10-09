@@ -1,0 +1,50 @@
+      <div class="kpi-grid">
+        <article class="kpi panel"><p class="section-label">Active threats</p><p class="kpi-value" data-kpi="active_threats">—</p><p class="kpi-note">Detections on open / investigating incidents</p></article>
+        <article class="kpi panel"><p class="section-label">Active incidents</p><p class="kpi-value" data-kpi="active_incidents">—</p><p class="kpi-note">Open or investigating</p></article>
+        <article class="kpi panel"><p class="section-label">Critical detections</p><p class="kpi-value critical-text" data-kpi="critical">—</p><p class="kpi-note">All persisted detections</p></article>
+        <article class="kpi panel"><p class="section-label">High detections</p><p class="kpi-value high-text" data-kpi="high">—</p><p class="kpi-note">All persisted detections</p></article>
+      </div>
+
+      <div class="page-grid">
+        <section class="panel module" aria-label="Threat activity timeline">
+          <div class="module-heading"><div><p class="section-label">Threat activity timeline</p><h2>Detections per hour</h2></div><span class="quiet-tag">LAST 24 HOURS</span></div>
+          <div class="empty-visual" id="threatTimelineEmpty">
+            <div class="chart-grid" aria-hidden="true"></div>
+            <div class="empty-copy"><strong>Awaiting detections</strong><span>Hourly buckets are derived from persisted detection timestamps.</span></div>
+          </div>
+          <div class="activity-chart threat-chart" id="threatTimeline" hidden aria-label="Hourly detections over the last 24 hours"></div>
+          <p class="module-footnote" id="threatTimelineCoverage">Loading detection sample…</p>
+        </section>
+
+        <section class="panel module" aria-label="Detection summary">
+          <div class="module-heading"><div><p class="section-label">Detection summary</p><h2>Active threats by rule</h2></div><span class="quiet-tag">ACTIVE INCIDENTS</span></div>
+          <div class="empty-state" id="activeRulesEmpty"><span class="empty-glyph" aria-hidden="true">—</span><div><strong>Awaiting classified telemetry</strong><p>Loading active detections.</p></div></div>
+          <div class="rule-summary" id="activeRules" hidden></div>
+        </section>
+      </div>
+
+      <div class="page-grid">
+        <section class="panel module" aria-label="Detection rule breakdown">
+          <div class="module-heading"><div><p class="section-label">Detection rule breakdown</p><h2>All detections by rule</h2></div><span class="quiet-tag" id="ruleBreakdownTotal">Loading</span></div>
+          <div class="breakdown" id="ruleBreakdown"></div>
+          <p class="module-footnote">Exact counts from <code>/api/v1/detections</code> totals, per worker rule.</p>
+        </section>
+
+        <section class="panel module" aria-label="Risk scores">
+          <div class="module-heading"><div><p class="section-label">Risk scores</p><h2>Highest-risk active incidents</h2></div><span class="quiet-tag">TOP 8</span></div>
+          <div class="risk-list" id="riskList"></div>
+          <p class="module-footnote">Risk is the highest detection-severity weight on the incident: low 20 · medium 50 · high 75 · critical 100.</p>
+        </section>
+      </div>
+
+      <section class="panel module data-module" id="detectionList" aria-label="Detections">
+        <div class="module-heading"><div><p class="section-label">Detections</p><h2>Persisted detections</h2></div><span class="quiet-tag" data-total>Loading</span></div>
+        <form class="data-filters compact-filters" data-filters>
+          <label>Search<input name="q" type="search" placeholder="Rule, event, incident"></label>
+          <label>Severity<select name="severity"><option value="">All severities</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select></label>
+          <label>Rule<input name="rule" placeholder="Any rule"></label>
+          <div class="filter-actions"><button class="action-button secondary-action" type="submit">Apply</button><button class="action-button ghost-action" type="reset">Reset</button></div>
+        </form>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Detected</th><th>Rule</th><th>Severity</th><th>Source</th><th>Incident status</th><th>Risk</th><th>Event</th><th>Incident</th></tr></thead><tbody data-rows><tr><td colspan="8" class="table-empty">Loading detections…</td></tr></tbody></table></div>
+        <div class="table-footer"><span data-page-info>Loading</span><div class="page-actions"><button class="page-button" data-prev type="button" aria-label="Previous detections">←</button><button class="page-button" data-next type="button" aria-label="Next detections">→</button></div></div>
+      </section>

@@ -1,0 +1,55 @@
+      <div class="kpi-grid status-cards" role="group" aria-label="Filter incidents by status">
+        <button class="kpi panel status-card" type="button" data-status-filter="open"><p class="section-label">Open</p><p class="kpi-value" data-status-count="open">—</p><p class="kpi-note">Awaiting triage</p></button>
+        <button class="kpi panel status-card" type="button" data-status-filter="investigating"><p class="section-label">Investigating</p><p class="kpi-value amber-text" data-status-count="investigating">—</p><p class="kpi-note">Under analyst review</p></button>
+        <button class="kpi panel status-card" type="button" data-status-filter="resolved"><p class="section-label">Resolved</p><p class="kpi-value muted-text" data-status-count="resolved">—</p><p class="kpi-note">Closed incidents</p></button>
+        <button class="kpi panel status-card" type="button" data-status-filter=""><p class="section-label">All incidents</p><p class="kpi-value" data-status-count="">—</p><p class="kpi-note">Every persisted incident</p></button>
+      </div>
+
+      <section class="panel module data-module" id="incidentList" aria-label="Incident register">
+        <div class="module-heading"><div><p class="section-label">Incident register</p><h2>Correlated incidents</h2></div><span class="quiet-tag" data-total>Loading</span></div>
+        <form class="data-filters compact-filters" data-filters>
+          <label>Search<input name="q" type="search" placeholder="Incident, event, source, rule"></label>
+          <label>Status<select name="status"><option value="">All statuses</option><option>open</option><option>investigating</option><option>resolved</option></select></label>
+          <div class="filter-actions"><button class="action-button secondary-action" type="submit">Apply</button><button class="action-button ghost-action" type="reset">Reset</button></div>
+        </form>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Updated</th><th>Incident / source</th><th>Severity</th><th>Risk</th><th>Status</th><th>Detections</th><th></th></tr></thead><tbody data-rows><tr><td colspan="7" class="table-empty">Loading incidents…</td></tr></tbody></table></div>
+        <div class="table-footer"><span data-page-info>Loading</span><div class="page-actions"><button class="page-button" data-prev type="button" aria-label="Previous incidents">←</button><button class="page-button" data-next type="button" aria-label="Next incidents">→</button></div></div>
+      </section>
+
+      <div class="workspace-grid incident-workspace">
+        <section class="panel module investigation-module" id="incidentInvestigation" aria-label="Incident investigation">
+          <div class="module-heading"><div><p class="section-label">Progressive drill-down</p><h2>Investigate incident</h2></div><span class="quiet-tag">READ ONLY</span></div>
+          <form id="incidentLookupForm" class="lookup-form">
+            <label for="incidentIdInput">Incident ID</label><div class="input-row"><input id="incidentIdInput" name="incident_id" autocomplete="off" placeholder="UUID from an incident record" required><button class="action-button" type="submit">Get incident</button></div>
+          </form>
+          <div class="data-state" id="investigationEmpty" data-kind="awaiting-selection"><span class="data-state-badge">AWAITING SELECTION</span><strong>Select an incident</strong><p>Open an incident from the register or enter its ID to load its details, timeline, and relationships.</p></div>
+          <div class="detail-actions" id="incidentLinks" hidden><a class="row-action" id="incidentEventLink" href="/explorer">Inspect source event →</a></div>
+          <div class="result-box" data-incident-result aria-live="polite" hidden></div>
+          <div class="incident-investigation" data-incident-investigation hidden>
+            <section><p class="section-label">Incident timeline</p><ol class="actual-timeline" data-incident-timeline></ol></section>
+            <section><p class="section-label">Event / incident / detection graph</p><div class="relationship-graph" data-incident-graph></div></section>
+          </div>
+        </section>
+
+        <div class="side-stack">
+          <section class="panel module" aria-label="Zammad integration status">
+            <div class="module-heading"><div><p class="section-label">Ticketing</p><h2>Zammad integration</h2></div><span class="quiet-tag">LIVE STATUS</span></div>
+            <ul class="telemetry-list">
+              <li data-integration="zammad"><span class="telemetry-name">Zammad ticketing</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+            </ul>
+            <p class="module-footnote">When enabled, the workers open a Zammad ticket for each new incident. The pipeline does not store ticket numbers, so ticket links for individual incidents are <strong>NOT AVAILABLE</strong>.</p>
+          </section>
+
+          <section class="panel module playbook-module" aria-label="Response preview">
+            <div class="module-heading"><div><p class="section-label">Playbook / response</p><h2>Response preview</h2></div><span class="quiet-tag warning-tag">SIMULATION ONLY</span></div>
+            <div class="playbook-steps">
+              <div><span>TRIGGER</span><strong id="playbookTrigger">Incident with detections</strong></div>
+              <div><span>ACTION</span><strong>Manual analyst review</strong></div>
+              <div><span>NOTIFY</span><strong>No notifier connected</strong></div>
+            </div>
+            <button class="action-button secondary-action simulate-button" id="simulatePlaybook" type="button">Preview response flow</button>
+            <div class="simulation-result" id="playbookResult" aria-live="polite" hidden></div>
+            <p class="module-footnote">This panel is illustrative only. It does not run or queue response actions.</p>
+          </section>
+        </div>
+      </div>

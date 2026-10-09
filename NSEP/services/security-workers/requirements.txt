@@ -1,0 +1,4 @@
+-e ../..
+celery[redis]
+pydantic-settings
+requests>=2.32,<3

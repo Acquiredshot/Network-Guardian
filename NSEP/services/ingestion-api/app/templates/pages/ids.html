@@ -1,0 +1,43 @@
+      <div class="kpi-grid">
+        <article class="kpi panel"><p class="section-label">Detection engine</p><p class="kpi-value kpi-text ready-text">RULES</p><p class="kpi-note">Security-worker rule evaluation</p></article>
+        <article class="kpi panel"><p class="section-label">Signatures loaded</p><p class="kpi-value" data-kpi="signatures">—</p><p class="kpi-note">Defined in worker detection code</p></article>
+        <article class="kpi panel"><p class="section-label">Intrusion detections</p><p class="kpi-value" data-kpi="detections">—</p><p class="kpi-note">All persisted detections</p></article>
+        <article class="kpi panel"><p class="section-label">Network sensor feed</p><p class="kpi-value kpi-text muted-text">NO TELEMETRY</p><p class="kpi-note">No Suricata / Snort / Zeek feed integrated</p></article>
+      </div>
+
+      <div class="page-grid">
+        <section class="panel module" aria-label="Detection rules and signatures">
+          <div class="module-heading"><div><p class="section-label">Detection rules / signatures</p><h2>Active signature set</h2></div><span class="quiet-tag">NO MITRE MAPPING</span></div>
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>Signature</th><th>Condition</th><th>Severity</th><th>Hits</th><th>Last seen</th></tr></thead><tbody id="signatureRows"><tr><td colspan="5" class="table-empty">Loading signatures…</td></tr></tbody></table></div>
+          <p class="module-footnote">Signatures mirror <code>security-workers/app/detection/rules.py</code>. Hit counts and last-seen times come from persisted detections.</p>
+        </section>
+
+        <section class="panel module" aria-label="Detection timeline">
+          <div class="module-heading"><div><p class="section-label">Detection timeline</p><h2>Intrusion detections per hour</h2></div><span class="quiet-tag">LAST 24 HOURS</span></div>
+          <div class="empty-visual" id="idsTimelineEmpty">
+            <div class="chart-grid" aria-hidden="true"></div>
+            <div class="empty-copy"><strong>Awaiting detections</strong><span>Hourly buckets are derived from persisted detection timestamps.</span></div>
+          </div>
+          <div class="activity-chart threat-chart" id="idsTimeline" hidden aria-label="Hourly intrusion detections"></div>
+          <p class="module-footnote" id="idsTimelineCoverage">Loading detection sample…</p>
+        </section>
+      </div>
+
+      <section class="panel module data-module" id="idsList" aria-label="Intrusion detections">
+        <div class="module-heading"><div><p class="section-label">Intrusion detections</p><h2>Signature matches</h2></div><span class="quiet-tag" data-total>Loading</span></div>
+        <form class="data-filters compact-filters" data-filters>
+          <label>Search<input name="q" type="search" placeholder="Signature, event, sensor"></label>
+          <label>Severity<select name="severity"><option value="">All severities</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select></label>
+          <label>Signature<select name="rule" data-rule-options><option value="">All signatures</option></select></label>
+          <div class="filter-actions"><button class="action-button secondary-action" type="submit">Apply</button><button class="action-button ghost-action" type="reset">Reset</button></div>
+        </form>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Detected</th><th>Signature</th><th>Severity</th><th>Sensor / source</th><th>Event type</th><th>Incident</th><th></th></tr></thead><tbody data-rows><tr><td colspan="7" class="table-empty">Loading detections…</td></tr></tbody></table></div>
+        <div class="table-footer"><span data-page-info>Loading</span><div class="page-actions"><button class="page-button" data-prev type="button" aria-label="Previous detections">←</button><button class="page-button" data-next type="button" aria-label="Next detections">→</button></div></div>
+
+        <section class="record-detail" id="idsDetail" hidden aria-live="polite">
+          <div class="module-heading"><div><p class="section-label">Source / destination</p><h2 id="idsDetailTitle">Detection details</h2></div><button class="icon-button" id="closeIdsDetail" type="button" title="Close detection details" aria-label="Close detection details">×</button></div>
+          <dl class="detail-grid" id="idsDetailFields"></dl>
+          <pre class="json-detail" id="idsDetailJson"></pre>
+          <div class="detail-actions"><a class="row-action" id="idsExplorerLink" href="/explorer">Inspect event in Explorer →</a><a class="row-action" id="idsIncidentLink" href="/incidents">Open incident →</a></div>
+        </section>
+      </section>

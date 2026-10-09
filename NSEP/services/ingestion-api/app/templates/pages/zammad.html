@@ -1,0 +1,13 @@
+      <div class="data-state data-state-banner" data-kind="live">
+        <span class="data-state-badge">TICKET CREATION ONLY</span>
+        <strong>NSEP creates a Zammad ticket per new incident. It does not store ticket numbers or list tickets.</strong>
+        <p>Ticket lookup, queues, customers, and analytics require querying Zammad's own API directly and are not available from this dashboard.</p>
+      </div>
+
+      <section class="panel module" aria-label="Zammad connection status">
+        <div class="module-heading"><div><p class="section-label">Ticketing</p><h2>Connection status</h2></div><span class="status-chip" data-state="unknown" id="zammadSummaryTag">CHECKING</span></div>
+        <ul class="telemetry-list" id="zammadIntegrationsList" aria-live="polite">
+          <li data-integration="zammad"><span class="telemetry-name">Zammad ticketing</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+        </ul>
+        <p class="module-footnote">Tickets are created from <code>services/security-workers/app/integrations/zammad.py</code> after each new NSEP incident. See <a href="/incidents">Incidents</a> for the incidents that trigger ticket creation.</p>
+      </section>

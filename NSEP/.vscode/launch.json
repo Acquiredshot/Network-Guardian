@@ -1,0 +1,59 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Ingestion API (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000"
+            ],
+            "cwd": "${workspaceFolder}/services/ingestion-api",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/services/ingestion-api;${workspaceFolder}/services"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true,
+            "preLaunchTask": "ingestion-api: start"
+        },
+        {
+            "name": "Security Workers (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "args": [
+                "-A",
+                "app.celery_app.celery",
+                "worker",
+                "--loglevel=INFO",
+                "--pool=threads",
+                "--without-mingle"
+            ],
+            "cwd": "${workspaceFolder}/services/security-workers",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/services/security-workers;${workspaceFolder}/services"
+            },
+            "console": "integratedTerminal",
+            "subProcess": true,
+            "preLaunchTask": "security-workers: start"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug All Services",
+            "configurations": [
+                "Ingestion API (debug)",
+                "Security Workers (debug)"
+            ],
+            "preLaunchTask": "debug-all-services: start",
+            "stopAll": true
+        }
+    ]
+}

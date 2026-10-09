@@ -1,0 +1,175 @@
+      <section class="panel module architecture-module" aria-label="Network Security Event Pipeline architecture">
+        <div class="module-heading architecture-heading">
+          <div><p class="section-label">NSEP processing map</p><h2>Event to incident workflow</h2></div>
+          <span class="quiet-tag">IMPLEMENTATION VIEW</span>
+        </div>
+        <div class="architecture-track" aria-label="Data flow stages">
+          <a class="flow-node unavailable-node" href="/events">
+            <span class="flow-index">01</span><strong>DATA SOURCES</strong>
+            <small>External connectors</small><span class="flow-state muted-state">NOT CONFIGURED</span>
+          </a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a class="flow-node live-node" href="/events">
+            <span class="flow-index">02</span><strong>INGESTION</strong>
+            <small>Single + batch event APIs</small><span class="flow-state live-state">AVAILABLE</span>
+          </a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a class="flow-node live-node" href="/docs#/Events/publish_event_api_v1_events_post">
+            <span class="flow-index">03</span><strong>VALIDATE / NORMALIZE</strong>
+            <small>EventEnvelope · generated ID</small><span class="flow-state live-state">AVAILABLE</span>
+          </a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a class="flow-node live-node" href="/explorer">
+            <span class="flow-index">04</span><strong>PROCESSING</strong>
+            <small>RabbitMQ · Celery worker</small><span class="flow-state live-state">AVAILABLE</span>
+          </a>
+        </div>
+        <div class="architecture-branches">
+          <span class="branch-caption">WORKER OUTPUTS</span>
+          <a class="branch-node detection-branch" href="/threats"><strong>DETECTION / THREATS</strong><small>Persisted rule findings</small><span class="flow-state live-state">AVAILABLE</span></a>
+          <a class="branch-node entity-branch" href="/incidents"><strong>ENTITIES</strong><small>User / host / IP relationships</small><span class="flow-state muted-state">NOT MODELED</span></a>
+        </div>
+        <div class="architecture-downstream">
+          <a class="downstream-node live-node" href="/incidents"><strong>INCIDENTS</strong><small>Risk · status · detections</small><span class="flow-state live-state">AVAILABLE</span></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a class="downstream-node preview-node" href="/incidents"><strong>RESPONSE</strong><small>Analyst-approved preview</small><span class="flow-state preview-state">SIMULATION ONLY</span></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a class="downstream-node live-node" href="/reports"><strong>DASHBOARD</strong><small>Persisted metrics + telemetry</small><span class="flow-state live-state">LIVE DATA</span></a>
+        </div>
+      </section>
+
+      <section class="panel module validation-module" aria-label="Event validation and normalization flow">
+        <div class="module-heading">
+          <div><p class="section-label">Ingestion contract</p><h2>Validation &amp; normalization</h2></div>
+          <a class="quiet-tag docs-tag" href="/docs#/Events/publish_event_api_v1_events_post">POST /api/v1/events</a>
+        </div>
+        <div class="validation-track">
+          <a href="/events" class="validation-step"><span class="validation-number">01</span><strong>INCOMING EVENT</strong><small>JSON request body</small></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a href="/docs#/Events/publish_event_api_v1_events_post" class="validation-step"><span class="validation-number">02</span><strong>SCHEMA CHECK</strong><small>EventEnvelope fields</small></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a href="/docs#/Events/publish_event_api_v1_events_post" class="validation-step"><span class="validation-number">03</span><strong>REQUIRED / TYPES</strong><small>source · event_type · occurred_at · payload</small></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a href="/docs#/Events/publish_event_api_v1_events_post" class="validation-step"><span class="validation-number">04</span><strong>TIMESTAMP PARSE</strong><small>datetime validation</small></a>
+          <span class="flow-connector" aria-hidden="true">›</span>
+          <a href="/explorer" class="validation-step accepted-step"><span class="validation-number">05</span><strong>NORMALIZE / QUEUE</strong><small>generated event_id · accepted_at</small></a>
+        </div>
+        <p class="validation-note">Severity, user, IP, action, and source allow-list checks are not part of the current top-level EventEnvelope contract.</p>
+      </section>
+
+      <section class="dashboard-section" aria-label="Dashboard overview">
+        <div class="kpi-grid">
+          <a class="kpi panel kpi-link" href="/events">
+            <p class="section-label">Network events</p>
+            <p class="kpi-value" id="eventCount">N/A</p>
+            <p class="kpi-note">Awaiting summary</p>
+          </a>
+          <a class="kpi panel kpi-link" href="/threats">
+            <p class="section-label">Active threats</p>
+            <p class="kpi-value" id="threatCount">N/A</p>
+            <p class="kpi-note">Awaiting summary</p>
+          </a>
+          <a class="kpi panel kpi-link" href="/incidents">
+            <p class="section-label">Incidents</p>
+            <p class="kpi-value" id="incidentCount">N/A</p>
+            <p class="kpi-note">Awaiting summary</p>
+          </a>
+          <article class="kpi panel" id="pipelineKpi" data-state="unknown">
+            <p class="section-label">Pipeline health</p>
+            <p class="kpi-value" id="pipelineValue">Checking</p>
+            <p class="kpi-note" id="pipelineNote">Waiting for health probes</p>
+          </article>
+        </div>
+        <div class="inline-alert test-data-notice" id="testDataNotice" hidden aria-live="polite"></div>
+
+        <div class="overview-grid">
+          <section class="panel module heatmap-module">
+            <div class="module-heading">
+              <div><p class="section-label">Network event heat map</p><h2>Activity by time</h2></div>
+              <span class="quiet-tag">LAST 24 HOURS</span>
+            </div>
+            <div class="empty-visual heatmap-visual" id="heatmapEmpty" role="img" aria-label="Event activity chart loading">
+              <div class="heatmap-grid" aria-hidden="true"></div>
+              <div class="empty-copy"><span class="empty-glyph" aria-hidden="true">—</span><strong>Awaiting event history</strong><span>Hourly buckets are derived from persisted event timestamps.</span></div>
+            </div>
+            <div class="activity-chart" id="heatmapChart" hidden aria-label="Hourly event heat map"></div>
+          </section>
+
+          <section class="panel module telemetry-module" aria-labelledby="telemetryTitle">
+            <div class="module-heading">
+              <div><p class="section-label">Live telemetry</p><h2 id="telemetryTitle">Service signals</h2></div>
+              <button class="icon-button" id="refreshTelemetry" type="button" title="Refresh service telemetry" aria-label="Refresh service telemetry">↻</button>
+            </div>
+            <p class="checked-at" id="checkedAt">Not checked</p>
+            <ul class="telemetry-list" id="telemetryList" aria-live="polite">
+              <li data-service="api"><span class="telemetry-name">API</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+              <li data-service="database"><span class="telemetry-name">Database</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+              <li data-service="broker"><span class="telemetry-name">Broker</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+              <li data-service="cache"><span class="telemetry-name">Cache</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+              <li data-service="ingestion"><span class="telemetry-name">Event ingestion</span><span class="telemetry-detail">No dedicated probe</span><span class="status-chip" data-state="unknown">N/A</span></li>
+              <li data-service="detection"><span class="telemetry-name">Detection pipeline</span><span class="telemetry-detail">No worker health probe</span><span class="status-chip" data-state="unknown">N/A</span></li>
+              <li data-service="incident-processing"><span class="telemetry-name">Incident processing</span><span class="telemetry-detail">No worker health probe</span><span class="status-chip" data-state="unknown">N/A</span></li>
+            </ul>
+            <div class="inline-alert" id="telemetryError" hidden></div>
+          </section>
+        </div>
+
+        <div class="signal-grid">
+          <section class="panel module traffic-module">
+            <div class="module-heading"><div><p class="section-label">Network traffic</p><h2>Ingestion over time</h2></div><span class="quiet-tag">HOURLY COUNTS</span></div>
+            <div class="empty-visual traffic-visual" id="trafficEmpty" role="img" aria-label="Network event activity loading">
+              <div class="chart-grid" aria-hidden="true"></div>
+              <div class="empty-copy"><strong>Awaiting event activity</strong><span>Counts reflect persisted event timestamps from the last 24 hours.</span></div>
+            </div>
+            <div class="activity-chart traffic-chart" id="trafficChart" hidden aria-label="Hourly event activity over the last 24 hours"></div>
+          </section>
+
+          <section class="panel module threat-module">
+            <div class="module-heading"><div><p class="section-label">Threat summary</p><h2>Classified activity</h2></div><a class="quiet-tag docs-tag" href="/threats">OPEN THREATS →</a></div>
+            <div class="empty-state" id="threatSummaryEmpty"><span class="empty-glyph" aria-hidden="true">—</span><div><strong>Awaiting classified telemetry</strong><p>No detections are currently stored for active incidents.</p></div></div>
+            <div class="rule-summary" id="ruleSummary" hidden></div>
+          </section>
+
+          <section class="panel module triage-module">
+            <div class="module-heading"><div><p class="section-label">Multi-dimensional triage</p><h2>Worker detection rules</h2></div><a class="quiet-tag docs-tag" href="/ids">IDS SIGNATURES →</a></div>
+            <div class="rule-list" data-worker-rules></div>
+            <p class="module-footnote">Rules are read from the current worker implementation. ATT&amp;CK mappings are not available.</p>
+          </section>
+        </div>
+      </section>
+
+      <div class="capability-grid">
+        <section class="panel module" aria-label="SOC workspaces">
+          <div class="module-heading"><div><p class="section-label">SOC workspaces</p><h2>Investigate further</h2></div><span class="quiet-tag">DEDICATED PAGES</span></div>
+          <div class="workspace-links">
+            <a href="/events"><strong>EVENTS</strong><small>Event stream, filters, drill-down, submission</small></a>
+            <a href="/threats"><strong>THREATS</strong><small>Detections, risk scores, rule breakdown</small></a>
+            <a href="/ids"><strong>IDS</strong><small>Signatures and intrusion detections</small></a>
+            <a href="/ips"><strong>IPS</strong><small>Prevention and enforcement status</small></a>
+            <a href="/explorer"><strong>EXPLORER</strong><small>Advanced search, payloads, correlation</small></a>
+            <a href="/incidents"><strong>INCIDENTS</strong><small>Register, timeline, graph, ticketing</small></a>
+            <a href="/reports"><strong>REPORTS</strong><small>Statistics, trends, export</small></a>
+          </div>
+        </section>
+
+        <section class="panel module" aria-label="Downstream integrations">
+          <div class="module-heading"><div><p class="section-label">Integrations</p><h2>Connected systems</h2></div><span class="status-chip" data-state="unknown" id="integrationsSummaryTag">CHECKING</span></div>
+          <ul class="telemetry-list" id="integrationsList" aria-live="polite">
+            <li data-integration="zammad"><span class="telemetry-name">Zammad ticketing</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+            <li data-integration="network_guardian"><span class="telemetry-name">Network Guardian Event Fabric</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+            <li data-integration="mcp_server"><span class="telemetry-name">MCP server (Hermes Agent)</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          </ul>
+          <p class="module-footnote">Live status from <code>/api/v1/integrations/status</code>. Never displays credentials or tokens.</p>
+        </section>
+
+        <section class="panel module" aria-label="Security operations platform">
+          <div class="module-heading"><div><p class="section-label">Security operations platform</p><h2>Every connected system</h2></div><span class="quiet-tag">4 SYSTEMS</span></div>
+          <div class="workspace-links">
+            <a href="/events"><strong>NSEP</strong><small>Ingestion, detection, incidents -- this pipeline</small></a>
+            <a href="/network-guardian"><strong>NETWORK GUARDIAN</strong><small data-integration-label="network_guardian">Checking</small></a>
+            <a href="/zammad"><strong>ZAMMAD</strong><small data-integration-label="zammad">Checking</small></a>
+            <a href="/hermes"><strong>HERMES AGENT</strong><small data-integration-label="mcp_server">Checking</small></a>
+            <a href="/admin/health"><strong>ADMINISTRATION</strong><small>System health, integrations, settings</small></a>
+          </div>
+        </section>
+      </div>

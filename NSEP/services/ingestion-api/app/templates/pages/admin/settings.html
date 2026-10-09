@@ -1,0 +1,15 @@
+      <div class="data-state data-state-banner" data-kind="live">
+        <span class="data-state-badge">ENVIRONMENT-MANAGED</span>
+        <strong>NSEP has no settings-write API. Configuration is set per-service through environment variables.</strong>
+        <p>This page never displays secrets (API tokens, passwords) and does not let you change configuration from the browser -- that would require restarting the relevant container with new environment variables.</p>
+      </div>
+
+      <section class="panel module" aria-label="Where configuration lives">
+        <div class="module-heading"><div><p class="section-label">Reference</p><h2>Configuration surfaces</h2></div><span class="quiet-tag">READ-ONLY</span></div>
+        <ul class="telemetry-list">
+          <li><span class="telemetry-name">ingestion-api</span><span class="telemetry-detail">DATABASE_URL, RABBITMQ_URL, REDIS_URL, ZAMMAD_ENABLED, ZAMMAD_URL, NETWORK_GUARDIAN_ENABLED, NETWORK_GUARDIAN_INTAKE_URL, MCP_SERVER_URL</span><span class="status-chip" data-state="ready">ENV VARS</span></li>
+          <li><span class="telemetry-name">security-workers</span><span class="telemetry-detail">ZAMMAD_API_TOKEN, ZAMMAD_GROUP_ID, ZAMMAD_CUSTOMER_ID, NETWORK_GUARDIAN_*, AZURE_OPENAI_*</span><span class="status-chip" data-state="ready">ENV VARS</span></li>
+          <li><span class="telemetry-name">mcp-server</span><span class="telemetry-detail">NSEP_API_BASE_URL, MCP_TRANSPORT, MCP_HOST, MCP_PORT</span><span class="status-chip" data-state="ready">ENV VARS</span></li>
+        </ul>
+        <p class="module-footnote">See <code>docker-compose.yml</code> and each service's <code>.env.example</code> in the repository. Live reachability of the values above is on <a href="/admin/integrations">Administration → Integrations</a>.</p>
+      </section>
