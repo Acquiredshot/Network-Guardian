@@ -1,0 +1,110 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+  db-migrate:
+    image: python:3.14-slim
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["pip install --no-cache-dir alembic psycopg[binary] && alembic upgrade head"]
+    restart: "no"
+  ingestion-api:
+    build:
+      context: .
+      dockerfile: services/ingestion-api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
+      REDIS_URL: redis://redis:6379/0
+      ZAMMAD_ENABLED: ${ZAMMAD_ENABLED:-false}
+      ZAMMAD_URL: ${ZAMMAD_URL:-http://zammad-nginx:8080}
+      NETWORK_GUARDIAN_ENABLED: ${NETWORK_GUARDIAN_ENABLED:-false}
+      NETWORK_GUARDIAN_INTAKE_URL: ${NETWORK_GUARDIAN_INTAKE_URL:-http://host.docker.internal:8080/api/event-fabric/intake}
+      MCP_SERVER_URL: http://mcp-server:8100/mcp
+    ports: ["8000:8000"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on: [rabbitmq, redis, postgres]
+    networks:
+      - default
+      - zammad
+  security-workers:
+    build:
+      context: .
+      dockerfile: services/security-workers/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
+      REDIS_URL: redis://redis:6379/0
+      ZAMMAD_ENABLED: ${ZAMMAD_ENABLED:-false}
+      ZAMMAD_URL: ${ZAMMAD_URL:-http://zammad-nginx:8080}
+      ZAMMAD_API_TOKEN: ${ZAMMAD_API_TOKEN:-}
+      ZAMMAD_GROUP_ID: ${ZAMMAD_GROUP_ID:-1}
+      ZAMMAD_CUSTOMER_ID: ${ZAMMAD_CUSTOMER_ID:-2}
+      NETWORK_GUARDIAN_ENABLED: ${NETWORK_GUARDIAN_ENABLED:-false}
+      NETWORK_GUARDIAN_INTAKE_URL: ${NETWORK_GUARDIAN_INTAKE_URL:-http://host.docker.internal:8080/api/event-fabric/intake}
+      NETWORK_GUARDIAN_ASSET_ID: ${NETWORK_GUARDIAN_ASSET_ID:-nsep-pipeline}
+      NETWORK_GUARDIAN_TENANT_ID: ${NETWORK_GUARDIAN_TENANT_ID:-nsep-tenant}
+    depends_on: [rabbitmq, redis, postgres]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - zammad
+  mcp-server:
+    build:
+      context: .
+      dockerfile: services/mcp-server/Dockerfile
+    environment:
+      NSEP_API_BASE_URL: http://ingestion-api:8000
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8100
+    ports: ["8100:8100"]
+    depends_on: [ingestion-api]
+
+volumes:
+  postgres_data:
+
+networks:
+  zammad:
+    external: true
+    name: ${ZAMMAD_DOCKER_NETWORK:-zammad-docker-compose_default}

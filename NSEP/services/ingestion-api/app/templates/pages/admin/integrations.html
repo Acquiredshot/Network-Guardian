@@ -1,0 +1,9 @@
+      <section class="panel module" aria-label="All downstream integrations">
+        <div class="module-heading"><div><p class="section-label">Connected systems</p><h2>Integration status</h2></div><span class="status-chip" data-state="unknown" id="adminIntegrationsSummaryTag">CHECKING</span></div>
+        <ul class="telemetry-list" id="adminIntegrationsList" aria-live="polite">
+          <li data-integration="zammad"><span class="telemetry-name">Zammad ticketing</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          <li data-integration="network_guardian"><span class="telemetry-name">Network Guardian Event Fabric</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          <li data-integration="mcp_server"><span class="telemetry-name">MCP server (Hermes Agent)</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+        </ul>
+        <p class="module-footnote">Live status from <code>/api/v1/integrations/status</code>. Never displays credentials or tokens. Per-system detail lives under <a href="/network-guardian">Network Guardian</a>, <a href="/zammad">Zammad</a>, and <a href="/hermes">Hermes Agent</a>.</p>
+      </section>

@@ -1,0 +1,102 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "Start Emulators",
+            "command": "docker compose up -d postgres rabbitmq redis",
+            "problemMatcher": [],
+            "runOptions": {
+                "instanceLimit": 1,
+                "instancePolicy": "silent"
+            }
+        },
+        {
+            "type": "shell",
+            "label": "Run Database Migrations",
+            "command": "docker compose run --rm db-migrate",
+            "dependsOn": [
+                "Start Emulators"
+            ],
+            "problemMatcher": [],
+            "runOptions": {
+                "instanceLimit": 1,
+                "instancePolicy": "silent"
+            }
+        },
+        {
+            "type": "shell",
+            "label": "ingestion-api: start",
+            "command": "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+            "options": {
+                "cwd": "${workspaceFolder}/services/ingestion-api",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/services/ingestion-api;${workspaceFolder}/services"
+                }
+            },
+            "dependsOn": [
+                "Start Emulators",
+                "Run Database Migrations"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "python",
+                "pattern": {
+                    "regexp": ".*"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "Application startup complete"
+                }
+            },
+            "runOptions": {
+                "instanceLimit": 1,
+                "instancePolicy": "silent"
+            }
+        },
+        {
+            "type": "shell",
+            "label": "security-workers: start",
+            "command": "python -m celery -A app.celery_app.celery worker --loglevel=INFO --pool=threads --without-mingle",
+            "options": {
+                "cwd": "${workspaceFolder}/services/security-workers",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/services/security-workers;${workspaceFolder}/services"
+                }
+            },
+            "dependsOn": [
+                "Start Emulators",
+                "Run Database Migrations"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "python",
+                "pattern": {
+                    "regexp": ".*"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "ready\\."
+                }
+            },
+            "runOptions": {
+                "instanceLimit": 1,
+                "instancePolicy": "silent"
+            }
+        },
+        {
+            "label": "debug-all-services: start",
+            "dependsOn": [
+                "ingestion-api: start",
+                "security-workers: start"
+            ],
+            "dependsOrder": "sequence",
+            "runOptions": {
+                "instanceLimit": 1,
+                "instancePolicy": "silent"
+            }
+        }
+    ]
+}

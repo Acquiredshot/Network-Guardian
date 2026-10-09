@@ -1,0 +1,13 @@
+      <div class="data-state data-state-banner" data-kind="live">
+        <span class="data-state-badge">CLIENT, NOT DATA SOURCE</span>
+        <strong>Hermes Agent connects to NSEP's MCP server -- it does not send telemetry back to NSEP.</strong>
+        <p>Hermes is an external agent that Nous Research ships. When configured, it calls NSEP's read-only MCP tools (<code>get_event</code>, <code>get_incident</code>, <code>search_events</code>, <code>get_detection_summary</code>, <code>get_risk_score</code>, <code>get_incident_timeline</code>, <code>investigate_incident</code>) over the Model Context Protocol. NSEP has no channel for Hermes to report its own investigations, actions, or activity back, so those pages are placeholders.</p>
+      </div>
+
+      <section class="panel module" aria-label="MCP server connection status">
+        <div class="module-heading"><div><p class="section-label">MCP server</p><h2>Connection status</h2></div><span class="status-chip" data-state="unknown" id="hermesSummaryTag">CHECKING</span></div>
+        <ul class="telemetry-list" id="hermesIntegrationsList" aria-live="polite">
+          <li data-integration="mcp_server"><span class="telemetry-name">MCP server (Hermes Agent)</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+        </ul>
+        <p class="module-footnote">Point Hermes at <code>mcp_servers.nsep.url</code> in its <code>config.yaml</code> to connect. See <a href="/docs">API docs</a> for the underlying endpoints the MCP tools call.</p>
+      </section>

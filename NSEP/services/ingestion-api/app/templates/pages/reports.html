@@ -1,0 +1,51 @@
+      <section class="panel module report-toolbar" aria-label="Report generation">
+        <div><p class="section-label">Report generation</p><h2 id="reportGenerated">Generating report…</h2><p class="module-footnote">Built in the browser from live API responses. No server-side report endpoint exists.</p></div>
+        <div class="filter-actions">
+          <button class="action-button secondary-action" id="refreshReport" type="button">Refresh</button>
+          <button class="action-button" id="exportJson" type="button" disabled>Export JSON</button>
+          <button class="action-button secondary-action" id="exportCsv" type="button" disabled>Export CSV</button>
+        </div>
+      </section>
+
+      <div class="kpi-grid">
+        <article class="kpi panel"><p class="section-label">Total events</p><p class="kpi-value" data-stat="events">—</p><p class="kpi-note">Persisted event records</p></article>
+        <article class="kpi panel"><p class="section-label">Total detections</p><p class="kpi-value" data-stat="detections">—</p><p class="kpi-note">Rule matches</p></article>
+        <article class="kpi panel"><p class="section-label">Total incidents</p><p class="kpi-value" data-stat="incidents">—</p><p class="kpi-note">All statuses</p></article>
+        <article class="kpi panel"><p class="section-label">Mean active risk</p><p class="kpi-value" data-stat="risk">—</p><p class="kpi-note" data-stat-note="risk">Open + investigating incidents</p></article>
+      </div>
+
+      <h3 class="page-subheading">Security / event statistics</h3>
+      <div class="report-grid">
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Events</p><h2>By processing status</h2></div></div><div class="breakdown" data-breakdown="eventsByStatus"></div></section>
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Events</p><h2>By severity</h2></div></div><div class="breakdown" data-breakdown="eventsBySeverity"></div></section>
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Detections</p><h2>By severity</h2></div></div><div class="breakdown" data-breakdown="detectionsBySeverity"></div></section>
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Detections</p><h2>By rule</h2></div></div><div class="breakdown" data-breakdown="detectionsByRule"></div></section>
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Incidents</p><h2>By status</h2></div></div><div class="breakdown" data-breakdown="incidentsByStatus"></div></section>
+        <section class="panel module"><div class="module-heading"><div><p class="section-label">Risk</p><h2>Incident risk bands</h2></div></div><div class="breakdown" data-breakdown="riskBands"></div><p class="module-footnote" data-coverage="riskBands">—</p></section>
+      </div>
+
+      <h3 class="page-subheading">Trends · last 24 hours</h3>
+      <div class="report-grid trend-grid">
+        <section class="panel module">
+          <div class="module-heading"><div><p class="section-label">Event trend</p><h2>Events per hour</h2></div><span class="quiet-tag">EXACT</span></div>
+          <div class="empty-visual" data-empty="events"><div class="chart-grid" aria-hidden="true"></div><div class="empty-copy"><strong>Awaiting event history</strong><span>From the dashboard summary.</span></div></div>
+          <div class="activity-chart traffic-chart" data-chart="events" hidden></div>
+          <p class="module-footnote">Complete · hourly counts from <code>/api/v1/dashboard/summary</code>.</p>
+        </section>
+        <section class="panel module">
+          <div class="module-heading"><div><p class="section-label">Detection trend</p><h2>Detections per hour</h2></div></div>
+          <div class="empty-visual" data-empty="detections"><div class="chart-grid" aria-hidden="true"></div><div class="empty-copy"><strong>Awaiting detections</strong><span>From persisted detection timestamps.</span></div></div>
+          <div class="activity-chart threat-chart" data-chart="detections" hidden></div>
+          <p class="module-footnote" data-coverage="detections">—</p>
+        </section>
+        <section class="panel module">
+          <div class="module-heading"><div><p class="section-label">Incident trend</p><h2>Incidents created per hour</h2></div></div>
+          <div class="empty-visual" data-empty="incidents"><div class="chart-grid" aria-hidden="true"></div><div class="empty-copy"><strong>Awaiting incidents</strong><span>From persisted incident creation times.</span></div></div>
+          <div class="activity-chart incident-chart" data-chart="incidents" hidden></div>
+          <p class="module-footnote" data-coverage="incidents">—</p>
+        </section>
+        <section class="panel module">
+          <div class="module-heading"><div><p class="section-label">Risk trend</p><h2>Risk score over time</h2></div><span class="quiet-tag">NOT IMPLEMENTED</span></div>
+          <div class="data-state" data-kind="not-implemented"><span class="data-state-badge">NOT IMPLEMENTED</span><strong>No risk-history endpoint</strong><p>Risk scores are stored per incident, but no API exposes how they change over time. The current distribution is in Incident risk bands above.</p></div>
+        </section>
+      </div>

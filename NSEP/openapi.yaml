@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: Network Security Event Pipeline
+  version: 0.1.0
+paths:
+  /api/health:
+    get:
+      responses:
+        '200': {description: Liveness}
+  /api/readiness:
+    get:
+      responses:
+        '200': {description: Dependency readiness}
+        '503': {description: Unhealthy}
+  /api/v1/events:
+    post:
+      responses:
+        '202': {description: Event queued}
+        '422': {description: Validation error}
+  /api/v1/events/batch:
+    post:
+      responses:
+        '202': {description: Batch accepted}
+        '413': {description: Batch too large}
+  /api/v1/incidents/{incident_id}:
+    get:
+      parameters:
+        - {name: incident_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Incident}
+        '404': {description: Not found}

@@ -1,0 +1,64 @@
+      <section class="panel module data-module" id="explorerList" aria-label="Advanced event search">
+        <div class="module-heading"><div><p class="section-label">Advanced event search</p><h2>Query persisted events</h2></div><span class="quiet-tag" data-total>Loading</span></div>
+        <form class="data-filters explorer-filters" data-filters>
+          <label class="search-field">Full-text search<input name="q" type="search" placeholder="Event ID, source, type, payload, metadata"></label>
+          <label>Source<input name="source" placeholder="Any source"></label>
+          <label>Event type<input name="event_type" placeholder="Any event type"></label>
+          <label>Status<select name="status"><option value="">All statuses</option><option>accepted</option><option>published</option><option>processing</option><option>processed</option><option>failed</option></select></label>
+          <label>Severity<select name="severity"><option value="">All severities</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select></label>
+          <label>Sort by<select name="sort_by"><option value="occurred_at">Occurred</option><option value="accepted_at">Accepted</option><option value="source">Source</option><option value="event_type">Event type</option><option value="status">Status</option></select></label>
+          <label>Order<select name="sort_order"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+          <div class="filter-actions"><button class="action-button secondary-action" type="submit">Search</button><button class="action-button ghost-action" type="reset">Reset</button></div>
+        </form>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Event ID</th><th>Occurred</th><th>Accepted</th><th>Source</th><th>Event type</th><th>Severity</th><th>Status</th><th>Retries</th><th></th></tr></thead><tbody data-rows><tr><td colspan="9" class="table-empty">Loading events…</td></tr></tbody></table></div>
+        <div class="table-footer"><span data-page-info>Loading</span><div class="page-actions"><button class="page-button" data-prev type="button" aria-label="Previous events">←</button><button class="page-button" data-next type="button" aria-label="Next events">→</button></div></div>
+        <form id="eventLookupForm" class="lookup-form explorer-lookup">
+          <label for="eventIdInput">Inspect by event ID</label><div class="input-row"><input id="eventIdInput" name="event_id" autocomplete="off" placeholder="UUID from an accepted event" required><button class="action-button" type="submit">Inspect</button></div>
+        </form>
+      </section>
+
+      <div class="data-state" id="inspectorEmpty" data-kind="awaiting-selection">
+        <span class="data-state-badge">AWAITING SELECTION</span>
+        <strong>Select an event to inspect</strong>
+        <p>Choose Inspect on a result or enter an event ID to open its payload, processing lifecycle, and correlated incident.</p>
+      </div>
+
+      <div class="page-grid inspector-grid" id="inspector" hidden>
+        <section class="panel module" id="eventInspection" aria-label="Event inspection">
+          <div class="module-heading"><div><p class="section-label">Event inspection</p><h2 data-detail-title>Event details</h2></div><a class="quiet-tag docs-tag" data-link-incident href="/incidents" hidden>OPEN INCIDENT →</a></div>
+          <dl class="detail-grid" data-detail-fields></dl>
+          <div class="json-viewer">
+            <div class="json-tabs" role="tablist" aria-label="Payload view">
+              <button type="button" role="tab" class="json-tab active" aria-selected="true" data-json-view="payload">Payload</button>
+              <button type="button" role="tab" class="json-tab" aria-selected="false" data-json-view="metadata">Metadata</button>
+              <button type="button" role="tab" class="json-tab" aria-selected="false" data-json-view="record">Full record</button>
+              <button type="button" class="row-action copy-json" id="copyJson">Copy JSON</button>
+            </div>
+            <pre class="json-detail json-viewer-body" id="jsonViewer"></pre>
+          </div>
+        </section>
+
+        <section class="panel module" aria-label="Correlation and drill-down">
+          <div class="module-heading"><div><p class="section-label">Correlation / drill-down</p><h2>Processing lifecycle</h2></div><span class="quiet-tag">PERSISTED</span></div>
+          <ol class="investigation-timeline" id="lifecycle">
+            <li data-stage="accepted"><span class="timeline-node"></span><div><strong>Accepted</strong><small>—</small></div></li>
+            <li data-stage="published"><span class="timeline-node"></span><div><strong>Published</strong><small>—</small></div></li>
+            <li data-stage="processed"><span class="timeline-node"></span><div><strong>Processed</strong><small>—</small></div></li>
+            <li data-stage="detection"><span class="timeline-node"></span><div><strong>Detection</strong><small>—</small></div></li>
+            <li data-stage="incident"><span class="timeline-node"></span><div><strong>Incident</strong><small>—</small></div></li>
+          </ol>
+          <p class="section-label">Detections on this event</p>
+          <div class="rule-summary correlation-block" id="eventDetections"></div>
+          <p class="section-label">Other events from the same source</p>
+          <div class="related-list correlation-block" id="relatedEvents"></div>
+          <div id="incidentCorrelation">
+            <p class="section-label">Correlated incident</p>
+            <div class="correlation-block" id="incidentCorrelationEmpty"></div>
+            <div class="result-box" data-incident-result aria-live="polite" hidden></div>
+            <div class="incident-investigation" data-incident-investigation hidden>
+              <section><p class="section-label">Incident timeline</p><ol class="actual-timeline" data-incident-timeline></ol></section>
+              <section><p class="section-label">Event / incident / detection graph</p><div class="relationship-graph" data-incident-graph></div></section>
+            </div>
+          </div>
+        </section>
+      </div>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#06121a">
+  <title>{{page_label}} · Network Security Event Pipeline</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/core.js" defer></script>
+  {{page_script}}
+</head>
+<body data-page="{{route}}">
+  <div class="shell">
+    <header class="topbar panel">
+      <a class="identity" href="/dashboard" aria-label="Network Security Event Pipeline dashboard">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <div>
+          <p class="eyebrow">Security operations</p>
+          <h1>Network Security Event Pipeline</h1>
+          <p class="subtitle">Enterprise Security Event Ingestion <span>•</span> Correlation <span>•</span> Detection <span>•</span> Incident Response</p>
+        </div>
+      </a>
+      <div class="system-state" id="systemState" data-state="unknown" aria-live="polite">
+        <span class="state-dot"></span>
+        <span id="systemStateText">Checking services</span>
+      </div>
+    </header>
+
+    <nav class="primary-nav" aria-label="Security Operations sections">
+      {{navigation}}
+      <a class="nav-link docs-link" href="/docs">API docs</a>
+    </nav>
+    {{secondary_navigation}}
+
+    {{page_header}}
+    <main>
+{{content}}
+    </main>
+
+    <footer class="page-footer"><span>Network Security Event Pipeline</span><span><a href="/docs">OpenAPI documentation</a> <span class="footer-divider">·</span> <a href="/api/docs">API reference</a></span></footer>
+  </div>
+</body>
+</html>

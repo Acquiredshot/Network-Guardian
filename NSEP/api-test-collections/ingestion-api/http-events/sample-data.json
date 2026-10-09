@@ -1,0 +1,11 @@
+{
+  "source": "firewall-01",
+  "event_type": "login_failure",
+  "occurred_at": "2026-09-26T04:00:00Z",
+  "payload": {
+    "failed_logins": 5
+  },
+  "metadata": {
+    "region": "eastus"
+  }
+}

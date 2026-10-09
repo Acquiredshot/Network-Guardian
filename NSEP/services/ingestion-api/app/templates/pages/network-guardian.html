@@ -1,0 +1,13 @@
+      <div class="data-state data-state-banner" data-kind="live">
+        <span class="data-state-badge">OUTBOUND ONLY</span>
+        <strong>NSEP pushes incidents to Network Guardian's Event Fabric. It never reads Network Guardian's own data.</strong>
+        <p>The <code>network_guardian</code> integration is a fire-and-forget HTTP POST to <code>/api/event-fabric/intake</code> on every new incident. There is no query API back into Network Guardian, so device inventory, network events, threat detection, and investigations are not available from this dashboard.</p>
+      </div>
+
+      <section class="panel module" aria-label="Network Guardian connection status">
+        <div class="module-heading"><div><p class="section-label">Event Fabric</p><h2>Connection status</h2></div><span class="status-chip" data-state="unknown" id="ngSummaryTag">CHECKING</span></div>
+        <ul class="telemetry-list" id="ngIntegrationsList" aria-live="polite">
+          <li data-integration="network_guardian"><span class="telemetry-name">Network Guardian Event Fabric</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+        </ul>
+        <p class="module-footnote">Incidents are pushed from <code>services/security-workers/app/integrations/network_guardian.py</code> after each new NSEP incident. See <a href="/incidents">Incidents</a> for the incidents that trigger this push.</p>
+      </section>

@@ -1,0 +1,11 @@
+{
+    "chat.editor.preferCopilotHarness": false,
+    "chat.defaultToCopilotHarness": false,
+    "chat.agent.maxRequests": 9999,
+    "debug.onTaskErrors": "debugAnyway",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/services/ingestion-api",
+        "${workspaceFolder}/services/security-workers",
+        "${workspaceFolder}/services"
+    ]
+}

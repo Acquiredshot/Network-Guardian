@@ -1,0 +1,14 @@
+      <section class="panel module" aria-label="System health">
+        <div class="module-heading"><div><p class="section-label">Live probes</p><h2>Health, readiness, diagnostics</h2></div><span class="status-chip" data-state="unknown" id="healthSummaryTag">CHECKING</span></div>
+        <ul class="telemetry-list" id="healthList" aria-live="polite">
+          <li data-health="health"><span class="telemetry-name">GET /api/health</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          <li data-health="readiness"><span class="telemetry-name">GET /api/readiness</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+          <li data-health="diagnostics"><span class="telemetry-name">GET /api/diagnostics</span><span class="telemetry-detail">Checking</span><span class="status-chip" data-state="unknown">…</span></li>
+        </ul>
+        <p class="module-footnote">These are the same probes the header's pipeline status chip runs on every page load.</p>
+      </section>
+
+      <section class="panel module" aria-label="Raw diagnostics response">
+        <div class="module-heading"><div><p class="section-label">Raw response</p><h2>Diagnostics payload</h2></div></div>
+        <div class="result-box"><pre id="diagnosticsRaw">Loading…</pre></div>
+      </section>
