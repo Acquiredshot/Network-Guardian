@@ -109,7 +109,7 @@ Every security-relevant observation that any of the three apps produces must be 
 |---|---|---|---|
 | `timestamp_ms` | integer (epoch ms) | yes | When the observation was made (UTC) |
 | `asset_id` | string | yes | Stable ID of the asset this observation is about (see §2.2) |
-| `source` | string | yes | Which app produced it: `NETWORK_GUARDIAN`, `MASK`, `PAKSHIELD` |
+| `source` | string | yes | Which app produced it: `NETWORK_GUARDIAN`, `MASK`, `PAKSHIELD`, `NSEP` |
 | `source_version` | string | no | Version of the producing app (for debugging) |
 | `event_type` | string | yes | Specific observation type (e.g. `process_observation`, `network_flow`, `risk_scored`, `access_denied`) |
 | `severity` | string | yes | One of `info`, `low`, `medium`, `high`, `critical` |

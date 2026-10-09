@@ -41,6 +41,29 @@ When you set `HERMES_API_KEY`, J.A.R.V.I.S. uses a LangGraph state machine with 
 
 ## Dashboard
 
+The dashboard navigation includes **Switch to NSEP**, which opens NSEP in the
+same tab. Set `NSEP_DASHBOARD_URL` in the launcher process environment to its
+browser-accessible HTTP/HTTPS URL (default: `http://localhost:8000/dashboard`).
+NSEP's reciprocal **Switch to PakShield / Network Guardian** button uses
+`NETWORK_GUARDIAN_DASHBOARD_URL` (default: `http://localhost:8080/`). Both
+platforms must be running for live switching; these buttons do not start services.
+
+Use **Live Topology** in either dashboard to see the configured connections and
+refreshing NSEP service health. It distinguishes protocol probes, TCP reachability,
+and components without heartbeat telemetry; its lines are architecture, not packets.
+Guardian's **Incident Reports** page (`/incidents`) contains fleet-generated Markdown
+reports. NSEP's `/incidents` contains the ingestion pipeline's incidents and
+investigation details; Event Fabric notifications do not automatically become
+Guardian Markdown reports.
+
+For the isolated local Windows/NSEP setup and its qualified audit results, see
+[the local platform audit](NSEP/docs/LOCAL_PLATFORM_AUDIT.md) and
+[topology / incident access guide](NSEP/docs/LIVE_TOPOLOGY.md).
+`scripts/serve_local_dashboard.py` provides a localhost-only, dashboard-only
+launcher that does not start scans or enforcement. Optional AI framework imports
+are supplied by `pip install -e ".[ai]"`; provider credentials are still required
+for external model calls.
+
 A zero-dep async HTTP dashboard runs on port 8080 (override with `PORT`). It gives you a live Fleet Map, KPI bar, event feed, and pages for IDS/IPS, WiFi, cloaking, explorer/auditor, AI engine charts, fleet agents, reports/incidents, and threat detection (malware/ransomware ReAct with PDF download).
 
 ```bash
@@ -68,6 +91,7 @@ They share a common **Event Fabric** — a cross-app event bus with an HTTP inta
 ```
 MASK  ──▶  POST /api/event-fabric/intake  ──▶  Event Fabric  ──▶  Security Graph
 PAKSHIELD ────────────────────────────────────────▶
+NSEP     ────────────────────────────────────────▶
 ```
 
 - **Mask adapter** (`scripts/mask_adapter.py`) — exports Mask daemon observations (sysinfo, processes, network connections, user sessions) into the Event Fabric. Falls back to direct OS observation via psutil when the Mask daemon's IPC isn't available.

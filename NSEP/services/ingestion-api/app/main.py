@@ -33,7 +33,7 @@ app.state.dependencies = DependencyState(RabbitMqPublisher(settings.rabbitmq_url
 app.include_router(router)
 
 STATIC_DIR = Path(__file__).parent / "static"
-SOC_PAGES = render_pages()
+SOC_PAGES = render_pages(network_guardian_dashboard_url=str(settings.network_guardian_dashboard_url))
 DOCS_TEMPLATE = (STATIC_DIR / "docs.html").read_text(encoding="utf-8")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

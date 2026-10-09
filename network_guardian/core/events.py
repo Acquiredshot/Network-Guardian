@@ -87,7 +87,7 @@ class CrossAppEnvelope:
     Fields:
         timestamp_ms:   Epoch milliseconds (UTC) when the observation was made.
         asset_id:       Stable asset identifier (see correlation spec §2.2).
-        source:         Producing app: ``MASK``, ``PAKSHIELD``, ``NETWORK_GUARDIAN``.
+        source:         Producing app: ``MASK``, ``PAKSHIELD``, ``NETWORK_GUARDIAN``, ``NSEP``.
         source_version: Optional producing app version.
         event_type:     Specific observation type (e.g. ``process_observation``).
         severity:       One of ``info``, ``low``, ``medium``, ``high``, ``critical``.
@@ -156,9 +156,9 @@ class CrossAppEnvelope:
             errors.append("timestamp_ms must be a positive epoch millisecond")
         if not self.asset_id:
             errors.append("asset_id is required")
-        if self.source not in {"MASK", "PAKSHIELD", "NETWORK_GUARDIAN", ""}:
+        if self.source not in {"MASK", "PAKSHIELD", "NETWORK_GUARDIAN", "NSEP", ""}:
             errors.append(
-                f"source must be MASK, PAKSHIELD, or NETWORK_GUARDIAN; got {self.source!r}"
+                f"source must be MASK, PAKSHIELD, NETWORK_GUARDIAN, or NSEP; got {self.source!r}"
             )
         if self.severity not in SEVERITY_VALUES:
             errors.append(

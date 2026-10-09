@@ -13,6 +13,7 @@ and static shells; it never proxies or merges another system's API.
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
+from urllib.parse import urljoin
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -31,6 +32,7 @@ GROUPS: tuple[str, ...] = ("NSEP", "Network Guardian", "Zammad", "Hermes Agent",
 
 PAGES: tuple[Page, ...] = (
     Page("dashboard", "Dashboard", "Security operations overview", "", "dashboard.js"),
+    Page("topology", "Live Topology", "Live platform topology", "Observed service health and persisted activity alongside the configured data-flow architecture.", "pages/topology.js"),
 
     # NSEP -- existing routes, unchanged URLs and behavior.
     Page("events", "Events", "Event stream", "Persisted security events with filtering, drill-down, and event submission.", "pages/events.js", "NSEP"),
@@ -88,7 +90,7 @@ def _nav_link(page: Page, active: str, extra_class: str = "") -> str:
 
 
 def _primary_navigation(active_page: Page) -> str:
-    links = [_nav_link(PAGES_BY_ROUTE["dashboard"], active_page.route)]
+    links = [_nav_link(PAGES_BY_ROUTE[route], active_page.route) for route in ("dashboard", "topology")]
     for group in GROUPS:
         pages = _group_pages(group)
         if not pages:
@@ -145,7 +147,7 @@ def _placeholder_content(page: Page) -> str:
     '''
 
 
-def render_pages() -> dict[str, str]:
+def render_pages(*, network_guardian_dashboard_url: str = "http://localhost:8080/") -> dict[str, str]:
     layout = (TEMPLATES_DIR / "layout.html").read_text(encoding="utf-8")
     rendered = {}
     for page in PAGES:
@@ -160,5 +162,7 @@ def render_pages() -> dict[str, str]:
             .replace("{{secondary_navigation}}", _secondary_navigation(page))
             .replace("{{page_header}}", _page_header(page))
             .replace("{{content}}", content)
+            .replace("{{network_guardian_dashboard_url}}", escape(network_guardian_dashboard_url, quote=True))
+            .replace("{{network_guardian_incidents_url}}", escape(urljoin(network_guardian_dashboard_url, "/incidents"), quote=True))
         )
     return rendered

@@ -1,0 +1,48 @@
+      <section class="panel module" aria-label="Live topology">
+        <div class="module-heading">
+          <div><p class="section-label">Platform connections</p><h2>How the platforms work together</h2></div>
+          <button class="row-action" id="topologyRefresh" type="button">Refresh now</button>
+        </div>
+        <p class="module-footnote">Refreshes every 10 seconds. Lines describe architecture, not live packets. Green dependency nodes are protocol probes; external reachability is TCP only. Select a node for evidence and its role.</p>
+        <p id="topologyUpdated" role="status" aria-live="polite">Waiting for live observations...</p>
+        <div class="topology-legend"><span>Solid: implemented path</span><span>Dashed: external/configuration required</span><span>Unknown: no live telemetry</span></div>
+        <div class="topology-stage">
+          <svg id="topologyGraph" viewBox="0 0 1200 690" role="group" aria-label="Interactive platform architecture"></svg>
+        </div>
+        <div id="topologyErrors" role="alert" hidden></div>
+      </section>
+      <div class="topology-columns">
+        <section class="panel module" aria-label="Selected topology node">
+          <div class="module-heading"><h2 id="topologyNodeTitle">Select a component</h2><span class="quiet-tag" id="topologyNodeState">UNKNOWN</span></div>
+          <p id="topologyNodeRole">Click a component or focus it and press Enter to inspect its role.</p>
+          <p id="topologyNodeEvidence">No component selected.</p>
+          <a class="row-action" id="topologyNodeLink" hidden>Open component page</a>
+        </section>
+        <section class="panel module" aria-label="Incident report access">
+          <div class="module-heading"><h2>Incidents and reports</h2><span class="quiet-tag">PERSISTED DATA</span></div>
+          <p>NSEP incidents contain detections, risk scores, a timeline, and persisted relationships. Open an incident and choose Inspect. Guardian's separate incident-report page contains fleet-generated Markdown reports, not every Event Fabric notification.</p>
+          <div class="topology-links">
+            <a class="row-action" href="/incidents">NSEP incidents</a>
+            <a class="row-action" href="/reports">NSEP statistics and exports</a>
+            <a class="row-action" id="guardianIncidentReports" href="{{network_guardian_incidents_url}}">Guardian incident reports (login required)</a>
+          </div>
+          <p class="module-footnote">An empty Guardian report list is expected without fleet-generated reports. Outbound NSEP notification delivery has no live acknowledgement ledger here.</p>
+        </section>
+      </div>
+      <section class="panel module topology-activity" aria-label="Live pipeline evidence">
+        <div class="module-heading"><h2>Persisted pipeline evidence</h2><span class="quiet-tag">NOT A WORKER HEARTBEAT</span></div>
+        <div class="topology-metrics">
+          <div><strong id="topologyEventCount">N/A</strong><span>Persisted events</span></div>
+          <div><strong id="topologyIncidentCount">N/A</strong><span>Persisted incidents</span></div>
+          <div><strong id="topologyProcessedCount">N/A</strong><span>Processed events</span></div>
+          <div><strong id="topologyFailedCount">N/A</strong><span>Failed events</span></div>
+        </div>
+        <p id="topologyRecent">Recent event data not loaded.</p>
+        <ol class="topology-flow">
+          <li>Source submits an event to NSEP's HTTP API.</li>
+          <li>API persists acceptance in PostgreSQL and publishes to RabbitMQ.</li>
+          <li>Celery worker consumes, detects, scores, and persists results; Redis is its result backend.</li>
+          <li>New incidents are pushed outward to Guardian Event Fabric and optionally Zammad.</li>
+          <li>Dashboards and read-only MCP tools query NSEP's API; Hermes is an external MCP client.</li>
+        </ol>
+      </section>

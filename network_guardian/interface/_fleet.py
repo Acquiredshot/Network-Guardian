@@ -477,14 +477,19 @@ tr:hover td{background:rgba(0,212,255,.04)}
 
 <div class="detail-overlay" id="overlay">
   <div class="detail-box" id="detailBox">
-    <button class="close-btn" onclick="closeDetail()">&#10005; Close</button>
+    <button class="close-btn" id="closeDetailButton">&#10005; Close</button>
     <div id="detailContent"></div>
   </div>
 </div>
 
 <script nonce="{{NONCE}}">
 function closeDetail(){document.getElementById('overlay').classList.remove('show');}
+document.getElementById('closeDetailButton').addEventListener('click',closeDetail);
 document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeDetail();});
+document.getElementById('agents').addEventListener('click',function(e){
+  var card=e.target.closest('.agent-card');
+  if(card)showAgent(card.dataset.agentId);
+});
 
 var riskColor={low:'--green',medium:'--yellow',high:'--orange',critical:'--red',unknown:'--dim'};
 var _agents=[];var _mapAnim=null;
@@ -928,7 +933,7 @@ async function load(){
             typeLabel+=' <span style="color:var(--green);font-size:.65rem">&#128274;</span>';
           }
         }
-        return '<div class="agent-card '+a.status+'" onclick="showAgent(&apos;'+a.agent_id+'&apos;)">'+
+        return '<div class="agent-card '+a.status+'" data-agent-id="'+String(a.agent_id).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">'+
           '<div class="hdr"><div class="name"><span class="status-dot '+a.status+'"></span>'+a.label+'</div>'+
           '<span style="font-size:.72rem;padding:2px 8px;border-radius:8px;background:rgba('+(a.status==='online'?'63,185,80':a.status==='stale'?'210,153,34':'248,81,73')+',.15);color:var(--'+(a.status==='online'?'green':a.status==='stale'?'yellow':'red')+')">'+a.status.toUpperCase()+'</span></div>'+
           '<div class="id">'+a.agent_id+typeLabel+'</div>'+

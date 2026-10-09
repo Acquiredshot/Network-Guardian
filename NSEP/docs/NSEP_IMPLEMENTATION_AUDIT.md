@@ -3,6 +3,10 @@
 Audit date: 2026-09-26  
 Scope: current workspace source, tests, migrations, and the current SOC dashboard. The supplied architecture diagram and sample event are treated as intended capabilities, not evidence of implementation.
 
+For the subsequent Windows dependency setup, live incident-delivery verification,
+reciprocal navigation, and fixes found during execution, see the
+[2026-10-08 local platform audit](LOCAL_PLATFORM_AUDIT.md).
+
 ## Executive Summary
 
 The repository contains a working, narrow event-ingestion pipeline: FastAPI validates an event envelope, assigns an event ID, persists and queues it, then a Celery worker enriches it, applies two rules, scores detections, and creates an incident when a rule fires. The SOC dashboard now reads counts and time buckets from persisted events, browses/searches events, detections, and incidents with bounded pagination, and displays incident timelines and only database-backed event/incident/detection relationships.
@@ -29,6 +33,22 @@ Current single-event flow:
 The batch endpoint loops through the supplied events and uses the same persistence/queueing path. It accepts 1-100 events per request; it is not a streaming ingestion endpoint.
 
 ## Existing HTTP API
+
+### Returning to the combined platform
+
+Every NSEP page has a **Switch to PakShield / Network Guardian** button in its header.
+Set `NETWORK_GUARDIAN_DASHBOARD_URL` in the ingestion API environment to the
+browser-accessible URL of the combined dashboard (default: `http://localhost:8080/`),
+then restart the API. Docker Compose passes this setting to the ingestion API.
+Use the dashboard URL, not the Event Fabric intake endpoint or an internal
+container hostname. The setting accepts HTTP/HTTPS URLs only.
+This navigation works independently of `NETWORK_GUARDIAN_ENABLED` and does not
+enable incident forwarding or start the combined platform.
+The combined platform has a reciprocal **Switch to NSEP** button. Set
+`NSEP_DASHBOARD_URL` in Network Guardian's process environment to NSEP's
+browser-accessible dashboard URL (default: `http://localhost:8000/dashboard`).
+Both buttons navigate in the same tab, so switching back and forth does not
+depend on browser history.
 
 | Method and path | What it exposes | Dashboard use |
 |---|---|---|

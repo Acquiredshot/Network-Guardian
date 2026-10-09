@@ -20,9 +20,12 @@ import asyncio
 import json
 import logging
 import secrets
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
+from html import escape
 from typing import Any, TYPE_CHECKING
+from urllib.parse import urljoin, urlsplit
 
 from network_guardian.core.events import Event, EventBus
 from network_guardian.interface._controls import inject_controls
@@ -1530,7 +1533,31 @@ class Dashboard:
         )
 
     @staticmethod
+    def _inject_platform_switch(html: str) -> str:
+        url = os.environ.get("NSEP_DASHBOARD_URL", "http://localhost:8000/dashboard")
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("NSEP_DASHBOARD_URL must be an absolute HTTP or HTTPS URL")
+        if parts.port is not None and not 1 <= parts.port <= 65535:
+            raise ValueError("NSEP_DASHBOARD_URL must use a valid port")
+        link = (
+            f'<a class="platform-switch" href="{escape(url, quote=True)}">'
+            "Switch to NSEP</a>"
+            f'<a class="topology-link" href="{escape(urljoin(url, "/topology"), quote=True)}">'
+            "Live Topology</a>"
+        )
+        if 'href="/incidents"' not in html:
+            link += '<a href="/incidents">Incident Reports</a>'
+        return re.sub(
+            r'(<(?:nav|div)\s+class=["\']nav["\'][^>]*>)',
+            lambda match: match.group(1) + link,
+            html,
+            count=1,
+        )
+
+    @staticmethod
     def _apply_observability_shell(html: str) -> str:
+        html = Dashboard._inject_platform_switch(html)
         nonce = Dashboard._csp_nonce
         css = f"""
         <style nonce=\"{nonce}\">
@@ -1742,16 +1769,18 @@ class Dashboard:
             '<span id="ts"></span></div>'
             + nav +
             '<div class="filter-row">'
-            '<button class="filter-btn active" onclick="setFilter(\'all\',this)">All</button>'
-            '<button class="filter-btn" onclick="setFilter(\'critical\',this)">Critical</button>'
-            '<button class="filter-btn" onclick="setFilter(\'high\',this)">High</button>'
-            '<button class="filter-btn" onclick="setFilter(\'medium\',this)">Medium</button>'
-            '<button class="filter-btn" onclick="setFilter(\'low\',this)">Low / Clean</button>'
+            '<button class="filter-btn active" data-filter="all">All</button>'
+            '<button class="filter-btn" data-filter="critical">Critical</button>'
+            '<button class="filter-btn" data-filter="high">High</button>'
+            '<button class="filter-btn" data-filter="medium">Medium</button>'
+            '<button class="filter-btn" data-filter="low">Low / Clean</button>'
             '</div>'
             '<div id="reports"></div>'
             '</div>'
             f'<script nonce="{nonce}">'
             'let _filter="all";'
+            'document.querySelectorAll("[data-filter]").forEach(btn=>btn.addEventListener("click",()=>setFilter(btn.dataset.filter,btn)));'
+            'document.getElementById("reports").addEventListener("click",e=>{const header=e.target.closest("[data-report-id]");if(header)toggle(decodeURIComponent(header.dataset.reportId));});'
             'function setFilter(f,btn){'
             '  _filter=f;'
             '  document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));'
@@ -1810,7 +1839,7 @@ class Dashboard:
             '    const obs=r.observations||{};'
             '    const recs=(r.recommendations||[]).map(rec=>`<li style="margin:4px 0;color:var(--yellow)">${rec}</li>`).join("");'
             '    return `<div class="report-card">'
-            '      <div class="report-header" onclick="toggle(\'${rid}\')">'
+            '      <div class="report-header" data-report-id="${encodeURIComponent(rid)}">'
             '        <span style="font-size:1.4rem">${sevIcon(risk)}</span>'
             '        <div>'
             '          <div style="font-weight:700">Report ${rid} &nbsp;<span class="pill sev-${risk}" style="text-transform:uppercase">${risk}</span>'
@@ -2193,16 +2222,18 @@ class Dashboard:
             '<span id="ts"></span></div>'
             + nav +
             '<div class="filter-row">'
-            '<button class="filter-btn active" onclick="setFilter(\'all\',this)">All</button>'
-            '<button class="filter-btn" onclick="setFilter(\'critical\',this)">Critical</button>'
-            '<button class="filter-btn" onclick="setFilter(\'high\',this)">High</button>'
-            '<button class="filter-btn" onclick="setFilter(\'medium\',this)">Medium</button>'
-            '<button class="filter-btn" onclick="setFilter(\'low\',this)">Low / Clean</button>'
+            '<button class="filter-btn active" data-filter="all">All</button>'
+            '<button class="filter-btn" data-filter="critical">Critical</button>'
+            '<button class="filter-btn" data-filter="high">High</button>'
+            '<button class="filter-btn" data-filter="medium">Medium</button>'
+            '<button class="filter-btn" data-filter="low">Low / Clean</button>'
             '</div>'
             '<div id="reports"></div>'
             '</div>'
             f'<script nonce="{nonce}">'
             'let _filter="all";'
+            'document.querySelectorAll("[data-filter]").forEach(btn=>btn.addEventListener("click",()=>setFilter(btn.dataset.filter,btn)));'
+            'document.getElementById("reports").addEventListener("click",e=>{const header=e.target.closest("[data-report-id]");if(header)toggle(decodeURIComponent(header.dataset.reportId));});'
             'function setFilter(f,btn){'
             '  _filter=f;'
             '  document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));'
@@ -2261,7 +2292,7 @@ class Dashboard:
             '    const obs=r.observations||{};'
             '    const recs=(r.recommendations||[]).map(rec=>`<li style="margin:4px 0;color:var(--yellow)">${rec}</li>`).join("");'
             '    return `<div class="report-card">'
-            '      <div class="report-header" onclick="toggle(\'${rid}\')">'
+            '      <div class="report-header" data-report-id="${encodeURIComponent(rid)}">'
             '        <span style="font-size:1.4rem">${sevIcon(risk)}</span>'
             '        <div>'
             '          <div style="font-weight:700">Report ${rid} &nbsp;<span class="pill sev-${risk}" style="text-transform:uppercase">${risk}</span>'
@@ -2430,7 +2461,7 @@ class Dashboard:
             '      const tcount=(r.threats||[]).length;'
             '      const title=(r.threats||[]).map(t=>t.title).filter(Boolean).join(", ")||"Clean Assessment";'
             '      return `<div class="ir-card">'
-            '        <div class="ir-header" onclick="toggle(\'${rid}\')">'
+            '        <div class="ir-header" data-report-id="${encodeURIComponent(rid)}">'
             '          <span style="font-size:1.3rem">${risk==="critical"?"\\u{1F6A8}":risk==="high"?"\\u26A0\\uFE0F":risk==="medium"?"\\u{1F7E1}":"\\u2705"}</span>'
             '          <div style="flex:1">'
             '            <div style="font-weight:700">IR-${r.generated_at?r.generated_at.slice(0,10):"?"}-${rid}'
@@ -2438,7 +2469,7 @@ class Dashboard:
             '              &nbsp;<span style="color:var(--dim);font-weight:400;font-size:.8rem">${title}</span></div>'
             '            <div style="color:var(--dim);font-size:.75rem;margin-top:2px">${ts} &nbsp;|&nbsp; Agent: ${r.agent_id||""} &nbsp;|&nbsp; ${tcount} threat(s) &nbsp;|&nbsp; Score: ${r.threat_score||0}/100</div>'
             '          </div>'
-            '          <button class="dl-btn" onclick="event.stopPropagation();downloadMd(\'${rid}\',${JSON.stringify(r.incident_report_md||"")})">&#11015; .md</button>'
+            '          <button class="dl-btn" data-report-index="${i}">&#11015; .md</button>'
             '          <span style="color:var(--dim);font-size:.9rem;margin-left:8px">&#9660;</span>'
             '        </div>'
             '        <div class="ir-body" id="ib_${rid}">'
@@ -2446,6 +2477,8 @@ class Dashboard:
             '        </div>'
             '      </div>`;'
             '    }).join("");'
+            '    document.querySelectorAll("#incidents .ir-header").forEach(header=>header.addEventListener("click",()=>toggle(decodeURIComponent(header.dataset.reportId))));'
+            '    document.querySelectorAll("#incidents .dl-btn").forEach(button=>button.addEventListener("click",e=>{e.stopPropagation();const report=incidents[Number(button.dataset.reportIndex)];downloadMd(report.report_id||("IR"+button.dataset.reportIndex),report.incident_report_md||"");}));'
             '  }catch(e){console.error(e);}'
             '}'
             'load();setInterval(load,30000);'

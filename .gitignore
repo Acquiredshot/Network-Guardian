@@ -70,6 +70,7 @@ jarvis_*.log
 
 # Network Guardian runtime data dir (fleet.json, baselines, injection db)
 .network_guardian/
+.local-runtime/
 
 # Fleet key and agent registration keys (never push — distribute out-of-band)
 fleet_key.txt

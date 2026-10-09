@@ -57,6 +57,7 @@ services:
       ZAMMAD_ENABLED: ${ZAMMAD_ENABLED:-false}
       ZAMMAD_URL: ${ZAMMAD_URL:-http://zammad-nginx:8080}
       NETWORK_GUARDIAN_ENABLED: ${NETWORK_GUARDIAN_ENABLED:-false}
+      NETWORK_GUARDIAN_DASHBOARD_URL: ${NETWORK_GUARDIAN_DASHBOARD_URL:-http://localhost:8080/}
       NETWORK_GUARDIAN_INTAKE_URL: ${NETWORK_GUARDIAN_INTAKE_URL:-http://host.docker.internal:8080/api/event-fabric/intake}
       MCP_SERVER_URL: http://mcp-server:8100/mcp
     ports: ["8000:8000"]

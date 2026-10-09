@@ -39,6 +39,8 @@ def update_event_status(
     fields = ["processing_status = %s"]
     values: list[Any] = [status]
     if status == "published":
+        # A fast worker may already have advanced the state before the publisher returns.
+        fields[0] = "processing_status = CASE WHEN processing_status = 'accepted' THEN %s ELSE processing_status END"
         fields.append("published_at = now()")
     if status == "processed":
         fields.append("processed_at = now()")
